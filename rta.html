@@ -613,6 +613,43 @@
             border-color: rgba(255, 59, 92, 1);
             box-shadow: 0 0 14px rgba(255, 59, 92, 0.55);
         }
+
+        /* ── Convergence Lab ───────────────────────────────────────── */
+        .lab-panel { margin-top: 22px; }
+        .lab-grid { display: grid; gap: 18px; }
+        @media (min-width: 980px) {
+            .lab-grid { grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); align-items: start; }
+        }
+        .lab-side { display: flex; flex-direction: column; gap: 12px; }
+        .lab-explain { font-size: 0.8rem; line-height: 1.5; color: #9fb0c4; margin: 0; }
+        .lab-explain code { color: var(--accent-color); font-size: 0.78rem; }
+        .lab-readout {
+            font-family: monospace; font-size: 0.78rem; color: #c6d2e5;
+            background: rgba(7, 8, 14, 0.6); border: 1px solid rgba(0, 255, 204, 0.12);
+            border-radius: 10px; padding: 10px 12px; line-height: 1.6;
+        }
+        .lab-ab {
+            border: 1px solid rgba(0, 255, 204, 0.12); border-radius: 10px;
+            padding: 10px 12px; background: rgba(7, 8, 14, 0.5);
+        }
+        .lab-ab-title {
+            display: block; font-size: 0.68rem; letter-spacing: 1px;
+            text-transform: uppercase; color: #8a99ad; margin-bottom: 8px;
+        }
+        .lab-ab-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; }
+        .lab-ab-btn {
+            padding: 9px 8px; border: 1px solid rgba(0, 255, 204, 0.18);
+            border-radius: 8px; background: rgba(0, 255, 204, 0.1);
+            color: var(--accent-color); font-family: monospace; font-size: 0.78rem;
+            cursor: pointer; transition: all 0.2s ease;
+        }
+        .lab-ab-btn:hover:not(:disabled) { background: rgba(0, 255, 204, 0.2); }
+        .lab-ab-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .lab-ab-btn.stop {
+            background: rgba(255, 77, 109, 0.14);
+            border-color: rgba(255, 77, 109, 0.3); color: #ff8da0;
+        }
+        .sampling-row { margin-bottom: 16px; }
     </style>
 </head>
 <body>
@@ -685,6 +722,14 @@
                     <option value="shimmer">Infinite Shimmer</option>
                 </select>
                 <button id="preset-apply" class="preset-apply">Apply</button>
+            </div>
+
+            <div class="sampling-row">
+                <select id="sampling-method" class="preset-select">
+                    <option value="random">Sampling: Random (Monte Carlo)</option>
+                    <option value="stratified">Sampling: Stratified (low variance)</option>
+                    <option value="importance">Sampling: Importance (energy-weighted)</option>
+                </select>
             </div>
 
             <div class="controls">
@@ -784,6 +829,40 @@
             <div class="status" id="status-text">Sube un archivo para inicializar los rayos estocásticos.</div>
         </section>
     </div>
+
+    <section class="scene-panel lab-panel">
+        <div class="section-header">
+            <span class="section-title">Convergence Lab</span>
+            <p class="section-subtitle">Empirical proof: the stochastic render converges to a deterministic target with error ~ 1/√N</p>
+        </div>
+
+        <div class="lab-grid">
+            <div class="canvas-wrap" style="margin-bottom:0;">
+                <span class="canvas-label">Error RMS vs N (log–log)</span>
+                <canvas id="lab-canvas" width="720" height="260"></canvas>
+            </div>
+
+            <div class="lab-side">
+                <p class="lab-explain">
+                    The target is the exact integral <code>∫ p(τ)·source(τ) dτ</code>
+                    — a deterministic, blurred grain. Each ray is a Monte Carlo estimator
+                    of that integral. If the theory is real, the error falls as 1/√N and
+                    variance-reduction (stratified / importance) sits below random.
+                </p>
+                <button id="lab-run" class="btn-audition">▶ Correr test de convergencia</button>
+                <div id="lab-readout" class="lab-readout">Carga un audio y corre el test para ver la curva.</div>
+                <div class="lab-ab">
+                    <span class="lab-ab-title">A/B audible · mismo nivel, distinto ruido</span>
+                    <div class="lab-ab-row">
+                        <button id="lab-target" class="lab-ab-btn" disabled>Objetivo</button>
+                        <button id="lab-noisy" class="lab-ab-btn" disabled>N=4</button>
+                        <button id="lab-clean" class="lab-ab-btn" disabled>N=256</button>
+                        <button id="lab-stop" class="lab-ab-btn stop" disabled>■</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 </div>
 
 <script>
@@ -822,6 +901,7 @@
 
     // Waveform data reducida (un valor por pixel)
     let waveformData = null;
+    let sourceSamples = null; // canal 0 a resolución completa (para el laboratorio de convergencia)
     const visRays = [];
 
     // Analyser buffer
@@ -1291,6 +1371,7 @@
 
                 // Reducir waveform al ancho del canvas
                 const raw = buffer.getChannelData(0);
+                sourceSamples = raw; // resolución completa para el Convergence Lab y el importance sampling
                 const W = rayCanvas.width;
                 waveformData = new Float32Array(W);
                 for (let i = 0; i < W; i++) {
@@ -1673,24 +1754,38 @@
 
             const { aberrationNorm, roughnessNorm, maxBounces, reflCoeff, bandApertureScale } = params;
 
+            // Estrategia de muestreo Monte Carlo (random / stratified / importance)
+            const samplingMethod = samplingSel ? samplingSel.value : 'random';
+            const sr = audioBuffer.sampleRate;
+            let emaxLocal = 0;
+            if (samplingMethod === 'importance' && sourceSamples) {
+                // Estimar el pico de energía local para el rejection sampling
+                for (let t = 0; t < 24; t++) {
+                    const cand = focusSec + (Math.random() * 2 - 1) * dispSec;
+                    const e = Math.abs(srcSample(Math.round(cand * sr)));
+                    if (e > emaxLocal) emaxLocal = e;
+                }
+                emaxLocal = Math.max(emaxLocal, 1e-4);
+            }
+
             for (let i = 0; i < burstN; i++) {
                 // Asignar banda aleatoria (ponderada: 40% low, 40% mid, 20% high)
                 const bandRoll = Math.random();
                 const band = bandRoll < 0.4 ? 0 : bandRoll < 0.8 ? 1 : 2;
                 const bandDisp = dispSec * bandApertureScale[band];
 
-                // BRDF Roughness: lerp entre offset armónico (especular) y triangular (difuso)
+                // Offset difuso según la estrategia de muestreo elegida
+                const diffuseOffset = drawDiffuseOffset(
+                    i, burstN, focusSec, bandDisp, samplingMethod, sr, emaxLocal);
+
+                // BRDF Roughness: lerp entre offset armónico (especular) y difuso
                 let offset;
                 if (roughnessNorm < 1) {
-                    // Especular: posición armónica basada en índice del rayo en el burst
                     const harmonicStep = (bandDisp * 2) / Math.max(burstN, 1);
                     const harmonicOffset = focusSec - bandDisp + harmonicStep * i;
-                    const triRnd = ((Math.random() + Math.random()) * 0.5) * 2 - 1;
-                    const diffuseOffset = focusSec + triRnd * bandDisp;
                     offset = harmonicOffset * (1 - roughnessNorm) + diffuseOffset * roughnessNorm;
                 } else {
-                    const triRnd = ((Math.random() + Math.random()) * 0.5) * 2 - 1;
-                    offset = focusSec + triRnd * bandDisp;
+                    offset = diffuseOffset;
                 }
                 offset = clamp(offset, 0, audioBuffer.duration - 0.01);
 
@@ -1739,8 +1834,12 @@
             const idx = activeSources.indexOf(src);
             if (idx !== -1) activeSources.splice(idx, 1);
 
-            // ── REBOTE: dispara rayo secundario con atenuación
-            if (bouncesLeft > 0 && isPlaying && activeSources.length < MAX_SIMULTANEOUS_SOURCES) {
+            // ── REBOTE (Russian roulette): el camino sobrevive con probabilidad = reflCoeff.
+            // Mantener la ganancia constante (no multiplicar por refl) hace el estimador
+            // insesgado: la energía esperada de la cola = vol · Σ reflCoeff^d, que converge.
+            // El slider de rebotes actúa como tope de profundidad (seguridad).
+            if (bouncesLeft > 0 && isPlaying && Math.random() < reflCoeff
+                && activeSources.length < MAX_SIMULTANEOUS_SOURCES) {
                 // Nueva posición: avanza desde el final del grano anterior + jitter pequeño
                 const bounceJitter = (Math.random() - 0.5) * 0.1;
                 let bounceOffset = offset + rayDuration + bounceJitter;
@@ -1749,10 +1848,7 @@
                 }
                 bounceOffset = clamp(bounceOffset, 0, audioBuffer.duration - 0.01);
                 const bounceDuration = rayDuration * (0.7 + Math.random() * 0.3);
-                const bounceVol = vol * reflCoeff;
-                if (bounceVol > 0.005) {
-                    spawnRay(bounceOffset, bounceDuration, 1, band, bouncesLeft - 1, reflCoeff, true, bounceVol);
-                }
+                spawnRay(bounceOffset, bounceDuration, 1, band, bouncesLeft - 1, reflCoeff, true, vol);
             }
         };
     }
@@ -1794,6 +1890,402 @@
         updateStatus(0, null);
         updateSourceMarkers();
     }
+
+    // ════════════════════════════════════════════════════════════════
+    //  TEORÍA: helpers Monte Carlo compartidos por el motor y el lab
+    // ════════════════════════════════════════════════════════════════
+
+    // Lectura del sample con guarda de límites (fuera del buffer → 0)
+    function srcSample(i) {
+        return (sourceSamples && i >= 0 && i < sourceSamples.length) ? sourceSamples[i] : 0;
+    }
+
+    // Inversa de la CDF de una distribución triangular en [-A, A] (pico en 0).
+    // Sirve tanto en segundos (motor) como en muestras (lab): la unidad es la de A.
+    function triInvCDF(u, A) {
+        return u < 0.5 ? -A + A * Math.sqrt(2 * u) : A - A * Math.sqrt(2 * (1 - u));
+    }
+
+    // Offset difuso (en segundos) según la estrategia de muestreo del motor en vivo.
+    function drawDiffuseOffset(i, N, focusSec, A, method, sr, emaxLocal) {
+        let u;
+        if (method === 'stratified') {
+            // Un sample por estrato → reduce la varianza (como el supersampling de píxeles)
+            u = (i + Math.random()) / Math.max(N, 1);
+        } else {
+            u = Math.random();
+        }
+        let k = triInvCDF(u, A);
+        if (method === 'importance' && sourceSamples && emaxLocal > 0) {
+            // Rejection sampling: concentra rayos donde el sample tiene más energía
+            for (let t = 0; t < 4; t++) {
+                const cand = triInvCDF(Math.random(), A);
+                const e = Math.abs(srcSample(Math.round((focusSec + cand) * sr)));
+                if (e >= emaxLocal * Math.random()) { k = cand; break; }
+            }
+        }
+        return focusSec + k;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  CONVERGENCE LAB
+    //  Demuestra que el render estocástico converge a un objetivo
+    //  determinista con error ~ 1/√N (la propiedad real del ray tracing),
+    //  y que stratified / importance reducen la varianza.
+    // ════════════════════════════════════════════════════════════════
+
+    const LAB_GRAIN = 4096;                // longitud del grano de prueba (muestras)
+    const LAB_MAX_APERTURE_SAMP = 6600;    // ~150 ms @44.1k: mantiene el target exacto rápido
+    const LAB_NS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
+    const LAB_TRIALS = 4;                   // promediar el error sobre varias tiradas
+
+    let labHann = null;
+    let labCurves = null;
+    let labTarget = null;
+    let labAudioSource = null;
+    let samplingSel = null;
+
+    let labCanvas, labCtx, labReadout, labRunBtn,
+        labTargetBtn, labNoisyBtn, labCleanBtn, labStopBtn;
+
+    function getLabHann() {
+        if (labHann) return labHann;
+        labHann = new Float32Array(LAB_GRAIN);
+        for (let n = 0; n < LAB_GRAIN; n++) {
+            labHann[n] = 0.5 * (1 - Math.cos((2 * Math.PI * n) / (LAB_GRAIN - 1)));
+        }
+        return labHann;
+    }
+
+    function labFocusSamp() {
+        const sr = audioBuffer.sampleRate;
+        return Math.round(clamp(parseFloat(posSlider.value), 0, audioBuffer.duration) * sr);
+    }
+
+    function labApertureSamp() {
+        const sr = audioBuffer.sampleRate;
+        const apSec = parseFloat(dispSlider.value) / 1000;
+        return clamp(Math.round(apSec * sr), 1, LAB_MAX_APERTURE_SAMP);
+    }
+
+    // Objetivo determinista: target[n] = w[n] · Σ_k p(k)·source[f0+k+n].
+    // Es exactamente la integral ∫ p(τ) source(τ+n) dτ que los rayos estiman.
+    function computeLabTarget(f0, A) {
+        const D = LAB_GRAIN, w = getLabHann();
+        const out = new Float32Array(D);
+        const invA2 = 1 / (A * A);
+        for (let k = -A; k <= A; k++) {
+            const pk = (A - Math.abs(k)) * invA2;   // densidad triangular normalizada (Σ = 1)
+            if (pk <= 0) continue;
+            const base = f0 + k;
+            for (let n = 0; n < D; n++) out[n] += pk * srcSample(base + n);
+        }
+        for (let n = 0; n < D; n++) out[n] *= w[n];
+        return out;
+    }
+
+    // Búsqueda binaria: primer índice con cum >= r
+    function impSearch(cum, r) {
+        let lo = 0, hi = cum.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (cum[mid] < r) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+
+    // Distribución de importancia q ∝ p(k)·energía_local(k), con pesos p/q
+    function buildImportance(f0, A) {
+        const len = 2 * A + 1;
+        const win = Math.min(512, LAB_GRAIN);
+        const pmass = new Float32Array(len);
+        const qmass = new Float32Array(len);
+        const cum = new Float32Array(len);
+        let psum = 0, qsum = 0;
+        const invA2 = 1 / (A * A);
+        for (let idx = 0; idx < len; idx++) {
+            const k = idx - A;
+            const p = (A - Math.abs(k)) * invA2;
+            let s = 0; const b = f0 + k;
+            for (let n = 0; n < win; n++) { const v = srcSample(b + n); s += v * v; }
+            const e = Math.sqrt(s / win) + 1e-6;
+            pmass[idx] = p; qmass[idx] = p * e;
+            psum += p; qsum += p * e;
+        }
+        let acc = 0;
+        for (let idx = 0; idx < len; idx++) {
+            pmass[idx] /= psum;
+            qmass[idx] = qsum > 0 ? qmass[idx] / qsum : 1 / len;
+            acc += qmass[idx];
+            cum[idx] = acc;
+        }
+        return { pmass, qmass, cum };
+    }
+
+    // Estimador Monte Carlo. method: 'random' | 'stratified' | 'importance'
+    function labEstimate(f0, A, N, method, imp) {
+        const D = LAB_GRAIN, w = getLabHann();
+        const out = new Float32Array(D);
+
+        if (method === 'importance' && imp) {
+            let wsum = 0;
+            for (let i = 0; i < N; i++) {
+                const idx = impSearch(imp.cum, Math.random());
+                const k = idx - A;
+                const wi = imp.pmass[idx] / imp.qmass[idx];   // peso de importancia p/q
+                wsum += wi;
+                const base = f0 + k;
+                for (let n = 0; n < D; n++) out[n] += wi * srcSample(base + n);
+            }
+            const inv = wsum > 0 ? 1 / wsum : 0;             // estimador auto-normalizado
+            for (let n = 0; n < D; n++) out[n] *= inv * w[n];
+            return out;
+        }
+
+        for (let i = 0; i < N; i++) {
+            const u = method === 'stratified' ? (i + Math.random()) / N : Math.random();
+            const k = Math.round(triInvCDF(u, A));
+            const base = f0 + k;
+            for (let n = 0; n < D; n++) out[n] += srcSample(base + n);
+        }
+        const inv = 1 / N;
+        for (let n = 0; n < D; n++) out[n] *= inv * w[n];
+        return out;
+    }
+
+    function labRmsError(est, target) {
+        let s = 0;
+        for (let n = 0; n < LAB_GRAIN; n++) { const d = est[n] - target[n]; s += d * d; }
+        return Math.sqrt(s / LAB_GRAIN);
+    }
+
+    // Ajuste por mínimos cuadrados del exponente en log-log (debería dar ≈ -0.5)
+    function fitSlope(Ns, ys) {
+        let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (let i = 0; i < Ns.length; i++) {
+            if (ys[i] <= 0) continue;
+            const x = Math.log10(Ns[i]), y = Math.log10(ys[i]);
+            n++; sx += x; sy += y; sxx += x * x; sxy += x * y;
+        }
+        if (n < 2) return NaN;
+        return (n * sxy - sx * sy) / (n * sxx - sx * sx);
+    }
+
+    function runConvergenceTest() {
+        if (!sourceSamples || !audioBuffer) {
+            statusText.innerText = 'Carga un audio antes de correr el test de convergencia.';
+            return;
+        }
+        labRunBtn.disabled = true;
+        statusText.innerText = 'Calculando convergencia…';
+
+        // setTimeout para que la UI repinte el estado antes del cálculo síncrono
+        setTimeout(() => {
+            const f0 = labFocusSamp();
+            const A = labApertureSamp();
+            const target = computeLabTarget(f0, A);
+            const imp = buildImportance(f0, A);
+
+            const methods = ['random', 'stratified', 'importance'];
+            const curves = {};
+            for (const m of methods) {
+                curves[m] = LAB_NS.map((N) => {
+                    let acc = 0;
+                    for (let t = 0; t < LAB_TRIALS; t++) {
+                        acc += labRmsError(labEstimate(f0, A, N, m, imp), target);
+                    }
+                    return acc / LAB_TRIALS;
+                });
+            }
+
+            labTarget = target;
+            labCurves = { Ns: LAB_NS, ...curves, f0, A };
+            drawLabPlot();
+            updateLabReadout();
+
+            labRunBtn.disabled = false;
+            [labTargetBtn, labNoisyBtn, labCleanBtn, labStopBtn].forEach(b => b.disabled = false);
+            statusText.innerText = `Test de convergencia listo · apertura lab = ${(A / audioBuffer.sampleRate * 1000).toFixed(0)} ms`;
+        }, 20);
+    }
+
+    function updateLabReadout() {
+        if (!labCurves) return;
+        const last = labCurves.Ns.length - 1;
+        const slope = fitSlope(labCurves.Ns, labCurves.random);
+        const fmt = (v) => v.toExponential(2);
+        labReadout.innerHTML =
+            `<strong>Exponente medido (random):</strong> ${slope.toFixed(3)} ` +
+            `<span style="color:#8a99ad">(ideal −0.500)</span><br>` +
+            `Error RMS @N=${labCurves.Ns[last]} — ` +
+            `<span style="color:#ff6b6b">random ${fmt(labCurves.random[last])}</span> · ` +
+            `<span style="color:#00ffcc">stratified ${fmt(labCurves.stratified[last])}</span> · ` +
+            `<span style="color:#ffe066">importance ${fmt(labCurves.importance[last])}</span>`;
+    }
+
+    function drawLabPlot() {
+        if (!labCtx) return;
+        const W = labCanvas.width, H = labCanvas.height;
+        const padL = 54, padR = 12, padT = 14, padB = 30;
+        const plotW = W - padL - padR, plotH = H - padT - padB;
+        labCtx.clearRect(0, 0, W, H);
+        labCtx.fillStyle = '#07080e';
+        labCtx.fillRect(0, 0, W, H);
+        if (!labCurves) {
+            labCtx.fillStyle = 'rgba(255,255,255,0.3)';
+            labCtx.font = '12px monospace';
+            labCtx.fillText('Corre el test para ver la curva de convergencia', padL, H / 2);
+            return;
+        }
+
+        const Ns = labCurves.Ns;
+        const series = [
+            { key: 'random',     color: '#ff6b6b', label: 'Random' },
+            { key: 'stratified', color: '#00ffcc', label: 'Stratified' },
+            { key: 'importance', color: '#ffe066', label: 'Importance' },
+        ];
+
+        // Rango Y en log10 del error
+        let ymin = Infinity, ymax = -Infinity;
+        for (const s of series) for (const v of labCurves[s.key]) {
+            if (v > 0) { const ly = Math.log10(v); if (ly < ymin) ymin = ly; if (ly > ymax) ymax = ly; }
+        }
+        if (!isFinite(ymin)) { ymin = -4; ymax = 0; }
+        ymin = Math.floor(ymin - 0.2); ymax = Math.ceil(ymax + 0.2);
+
+        const xmin = 0, xmax = Math.log2(Ns[Ns.length - 1]);
+        const X = (N) => padL + (Math.log2(N) - xmin) / (xmax - xmin) * plotW;
+        const Y = (err) => padT + (ymax - Math.log10(err)) / (ymax - ymin) * plotH;
+
+        // Rejilla + etiquetas
+        labCtx.font = '10px monospace';
+        labCtx.lineWidth = 1;
+        for (let d = ymin; d <= ymax; d++) {
+            const y = Y(Math.pow(10, d));
+            labCtx.strokeStyle = 'rgba(255,255,255,0.07)';
+            labCtx.beginPath(); labCtx.moveTo(padL, y); labCtx.lineTo(W - padR, y); labCtx.stroke();
+            labCtx.fillStyle = 'rgba(255,255,255,0.45)';
+            labCtx.fillText(`1e${d}`, 6, y + 3);
+        }
+        for (const N of Ns) {
+            const x = X(N);
+            labCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+            labCtx.beginPath(); labCtx.moveTo(x, padT); labCtx.lineTo(x, H - padB); labCtx.stroke();
+            labCtx.fillStyle = 'rgba(255,255,255,0.4)';
+            labCtx.fillText(String(N), x - 6, H - padB + 14);
+        }
+        labCtx.fillStyle = 'rgba(255,255,255,0.5)';
+        labCtx.fillText('N (rayos)', W - padR - 60, H - 4);
+
+        // Línea ideal 1/√N anclada al primer punto de random
+        const anchor = labCurves.random[0];
+        if (anchor > 0) {
+            labCtx.strokeStyle = 'rgba(255,255,255,0.35)';
+            labCtx.setLineDash([5, 4]);
+            labCtx.beginPath();
+            for (let i = 0; i < Ns.length; i++) {
+                const ideal = anchor / Math.sqrt(Ns[i] / Ns[0]);
+                const px = X(Ns[i]), py = Y(ideal);
+                i === 0 ? labCtx.moveTo(px, py) : labCtx.lineTo(px, py);
+            }
+            labCtx.stroke();
+            labCtx.setLineDash([]);
+        }
+
+        // Curvas medidas
+        for (const s of series) {
+            const data = labCurves[s.key];
+            labCtx.strokeStyle = s.color;
+            labCtx.lineWidth = 1.8;
+            labCtx.beginPath();
+            let started = false;
+            for (let i = 0; i < Ns.length; i++) {
+                if (data[i] <= 0) continue;
+                const px = X(Ns[i]), py = Y(data[i]);
+                started ? labCtx.lineTo(px, py) : (labCtx.moveTo(px, py), started = true);
+            }
+            labCtx.stroke();
+            labCtx.fillStyle = s.color;
+            for (let i = 0; i < Ns.length; i++) {
+                if (data[i] <= 0) continue;
+                labCtx.beginPath();
+                labCtx.arc(X(Ns[i]), Y(data[i]), 2.2, 0, Math.PI * 2);
+                labCtx.fill();
+            }
+        }
+
+        // Leyenda
+        let lx = padL + 8; const ly = padT + 10;
+        for (const s of series) {
+            labCtx.fillStyle = s.color;
+            labCtx.fillRect(lx, ly - 7, 10, 3);
+            labCtx.fillStyle = 'rgba(255,255,255,0.7)';
+            labCtx.fillText(s.label, lx + 14, ly);
+            lx += 14 + labCtx.measureText(s.label).width + 16;
+        }
+        labCtx.fillStyle = 'rgba(255,255,255,0.45)';
+        labCtx.fillText('– – ideal 1/√N', lx, ly);
+    }
+
+    function stopLabAudio() {
+        if (labAudioSource) {
+            try { labAudioSource.stop(); } catch (e) {}
+            try { labAudioSource.disconnect(); } catch (e) {}
+            labAudioSource = null;
+        }
+    }
+
+    function playLabGrain(kind) {
+        if (!labTarget || !audioBuffer || !labCurves) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        stopLabAudio();
+
+        const f0 = labCurves.f0, A = labCurves.A;
+        let grain;
+        if (kind === 'target') grain = labTarget;
+        else if (kind === 'noisy') grain = labEstimate(f0, A, 4, 'random', null);
+        else grain = labEstimate(f0, A, 256, 'random', null);
+
+        // Normalizar TODO por el pico del target → el A/B compara ruido, no volumen
+        let peak = 1e-6;
+        for (let n = 0; n < labTarget.length; n++) peak = Math.max(peak, Math.abs(labTarget[n]));
+        const norm = 0.7 / peak;
+
+        const buf = audioCtx.createBuffer(1, grain.length, audioBuffer.sampleRate);
+        const ch = buf.getChannelData(0);
+        for (let n = 0; n < grain.length; n++) ch[n] = grain[n] * norm;
+
+        const s = audioCtx.createBufferSource();
+        s.buffer = buf; s.loop = true;
+        s.connect(mainGainNode);
+        s.start();
+        labAudioSource = s;
+        const labels = { target: 'objetivo (referencia)', noisy: 'render N=4 (ruidoso)', clean: 'render N=256 (limpio)' };
+        statusText.innerText = `Lab A/B: ${labels[kind]}`;
+    }
+
+    function initLab() {
+        labCanvas = document.getElementById('lab-canvas');
+        if (!labCanvas) return;
+        labCtx = labCanvas.getContext('2d');
+        labReadout = document.getElementById('lab-readout');
+        labRunBtn = document.getElementById('lab-run');
+        labTargetBtn = document.getElementById('lab-target');
+        labNoisyBtn = document.getElementById('lab-noisy');
+        labCleanBtn = document.getElementById('lab-clean');
+        labStopBtn = document.getElementById('lab-stop');
+        samplingSel = document.getElementById('sampling-method');
+
+        labRunBtn.addEventListener('click', runConvergenceTest);
+        labTargetBtn.addEventListener('click', () => playLabGrain('target'));
+        labNoisyBtn.addEventListener('click', () => playLabGrain('noisy'));
+        labCleanBtn.addEventListener('click', () => playLabGrain('clean'));
+        labStopBtn.addEventListener('click', () => { stopLabAudio(); statusText.innerText = 'Lab A/B detenido.'; });
+
+        drawLabPlot();
+    }
+
+    initLab();
 </script>
 </body>
 </html>

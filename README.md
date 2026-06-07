@@ -66,6 +66,57 @@ The **drone does not exist in the sample.** It emerges from the stochastic conve
 
 The distinction is not merely semantic. The mental model determines how you **compose** with the instrument. A photographer controlling depth of field thinks differently from a synthesis programmer controlling grain density — even if some results can sound similar on the surface.
 
+> **Honest framing.** Mechanically, the engine is a close relative of *asynchronous granular synthesis* (Xenakis, Roads, Truax, Gabor). We don't hide that — we **reinterpret** it. The claim here is not "a brand-new kind of sound generation"; it is that granular resynthesis can be cast as **Monte Carlo estimation of a transport integral**, which lets us import the *machinery* of the rendering equation — importance sampling, stratification, Russian roulette, recursive transport — as a control-and-quality paradigm. That reframing is what is new, and unlike a metaphor, it is **measurable**. See the Convergence Lab.
+
+---
+
+## Mathematical Foundation (the theory, for real)
+
+The optical metaphor only earns the name "ray tracing" if it has the one property that defines Monte Carlo rendering: **a fixed ground truth that the samples converge toward, with quantifiable variance.** Here it does.
+
+### The render target is a defined integral
+
+Given a source buffer `s`, a focal point `τ₀`, and an aperture described by a sampling density `p(τ)` (triangular, peaking at the focus), define the rendered grain as the **deterministic** signal:
+
+```
+target[n] = w[n] · ∫ p(τ) · s(τ + n) dτ        (w = window)
+```
+
+This is exactly a windowed blur of the source by the aperture kernel — a real, computable signal. It is the audio analogue of the pixel value `L(x) = ∫ f(x,ω) dω` in Kajiya's rendering equation.
+
+### Each ray is an unbiased estimator
+
+Drawing `N` offsets `τᵢ ~ p`, the Monte Carlo estimator
+
+```
+render_N[n] = w[n] · (1/N) Σᵢ s(τᵢ + n)
+```
+
+is **unbiased**: `E[render_N] = target`. The error falls as
+
+```
+RMS(render_N − target) ∝ 1/√N
+```
+
+This is the law the README always claimed ("more rays → less noise → cleaner render"). It is now literally true and **falsifiable** — and the Convergence Lab plots it.
+
+### Variance reduction (straight from the renderer)
+
+- **Stratified sampling** — one sample per stratum of the aperture's CDF, like pixel supersampling. Lower variance at the same `N`.
+- **Importance sampling** — draw `τ ∝ p(τ)·energy(τ)` and reweight by `p/q` (self-normalized). Fewer rays for the same SNR where the source energy is uneven.
+- **Russian roulette** — secondary "bounce" rays survive with probability = reflection coefficient at constant gain, instead of a fixed, attenuated echo count. Expected tail energy `= vol · Σ rᵈ`, so the bounce tail is the unbiased solution of a Neumann series — i.e. the *recursive* form of the transport equation, not an ad-hoc delay.
+
+### How to prove it isn't hype
+
+The **Convergence Lab** panel (below the scene) runs the experiment live:
+
+1. Computes the exact deterministic `target` for the current focus/aperture.
+2. Renders Monte Carlo estimates across `N = 1 … 1024` for all three sampling strategies.
+3. Plots **RMS error vs N** on a log–log axis, overlaid with the ideal `1/√N` slope, and fits the measured exponent (expect ≈ −0.5).
+4. **A/B audio**: play the `target` (reference) vs `N=4` (noisy) vs `N=256` (clean), all normalized to the *same level* so you hear the **noise floor falling**, not a volume change.
+
+If the random curve tracks `1/√N` and stratified/importance sit below it, the theory holds — by measurement, not by adjective.
+
 ---
 
 ## Acoustic Analogy: Depth of Field
@@ -116,10 +167,11 @@ The interface renders the ray tracing process in real time across two canvases:
 
 | Parameter | Optical Analogy | Acoustic Effect |
 |---|---|---|
+| **Sampling Strategy** | Monte Carlo estimator | `Random` = plain MC. `Stratified` = one sample per CDF stratum (lower noise). `Importance` = rays concentrate where the source has energy. |
 | **Chromatic Aberration** | Lens dispersion by wavelength | Low frequencies get a wider aperture; highs get a narrow aperture. Big low-end clouds and crystalline high-end detail. |
 | **BRDF Roughness** | Surface micro-geometry | 100 % = diffuse Monte Carlo drone. 0 % = specular / harmonic placement. |
-| **Bounce Count** | Secondary ray generation | Each ray can spawn child rays from its end point, building a geometric tail. |
-| **Reflection Coefficient** | Energy loss per bounce | Controls decay per bounce and the length of the tail. |
+| **Bounce Count** | Recursive transport depth | Safety cap on secondary-ray recursion. Each ray spawns a child via **Russian roulette**, building the Neumann-series tail. |
+| **Reflection Coefficient** | Path survival probability | Probability a bounce survives (and, in expectation, the tail energy `Σ rᵈ` and its length). |
 
 ---
 
