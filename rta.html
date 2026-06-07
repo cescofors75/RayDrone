@@ -327,6 +327,40 @@
             </div>
             <input type="range" id="position" min="0" max="100" value="20">
         </div>
+
+        <!-- ABERRACIÓN CROMÁTICA -->
+        <div class="control-group">
+            <div class="control-label">
+                <span>Aberración Cromática</span>
+                <span id="aber-val" class="val">0 %</span>
+            </div>
+            <input type="range" id="aberration" min="0" max="100" value="0">
+        </div>
+
+        <!-- RUGOSIDAD BRDF -->
+        <div class="control-group">
+            <div class="control-label">
+                <span>Rugosidad BRDF</span>
+                <span id="rough-val" class="val">100 %</span>
+            </div>
+            <input type="range" id="roughness" min="0" max="100" value="100">
+        </div>
+
+        <!-- REBOTES -->
+        <div class="control-group">
+            <div class="control-label">
+                <span>Rebotes (Bounce)</span>
+                <span id="bounce-val" class="val">0</span>
+            </div>
+            <input type="range" id="bounces" min="0" max="4" value="0" step="1">
+        </div>
+        <div class="control-group">
+            <div class="control-label">
+                <span>Reflexión por Rebote</span>
+                <span id="refl-val" class="val">50 %</span>
+            </div>
+            <input type="range" id="reflection" min="5" max="90" value="50">
+        </div>
     </div>
 
     <button class="btn-play" id="play-btn" disabled>Esperando Audio...</button>
@@ -364,6 +398,8 @@
     let intervalId = null;
     let animFrameId = null;
     let activeSources = [];
+    // Cadenas de EQ para aberración cromática (3 bandas: low / mid / high)
+    let bandChains = null;
 
     const MAX_SIMULTANEOUS_SOURCES = 140;
     const MAX_VIS_RAYS = 650;
@@ -422,9 +458,17 @@
     const posSlider = document.getElementById('position');
     const posVal = document.getElementById('pos-val');
     const statusText = document.getElementById('status-text');
-    const volSlider = document.getElementById('volume');
-    const volVal = document.getElementById('vol-val');
-    const rmsFill = document.getElementById('rms-fill');
+    const volSlider    = document.getElementById('volume');
+    const volVal       = document.getElementById('vol-val');
+    const aberSlider   = document.getElementById('aberration');
+    const aberVal      = document.getElementById('aber-val');
+    const roughSlider  = document.getElementById('roughness');
+    const roughVal     = document.getElementById('rough-val');
+    const bounceSlider = document.getElementById('bounces');
+    const bounceVal    = document.getElementById('bounce-val');
+    const reflSlider   = document.getElementById('reflection');
+    const reflVal      = document.getElementById('refl-val');
+    const rmsFill      = document.getElementById('rms-fill');
     const peakFill = document.getElementById('peak-fill');
     const rmsValueEl = document.getElementById('rms-value');
     const peakValueEl = document.getElementById('peak-value');
@@ -455,7 +499,11 @@
     rayVal.innerText = getDisplayedN();
     posVal.innerText = `${parseFloat(posSlider.value).toFixed(2)}s`;
     dispVal.innerText = formatDispersion(dispSlider.value);
-    volVal.innerText = `${volSlider.value} %`;
+    volVal.innerText    = `${volSlider.value} %`;
+    aberVal.innerText   = `${aberSlider.value} %`;
+    roughVal.innerText  = `${roughSlider.value} %`;
+    bounceVal.innerText = bounceSlider.value;
+    reflVal.innerText   = `${reflSlider.value} %`;
     updateStatus(0, null);
 
     // Escuchar la carga de archivos
@@ -473,6 +521,22 @@
             mainGainNode.gain.setValueAtTime(parseFloat(volSlider.value) / 100, audioCtx.currentTime);
             analyserNode = audioCtx.createAnalyser();
             analyserNode.fftSize = 2048;
+
+            // ── 3 band chains para aberración cromática
+            // Cada banda: BiquadFilter → GainNode(banda) → mainGainNode
+            const lowFilter = audioCtx.createBiquadFilter();
+            lowFilter.type = 'lowpass'; lowFilter.frequency.value = 400;
+            const midFilter = audioCtx.createBiquadFilter();
+            midFilter.type = 'bandpass'; midFilter.frequency.value = 2000; midFilter.Q.value = 0.7;
+            const highFilter = audioCtx.createBiquadFilter();
+            highFilter.type = 'highpass'; highFilter.frequency.value = 5000;
+            [lowFilter, midFilter, highFilter].forEach(f => f.connect(mainGainNode));
+            bandChains = [
+                { filter: lowFilter,  apertureScale: 0 },   // low  — se actualiza en fireRays
+                { filter: midFilter,  apertureScale: 0 },   // mid
+                { filter: highFilter, apertureScale: 0 },   // high
+            ];
+
             mainGainNode.connect(analyserNode);
             analyserNode.connect(audioCtx.destination);
         }
@@ -516,10 +580,12 @@
 
     volSlider.addEventListener('input', (e) => {
         volVal.innerText = `${e.target.value} %`;
-        if (mainGainNode) {
-            mainGainNode.gain.setValueAtTime(parseFloat(e.target.value) / 100, audioCtx.currentTime);
-        }
+        if (mainGainNode) mainGainNode.gain.setValueAtTime(parseFloat(e.target.value) / 100, audioCtx.currentTime);
     });
+    aberSlider.addEventListener('input',   (e) => { aberVal.innerText   = `${e.target.value} %`; });
+    roughSlider.addEventListener('input',  (e) => { roughVal.innerText  = `${e.target.value} %`; });
+    bounceSlider.addEventListener('input', (e) => { bounceVal.innerText = e.target.value; });
+    reflSlider.addEventListener('input',   (e) => { reflVal.innerText   = `${e.target.value} %`; });
 
     raySlider.addEventListener('input', (e) => { 
         let N = Math.floor(Math.pow(e.target.value, 1.6));
@@ -601,13 +667,18 @@
         }
         rCtx.stroke();
 
-        // ── Rayos animados convergentes
+        // ── Rayos animados convergentes (color por banda)
+        const bandColors = [
+            [255, 140,  30],   // low  → naranja
+            [  0, 255, 204],   // mid  → teal
+            [200, 220, 255],   // high → blanco/azul
+        ];
         for (const ray of visRays) {
             const alpha = ray.life;
+            const [r, g, b] = bandColors[ray.band ?? 1];
             rCtx.beginPath();
-            rCtx.strokeStyle = `rgba(0,255,204,${alpha * 0.85})`;
-            rCtx.lineWidth = 0.8;
-            // Los rayos parten de su posición en la waveform y convergen al focal
+            rCtx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.85})`;
+            rCtx.lineWidth = ray.isBounce ? 0.5 : 0.9;
             const yJitter = (Math.random() - 0.5) * H * 0.6 * (1 - ray.life);
             rCtx.moveTo(ray.x * W, midY + yJitter);
             rCtx.lineTo(focalX, midY);
@@ -718,10 +789,23 @@
         const focusRaw = parseFloat(posSlider.value);
         const focusSec = clamp(focusRaw, safeMin, safeMax);
 
-        // Con apertura grande los rayos son más largos y se autorregulan — el Cap puede ser más generoso.
         const burstCapByDisp = getBurstCapFromSlider();
 
-        return { rawN, burstCapByDisp, dispSec, focusSec, rayDuration, tickMs };
+        const aberrationNorm = parseFloat(aberSlider.value) / 100;
+        const roughnessNorm  = parseFloat(roughSlider.value) / 100;
+        const maxBounces     = parseInt(bounceSlider.value);
+        const reflCoeff      = parseFloat(reflSlider.value) / 100;
+
+        // Aberración cromática: escala de apertura por banda
+        // low → más disperso, high → más enfocado
+        const bandApertureScale = [
+            1 + aberrationNorm * 2.2,   // low:  hasta 3.2× la apertura base
+            1.0,                         // mid:  sin cambio
+            clamp(1 - aberrationNorm * 0.72, 0.08, 1), // high: hasta 0.08× la apertura base
+        ];
+
+        return { rawN, burstCapByDisp, dispSec, focusSec, rayDuration, tickMs,
+                 aberrationNorm, roughnessNorm, maxBounces, reflCoeff, bandApertureScale };
     }
 
     // ── MOTOR ACÚSTICO DE RAYTRACING ────────────────────────────────
@@ -740,7 +824,8 @@
         function fireRays() {
             if (!isPlaying) return;
 
-            const { rawN, burstCapByDisp, dispSec, focusSec, rayDuration, tickMs } = getEngineParams();
+            const params = getEngineParams();
+            const { rawN, burstCapByDisp, dispSec, focusSec, rayDuration, tickMs } = params;
             const headroom = Math.max(0, MAX_SIMULTANEOUS_SOURCES - activeSources.length);
             const burstN = Math.min(rawN, burstCapByDisp, headroom);
 
@@ -752,37 +837,30 @@
                 return;
             }
 
+            const { aberrationNorm, roughnessNorm, maxBounces, reflCoeff, bandApertureScale } = params;
+
             for (let i = 0; i < burstN; i++) {
-                const src = audioCtx.createBufferSource();
-                src.buffer = audioBuffer;
+                // Asignar banda aleatoria (ponderada: 40% low, 40% mid, 20% high)
+                const bandRoll = Math.random();
+                const band = bandRoll < 0.4 ? 0 : bandRoll < 0.8 ? 1 : 2;
+                const bandDisp = dispSec * bandApertureScale[band];
 
-                // Distribución triangular para favorecer el centro del foco y reducir ruido áspero.
-                const triRnd = ((Math.random() + Math.random()) * 0.5) * 2 - 1;
-                let offset = focusSec + triRnd * dispSec;
-                offset = Math.max(0, Math.min(audioBuffer.duration - 0.01, offset));
-
-                const gain = audioCtx.createGain();
-                const vol = 0.7 / Math.sqrt(Math.max(burstN, 1));
-                const fade = Math.min(rayDuration * 0.3, 0.04);
-                gain.gain.setValueAtTime(0, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + fade);
-                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + rayDuration - fade);
-
-                src.connect(gain);
-                gain.connect(mainGainNode);
-                src.start(audioCtx.currentTime, offset, rayDuration);
-                activeSources.push(src);
-
-                // Rayo visual: posición normalizada [0,1]
-                visRays.push({ x: offset / audioBuffer.duration, life: 1.0 });
-                if (visRays.length > MAX_VIS_RAYS) {
-                    visRays.splice(0, visRays.length - MAX_VIS_RAYS);
+                // BRDF Roughness: lerp entre offset armónico (especular) y triangular (difuso)
+                let offset;
+                if (roughnessNorm < 1) {
+                    // Especular: posición armónica basada en índice del rayo en el burst
+                    const harmonicStep = (bandDisp * 2) / Math.max(burstN, 1);
+                    const harmonicOffset = focusSec - bandDisp + harmonicStep * i;
+                    const triRnd = ((Math.random() + Math.random()) * 0.5) * 2 - 1;
+                    const diffuseOffset = focusSec + triRnd * bandDisp;
+                    offset = harmonicOffset * (1 - roughnessNorm) + diffuseOffset * roughnessNorm;
+                } else {
+                    const triRnd = ((Math.random() + Math.random()) * 0.5) * 2 - 1;
+                    offset = focusSec + triRnd * bandDisp;
                 }
+                offset = clamp(offset, 0, audioBuffer.duration - 0.01);
 
-                src.onended = () => {
-                    const idx = activeSources.indexOf(src);
-                    if (idx !== -1) activeSources.splice(idx, 1);
-                };
+                spawnRay(offset, rayDuration, burstN, band, maxBounces, reflCoeff, false);
             }
 
             updateStatus(activeSources.length, burstN, burstCapByDisp);
@@ -793,6 +871,59 @@
         }
 
         fireRays();
+    }
+
+    // ── Dispara un solo rayo (reutilizado por motor principal y rebotes)
+    function spawnRay(offset, rayDuration, burstN, band, bouncesLeft, reflCoeff, isBounce) {
+        if (activeSources.length >= MAX_SIMULTANEOUS_SOURCES) return;
+
+        const src = audioCtx.createBufferSource();
+        src.buffer = audioBuffer;
+
+        const gain = audioCtx.createGain();
+        const vol = (isBounce ? 1 : 0.7 / Math.sqrt(Math.max(burstN, 1)));
+        const fade = Math.min(rayDuration * 0.3, 0.04);
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + fade);
+        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + rayDuration - fade);
+
+        // Rutear por la banda correspondiente si hay aberración activa, si no directo
+        const dest = (bandChains && parseFloat(aberSlider.value) > 0)
+            ? bandChains[band].filter
+            : mainGainNode;
+        src.connect(gain);
+        gain.connect(dest);
+        src.start(audioCtx.currentTime, offset, rayDuration);
+        activeSources.push(src);
+
+        visRays.push({ x: offset / audioBuffer.duration, life: 1.0, band, isBounce });
+        if (visRays.length > MAX_VIS_RAYS) visRays.splice(0, visRays.length - MAX_VIS_RAYS);
+
+        src.onended = () => {
+            const idx = activeSources.indexOf(src);
+            if (idx !== -1) activeSources.splice(idx, 1);
+
+            // ── REBOTE: dispara rayo secundario con atenuación
+            if (bouncesLeft > 0 && isPlaying && activeSources.length < MAX_SIMULTANEOUS_SOURCES) {
+                // Nueva posición: avanza desde el final del grano anterior + jitter pequeño
+                const bounceJitter = (Math.random() - 0.5) * 0.1;
+                let bounceOffset = offset + rayDuration + bounceJitter;
+                if (bounceOffset > audioBuffer.duration - 0.01) {
+                    bounceOffset = Math.max(0, offset - rayDuration + bounceJitter);
+                }
+                bounceOffset = clamp(bounceOffset, 0, audioBuffer.duration - 0.01);
+                const bounceDuration = rayDuration * (0.7 + Math.random() * 0.3);
+                const bounceVol = vol * reflCoeff;
+                if (bounceVol > 0.005) {
+                    spawnRay(bounceOffset, bounceDuration, 1, band, bouncesLeft - 1, reflCoeff, true);
+                }
+            }
+        };
+    }
+
+    // Extraer params del burst en el loop de fireRays
+    function getFireParams() {
+        return getEngineParams();
     }
 
     function stopEngine() {
