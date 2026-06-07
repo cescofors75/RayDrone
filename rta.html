@@ -783,7 +783,8 @@
                 <select id="sampling-method" class="preset-select">
                     <option value="random">Sampling: Random (Monte Carlo)</option>
                     <option value="stratified">Sampling: Stratified (low variance)</option>
-                    <option value="importance">Sampling: Importance (energy-weighted)</option>
+                    <option value="qmc">Sampling: Quasi-MC (golden ratio)</option>
+                    <option value="importance">Sampling: Importance (energy)</option>
                 </select>
             </div>
             <div class="controls">
@@ -2045,9 +2046,10 @@
 
             const { aberrationNorm, roughnessNorm, maxBounces, reflCoeff, bandApertureScale } = params;
 
-            // Estrategia de muestreo Monte Carlo (random / stratified / importance)
+            // Estrategia de muestreo Monte Carlo (random / stratified / qmc / importance)
             const samplingMethod = samplingSel ? samplingSel.value : 'random';
             const sr = audioBuffer.sampleRate;
+            const qmcRot = Math.random();   // rotación Cranley-Patterson para QMC (decorrela bursts)
             let emaxLocal = 0;
             if (samplingMethod === 'importance' && sourceSamples) {
                 // Estimar el pico de energía local para el rejection sampling
@@ -2067,7 +2069,7 @@
 
                 // Offset difuso según la estrategia de muestreo elegida
                 const diffuseOffset = drawDiffuseOffset(
-                    i, burstN, focusSec, bandDisp, samplingMethod, sr, emaxLocal);
+                    i, burstN, focusSec, bandDisp, samplingMethod, sr, emaxLocal, qmcRot);
 
                 // BRDF Roughness: lerp entre offset armónico (especular) y difuso
                 let offset;
@@ -2196,15 +2198,20 @@
         return u < 0.5 ? -A + A * Math.sqrt(2 * u) : A - A * Math.sqrt(2 * (1 - u));
     }
 
+    // Inverso de la razón áurea: base de la secuencia quasi-Monte Carlo (baja discrepancia)
+    const GOLDEN = 0.6180339887498949;
+    const fract = (x) => x - Math.floor(x);
+
+    // Genera la muestra u ∈ [0,1) según la estrategia. rot = rotación Cranley-Patterson (QMC).
+    function sampleU(method, i, N, rot) {
+        if (method === 'stratified') return (i + Math.random()) / Math.max(N, 1);
+        if (method === 'qmc') return fract(rot + i * GOLDEN);
+        return Math.random();
+    }
+
     // Offset difuso (en segundos) según la estrategia de muestreo del motor en vivo.
-    function drawDiffuseOffset(i, N, focusSec, A, method, sr, emaxLocal) {
-        let u;
-        if (method === 'stratified') {
-            // Un sample por estrato → reduce la varianza (como el supersampling de píxeles)
-            u = (i + Math.random()) / Math.max(N, 1);
-        } else {
-            u = Math.random();
-        }
+    function drawDiffuseOffset(i, N, focusSec, A, method, sr, emaxLocal, rot) {
+        const u = sampleU(method === 'importance' ? 'random' : method, i, N, rot);
         let k = triInvCDF(u, A);
         if (method === 'importance' && sourceSamples && emaxLocal > 0) {
             // Rejection sampling: concentra rayos donde el sample tiene más energía
@@ -2284,10 +2291,13 @@
         return lo;
     }
 
-    // Distribución de importancia q ∝ p(k)·energía_local(k), con pesos p/q
+    // Distribución de importancia q ∝ p(k)·energía_local(k), con pesos p/q.
+    // La energía se mide sobre el grano COMPLETO (con stride) para que q case con el
+    // integrando real; medir solo el principio del grano arruinaba la reducción de varianza.
     function buildImportance(f0, A) {
         const len = 2 * A + 1;
-        const win = Math.min(512, LAB_GRAIN);
+        const stride = 8;                       // RMS muestreada cada 8 muestras del grano
+        const taps = Math.ceil(LAB_GRAIN / stride);
         const pmass = new Float32Array(len);
         const qmass = new Float32Array(len);
         const cum = new Float32Array(len);
@@ -2297,8 +2307,8 @@
             const k = idx - A;
             const p = (A - Math.abs(k)) * invA2;
             let s = 0; const b = f0 + k;
-            for (let n = 0; n < win; n++) { const v = srcSample(b + n); s += v * v; }
-            const e = Math.sqrt(s / win) + 1e-6;
+            for (let n = 0; n < LAB_GRAIN; n += stride) { const v = srcSample(b + n); s += v * v; }
+            const e = Math.sqrt(s / taps) + 1e-6;
             pmass[idx] = p; qmass[idx] = p * e;
             psum += p; qsum += p * e;
         }
@@ -2312,15 +2322,19 @@
         return { pmass, qmass, cum };
     }
 
-    // Estimador Monte Carlo. method: 'random' | 'stratified' | 'importance'
+    // Estimador Monte Carlo. method: 'random' | 'stratified' | 'qmc' | 'importance'
     function labEstimate(f0, A, N, method, imp) {
         const D = LAB_GRAIN, w = getLabHann();
         const out = new Float32Array(D);
+        const rot = Math.random();   // rotación QMC distinta por tirada → curva suave
 
         if (method === 'importance' && imp) {
+            // Importance sampling con la CDF muestreada de forma ESTRATIFICADA
+            // (así es como un renderer hace importance: estratificado sobre q).
             let wsum = 0;
             for (let i = 0; i < N; i++) {
-                const idx = impSearch(imp.cum, Math.random());
+                const u = (i + Math.random()) / N;
+                const idx = impSearch(imp.cum, u);
                 const k = idx - A;
                 const wi = imp.pmass[idx] / imp.qmass[idx];   // peso de importancia p/q
                 wsum += wi;
@@ -2333,7 +2347,7 @@
         }
 
         for (let i = 0; i < N; i++) {
-            const u = method === 'stratified' ? (i + Math.random()) / N : Math.random();
+            const u = sampleU(method, i, N, rot);
             const k = Math.round(triInvCDF(u, A));
             const base = f0 + k;
             for (let n = 0; n < D; n++) out[n] += srcSample(base + n);
@@ -2376,7 +2390,7 @@
             const target = computeLabTarget(f0, A);
             const imp = buildImportance(f0, A);
 
-            const methods = ['random', 'stratified', 'importance'];
+            const methods = ['random', 'stratified', 'qmc', 'importance'];
             const curves = {};
             for (const m of methods) {
                 curves[m] = LAB_NS.map((N) => {
@@ -2402,15 +2416,20 @@
     function updateLabReadout() {
         if (!labCurves) return;
         const last = labCurves.Ns.length - 1;
-        const slope = fitSlope(labCurves.Ns, labCurves.random);
+        const slopeR = fitSlope(labCurves.Ns, labCurves.random);
+        const slopeQ = fitSlope(labCurves.Ns, labCurves.qmc);
         const fmt = (v) => v.toExponential(2);
         labReadout.innerHTML =
-            `<strong>Exponente medido (random):</strong> ${slope.toFixed(3)} ` +
-            `<span style="color:#8a99ad">(ideal −0.500)</span><br>` +
+            `<strong>Exponente:</strong> ` +
+            `<span style="color:#ff6b6b">random ${slopeR.toFixed(3)}</span> ` +
+            `<span style="color:#8a99ad">(ideal −0.500)</span> · ` +
+            `<span style="color:#7aa2ff">qmc ${slopeQ.toFixed(3)}</span> ` +
+            `<span style="color:#8a99ad">(→ −1 ideal)</span><br>` +
             `Error RMS @N=${labCurves.Ns[last]} — ` +
             `<span style="color:#ff6b6b">random ${fmt(labCurves.random[last])}</span> · ` +
-            `<span style="color:#00ffcc">stratified ${fmt(labCurves.stratified[last])}</span> · ` +
-            `<span style="color:#ffe066">importance ${fmt(labCurves.importance[last])}</span>`;
+            `<span style="color:#00ffcc">strat ${fmt(labCurves.stratified[last])}</span> · ` +
+            `<span style="color:#7aa2ff">qmc ${fmt(labCurves.qmc[last])}</span> · ` +
+            `<span style="color:#ffe066">imp ${fmt(labCurves.importance[last])}</span>`;
     }
 
     function drawLabPlot() {
@@ -2432,6 +2451,7 @@
         const series = [
             { key: 'random',     color: '#ff6b6b', label: 'Random' },
             { key: 'stratified', color: '#00ffcc', label: 'Stratified' },
+            { key: 'qmc',        color: '#7aa2ff', label: 'Quasi-MC' },
             { key: 'importance', color: '#ffe066', label: 'Importance' },
         ];
 
