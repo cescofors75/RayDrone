@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Raytracing Audio Drone Prototype</title>
+    <title>Temporal Raytracer</title>
     <style>
         :root {
             --bg-color: #070608;
@@ -702,7 +702,7 @@
 <body>
 
 <div class="container">
-    <h1>Acoustic Raytracer</h1>
+    <h1>Temporal Raytracer</h1>
     <p class="subtitle">Simulación Estocástica de Renderizado de Ondas</p>
 
     <div class="app-layout">
@@ -954,7 +954,7 @@
             </div>
 
             <button class="btn-record" id="record-btn" disabled>⏺ Grabar WAV</button>
-            <a id="download-link" class="download-link" download="acoustic-raytracer-render.wav">Descargar WAV renderizado</a>
+            <a id="download-link" class="download-link" download="temporal-raytracer-render.wav">Descargar WAV renderizado</a>
 
             <div class="status" id="status-text">Sube un archivo para inicializar los rayos estocásticos.</div>
         </section>
@@ -1415,7 +1415,6 @@
         isAuditioningOriginal = true;
         originalPlaybackStartOffset = startOffset;
         originalPlaybackStartedAt = audioCtx.currentTime;
-        originalBtn.innerText = '⏹ Parar Original';
         statusText.innerText = source.loop
             ? `Escuchando original en loop desde ${startOffset.toFixed(2)}s`
             : `Escuchando original desde ${startOffset.toFixed(2)}s`;
