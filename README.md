@@ -149,6 +149,7 @@ The interface renders the ray tracing process in real time across two canvases:
 ### Metering
 - Real-time RMS and Peak meters with dB readouts
 - Red **CLIP** indicator if the output reaches 0 dBFS
+- Compact **FFT Feedback** panel showing live **Low / Mid / High** band energy used by the recursive modulation system
 
 ---
 
@@ -169,6 +170,10 @@ The interface renders the ray tracing process in real time across two canvases:
 |---|---|---|
 | **Sampling Strategy** | Monte Carlo estimator | `Random` = plain MC. `Stratified` = one sample per CDF stratum (lower noise). `Importance` = rays concentrate where the source has energy. |
 | **Chromatic Aberration** | Lens dispersion by wavelength | Low frequencies get a wider aperture; highs get a narrow aperture. Big low-end clouds and crystalline high-end detail. |
+| **Autoevolution** | Recursive feedback loop | Reads the previous FFT frame and feeds spectral energy back into the engine so the render can self-modulate over time. |
+| **α Dispersion** | High-band spectral gain | More high-frequency energy widens the aperture on the next cycle. |
+| **β Bounces** | Mid-band structural density | More mid energy increases secondary ray generation. |
+| **γ Roughness** | Low-band diffusion driver | More low-frequency energy increases BRDF roughness and cloudiness. |
 | **BRDF Roughness** | Surface micro-geometry | 100 % = diffuse Monte Carlo drone. 0 % = specular / harmonic placement. |
 | **Bounce Count** | Recursive transport depth | Safety cap on secondary-ray recursion. Each ray spawns a child via **Russian roulette**, building the Neumann-series tail. |
 | **Reflection Coefficient** | Path survival probability | Probability a bounce survives (and, in expectation, the tail energy `Σ rᵈ` and its length). |
@@ -190,6 +195,8 @@ AudioBufferSourceNode (×burst)
         ↓
   AnalyserNode (FFT 2048, for visual output + metering)
         ↓
+  Feedback state (low / mid / high smoothed band energy)
+        ↓
   AudioContext.destination
 ```
 
@@ -203,6 +210,7 @@ Each render cycle (`setTimeout` adaptive at dispersion interval):
 7. If **Bounce Count** is enabled, spawn child rays from the end point of each ray
 8. Push visual rays to `visRays[]` and animate them with `requestAnimationFrame`
 9. Update RMS / Peak meters and the clip indicator in real time
+10. If **Autoevolution** is enabled, smooth low / mid / high FFT energies and apply them to the next engine cycle through `α`, `β`, and `γ`
 
 ---
 
@@ -224,6 +232,7 @@ Each render cycle (`setTimeout` adaptive at dispersion interval):
 4. Set a narrow **Aperture** and low **N** first — listen to the coherent result
 5. Gradually open the aperture and increase N — hear the drone emerge
 6. Watch the SOURCE canvas: the rays converge visually as they converge acoustically
+7. Enable **Autoevolution** and raise `α`, `β`, or `γ` carefully to move from slow breathing motion into unstable attractors
 
 ### Sound Character Presets
 
@@ -329,6 +338,7 @@ La interfície renderitza el procés de rastreig de raigs en temps real en dos c
 ### Metreig
 - Mesuradors RMS i Peak en temps real amb lectura en dB
 - Indicador **CLIP** en vermell si la sortida arriba a 0 dBFS
+- Panell compacte de **FFT Feedback** amb energia en viu de **Low / Mid / High** usada pel sistema de modulació recursiva
 
 ---
 
@@ -348,6 +358,10 @@ La interfície renderitza el procés de rastreig de raigs en temps real en dos c
 | Paràmetre | Analogia òptica | Efecte acústic |
 |---|---|---|
 | **Aberració Cromàtica** | Dispersió de la lent per longitud d'ona | Els greus obren més; els aguts obren menys. Núvols de baix profunds i aguts cristal·lins. |
+| **Autoevolució** | Bucle de feedback recursiu | Llegeix el frame FFT anterior i retorna l'energia espectral al motor perquè el render es moduli a si mateix amb el temps. |
+| **α Dispersió** | Guany espectral dels aguts | Més energia d'altes freqüències obre més l'obertura al cicle següent. |
+| **β Rebotes** | Densitat estructural dels mitjos | Més energia en mitjos incrementa la generació de rebots secundaris. |
+| **γ Rugositat** | Motor de difusió dels greus | Més energia de greus incrementa la rugositat BRDF i la nebulosa sonora. |
 | **Rugositat BRDF** | Microgeometria de la superfície | 100 % = drone difús Monte Carlo. 0 % = especular / harmònic. |
 | **Rebotes (Bounce)** | Generació de raigs secundaris | Cada raig pot generar raigs fills des del seu final, creant una cua geomètrica. |
 | **Coeficient de Reflexió** | Pèrdua d'energia per rebote | Controla el decaïment de cada rebot i la longitud de la cua. |
@@ -369,6 +383,8 @@ AudioBufferSourceNode (×burst)
         ↓
   AnalyserNode (FFT 2048, per a la sortida visual + metering)
         ↓
+  Estat de feedback (energia suavitzada low / mid / high)
+        ↓
   AudioContext.destination
 ```
 
@@ -382,6 +398,7 @@ Cada cicle de renderitzat (`setTimeout` adaptatiu a l'interval de dispersió):
 7. Si **Bounce Count** és actiu, crear raigs fills des del final de cada raig
 8. Afegir raigs visuals a `visRays[]` i animar-los amb `requestAnimationFrame`
 9. Actualitzar metres RMS / Peak i l'indicador de clip en temps real
+10. Si **Autoevolució** està activa, suavitzar les energies FFT low / mid / high i aplicar-les al següent cicle del motor mitjançant `α`, `β` i `γ`
 
 ---
 
@@ -403,6 +420,7 @@ Cada cicle de renderitzat (`setTimeout` adaptatiu a l'interval de dispersió):
 4. Estableix primer una **Obertura** estreta i una **N** baixa — escolta el resultat coherent
 5. Obre gradualment l'obertura i augmenta N — escolta com emergeix el drone
 6. Observa el canvas SOURCE: els raigs convergeixen visualment mentre convergeixen acústicament
+7. Activa **Autoevolució** i puja `α`, `β` o `γ` amb cura per passar d'un moviment lent a atractors més inestables
 
 ### Presets per Caràcter
 
@@ -437,6 +455,10 @@ La idea no es reproducir el sample de forma fiel. La idea es **renderizarlo como
 ## Extensiones Ópticas
 
 - **Aberración cromática**: los graves reciben una apertura más amplia; los agudos una apertura mucho más estrecha.
+- **Autoevolución**: un bucle recursivo lee el frame FFT anterior y lo usa para modular el siguiente estado del motor.
+- **α dispersión**: los agudos abren más la lente temporal en el siguiente ciclo.
+- **β rebotes**: los medios aumentan la densidad de rebotes secundarios.
+- **γ rugosidad**: los graves empujan el render hacia una difusión más nubosa.
 - **BRDF acústica / rugosidad**: controla si los rayos se distribuyen de forma difusa o más armónica.
 - **Bounce count**: cada rayo puede generar rebotes secundarios y construir una cola geométrica de resonancia.
 - **Barrido del sampler**: el foco puede recorrer todo el audio automáticamente en modo ping-pong o quedarse fijo.
@@ -449,6 +471,7 @@ La idea no es reproducir el sample de forma fiel. La idea es **renderizarlo como
 - Puedes arrastrar sobre la onda para seleccionar una ventana temporal.
 - Puedes oír el **original** sin parar el render y parar el **render** sin cortar el original.
 - Los medidores RMS y Peak están arriba, de forma sutil, para comprobar nivel y clipping.
+- El panel **FFT Feedback** muestra en vivo la energía **Low / Mid / High** que alimenta la autoevolución.
 
 ---
 
@@ -471,5 +494,6 @@ La interfaz incluye presets rápidos para empezar sin ajustar todo a mano:
 3. Usa el foco, el barrido o la selección con mouse para definir qué parte del sampler se renderiza.
 4. Pulsa **Renderizar Drone** para escuchar el motor.
 5. Pulsa **Oír Original** para comparar el sample sin parar el render.
-6. Si te gusta el resultado, graba WAV desde la propia interfaz y arrástralo a tu DAW.
+6. Activa **Autoevolución** y sube `α`, `β` y `γ` poco a poco para entrar en zonas de respiración, densificación o caos controlado.
+7. Si te gusta el resultado, graba WAV desde la propia interfaz y arrástralo a tu DAW.
 
