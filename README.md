@@ -94,15 +94,31 @@ The interface renders the ray tracing process in real time across two canvases:
 - The **emergent waveform** in real time, read directly from the Web Audio AnalyserNode
 - Shows the acoustic result of ray convergence — the rendered drone
 
+### Metering
+- Real-time RMS and Peak meters with dB readouts
+- Red **CLIP** indicator if the output reaches 0 dBFS
+
 ---
 
 ## Parameters
 
+### Core
+
 | Parameter | Description |
 |---|---|
+| **Master Volume** | Global output level 0–100 % |
 | **N (Number of Rays)** | Density of the render. More rays → smoother, richer drone. Exponential scale: `floor(slider^1.6)` |
-| **Aperture (Dispersion)** | Width of the temporal cone in milliseconds. Narrow = coherent/tonal. Wide = diffuse/textural. |
+| **Aperture (Dispersion)** | Width of the temporal cone in milliseconds. Up to 10 s. Narrow = coherent/tonal. Wide = diffuse/textural. |
 | **Focal Point (Position)** | The point in time around which rays are cast. Moving this across the waveform changes the timbral character entirely. |
+
+### Advanced Optical Extensions
+
+| Parameter | Optical Analogy | Acoustic Effect |
+|---|---|---|
+| **Chromatic Aberration** | Lens dispersion by wavelength | Low frequencies get a wider aperture; highs get a narrow aperture. Big low-end clouds and crystalline high-end detail. |
+| **BRDF Roughness** | Surface micro-geometry | 100 % = diffuse Monte Carlo drone. 0 % = specular / harmonic placement. |
+| **Bounce Count** | Secondary ray generation | Each ray can spawn child rays from its end point, building a geometric tail. |
+| **Reflection Coefficient** | Energy loss per bounce | Controls decay per bounce and the length of the tail. |
 
 ---
 
@@ -111,23 +127,29 @@ The interface renders the ray tracing process in real time across two canvases:
 Built entirely with **vanilla JavaScript** and the **Web Audio API**. No libraries, no frameworks.
 
 ```
-AudioBufferSourceNode (×N)
+AudioBufferSourceNode (×burst)
         ↓
   GainNode (fade envelope per ray)
         ↓
-  mainGainNode (master volume, 1/√N normalized)
+  [Optional] BiquadFilter band (low / mid / high)
         ↓
-  AnalyserNode (FFT 2048, for visual output)
+  mainGainNode (master volume)
+        ↓
+  AnalyserNode (FFT 2048, for visual output + metering)
         ↓
   AudioContext.destination
 ```
 
-Each render cycle (`setInterval` at dispersion interval ms):
-1. Read current focal point and aperture from sliders
-2. Fire N `BufferSourceNode`s, each with a random offset within `[focal - disp, focal + disp]`
-3. Apply linear fade-in/fade-out envelope per ray
-4. Push visual ray to `visRays[]` array for canvas animation
-5. `requestAnimationFrame` loop decays each `visRay.life` and redraws both canvases
+Each render cycle (`setTimeout` adaptive at dispersion interval):
+1. Read focal point, aperture and all optical parameters from sliders
+2. Calculate `burstN = min(rawN, burstCap, headroom)`
+3. Assign a frequency band per ray (low / mid / high)
+4. Apply **Chromatic Aberration** by scaling the aperture per band
+5. Apply **BRDF Roughness** by interpolating between harmonic placement and stochastic placement
+6. Spawn `BufferSourceNode`s with fade envelopes
+7. If **Bounce Count** is enabled, spawn child rays from the end point of each ray
+8. Push visual rays to `visRays[]` and animate them with `requestAnimationFrame`
+9. Update RMS / Peak meters and the clip indicator in real time
 
 ---
 
@@ -149,6 +171,16 @@ Each render cycle (`setInterval` at dispersion interval ms):
 4. Set a narrow **Aperture** and low **N** first — listen to the coherent result
 5. Gradually open the aperture and increase N — hear the drone emerge
 6. Watch the SOURCE canvas: the rays converge visually as they converge acoustically
+
+### Sound Character Presets
+
+| Sound Goal | N | Aperture | Aberration | Roughness | Bounces |
+|---|---|---|---|---|---|
+| Tonal / Pitched | low | narrow | 0 % | 0 % | 0 |
+| Dense Drone | high | wide | 0 % | 100 % | 0 |
+| Zimmer Brass | high | 2–5 s | 60 % | 80 % | 1–2 |
+| Fred Again Vocal | mid | 500 ms–2 s | 30 % | 100 % | 0 |
+| Infinite Shimmer | mid | wide | 40 % | 60 % | 4 + high reflection |
 
 ---
 
@@ -241,15 +273,31 @@ La interfície renderitza el procés de rastreig de raigs en temps real en dos c
 - La **forma d'ona emergent** en temps real, llegida directament de l'`AnalyserNode` de Web Audio
 - Mostra el resultat acústic de la convergència de raigs — el drone renderitzat
 
+### Metreig
+- Mesuradors RMS i Peak en temps real amb lectura en dB
+- Indicador **CLIP** en vermell si la sortida arriba a 0 dBFS
+
 ---
 
 ## Paràmetres
 
+### Nucli
+
 | Paràmetre | Descripció |
 |---|---|
+| **Volum Master** | Nivell de sortida global 0–100 % |
 | **N (Nombre de Raigs)** | Densitat del renderitzat. Més raigs → drone més ric i suau. Escala exponencial: `floor(slider^1.6)` |
-| **Obertura (Dispersió)** | Amplada del con temporal en mil·lisegons. Estret = coherent/tonal. Ample = difús/textural. |
+| **Obertura (Dispersió)** | Amplada del con temporal en mil·lisegons. Fins a 10 s. Estret = coherent/tonal. Ample = difús/textural. |
 | **Punt Focal (Posició)** | El punt en el temps al voltant del qual es llancen els raigs. Moure'l per la forma d'ona canvia completament el caràcter tímbric. |
+
+### Extensions Òptiques Avançades
+
+| Paràmetre | Analogia òptica | Efecte acústic |
+|---|---|---|
+| **Aberració Cromàtica** | Dispersió de la lent per longitud d'ona | Els greus obren més; els aguts obren menys. Núvols de baix profunds i aguts cristal·lins. |
+| **Rugositat BRDF** | Microgeometria de la superfície | 100 % = drone difús Monte Carlo. 0 % = especular / harmònic. |
+| **Rebotes (Bounce)** | Generació de raigs secundaris | Cada raig pot generar raigs fills des del seu final, creant una cua geomètrica. |
+| **Coeficient de Reflexió** | Pèrdua d'energia per rebote | Controla el decaïment de cada rebot i la longitud de la cua. |
 
 ---
 
@@ -258,23 +306,29 @@ La interfície renderitza el procés de rastreig de raigs en temps real en dos c
 Construït íntegrament amb **JavaScript vanilla** i la **Web Audio API**. Sense llibreries, sense frameworks.
 
 ```
-AudioBufferSourceNode (×N)
+AudioBufferSourceNode (×burst)
         ↓
   GainNode (envoltant de fade per raig)
         ↓
-  mainGainNode (volum mestre, normalitzat per 1/√N)
+  [Opcional] BiquadFilter de banda (low / mid / high)
         ↓
-  AnalyserNode (FFT 2048, per a la sortida visual)
+  mainGainNode (volum mestre)
+        ↓
+  AnalyserNode (FFT 2048, per a la sortida visual + metering)
         ↓
   AudioContext.destination
 ```
 
-Cada cicle de renderitzat (`setInterval` a l'interval de dispersió en ms):
-1. Llegir el punt focal actual i l'obertura dels sliders
-2. Disparar N `BufferSourceNode`s, cadascun amb un offset aleatori dins de `[focal - disp, focal + disp]`
-3. Aplicar envoltant de fade-in/fade-out lineal per raig
-4. Afegir raig visual a l'array `visRays[]` per a l'animació del canvas
-5. El bucle `requestAnimationFrame` decau cada `visRay.life` i redibuixa ambdós canvas
+Cada cicle de renderitzat (`setTimeout` adaptatiu a l'interval de dispersió):
+1. Llegir el punt focal, l'obertura i tots els paràmetres òptics dels sliders
+2. Calcular `burstN = min(rawN, burstCap, headroom)`
+3. Assignar una banda de freqüència per raig (greus / migs / aguts)
+4. Aplicar **Aberració Cromàtica** escalant l'obertura per banda
+5. Aplicar **Rugositat BRDF** interpolant entre posició harmònica i aleatòria
+6. Crear `BufferSourceNode`s amb envoltant de fade
+7. Si **Bounce Count** és actiu, crear raigs fills des del final de cada raig
+8. Afegir raigs visuals a `visRays[]` i animar-los amb `requestAnimationFrame`
+9. Actualitzar metres RMS / Peak i l'indicador de clip en temps real
 
 ---
 
@@ -296,6 +350,16 @@ Cada cicle de renderitzat (`setInterval` a l'interval de dispersió en ms):
 4. Estableix primer una **Obertura** estreta i una **N** baixa — escolta el resultat coherent
 5. Obre gradualment l'obertura i augmenta N — escolta com emergeix el drone
 6. Observa el canvas SOURCE: els raigs convergeixen visualment mentre convergeixen acústicament
+
+### Presets per Caràcter
+
+| Objectiu Sonor | N | Obertura | Aberració | Rugositat | Rebotes |
+|---|---|---|---|---|---|
+| Tonal / Afinat | baix | estreta | 0 % | 0 % | 0 |
+| Drone Dens | alt | ampla | 0 % | 100 % | 0 |
+| Metalls Zimmer | alt | 2–5 s | 60 % | 80 % | 1–2 |
+| Vocal Fred Again | mig | 500 ms–2 s | 30 % | 100 % | 0 |
+| Brillantor Infinita | mig | ampla | 40 % | 60 % | 4 + reflexió alta |
 
 ---
 
