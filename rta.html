@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raytracing Audio Drone Prototype</title>
+    <style>
+        :root {
+            --bg-color: #0a0b10;
+            --panel-color: #141622;
+            --accent-color: #00ffcc;
+            --accent-dim: #00aa88;
+            --text-color: #e2e8f0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .container {
+            background: var(--panel-color);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0, 255, 204, 0.05), inset 0 1px 0 rgba(255,255,255,0.1);
+            width: 750px;
+            border: 1px solid rgba(0, 255, 204, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .canvas-wrap {
+            position: relative;
+            margin-bottom: 18px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid rgba(0, 255, 204, 0.12);
+            background: #07080e;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+        }
+
+        .canvas-label {
+            position: absolute;
+            top: 6px;
+            left: 10px;
+            font-size: 0.65rem;
+            font-family: monospace;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(0, 255, 204, 0.45);
+            pointer-events: none;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            text-align: center;
+            margin-top: 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--accent-color);
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
+        }
+
+        p.subtitle {
+            font-size: 0.85rem;
+            text-align: center;
+            color: #8a99ad;
+            margin-bottom: 25px;
+        }
+
+        .file-upload {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-label {
+            background: rgba(0, 255, 204, 0.1);
+            border: 1px dashed var(--accent-color);
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            text-align: center;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        .file-label:hover {
+            background: rgba(0, 255, 204, 0.2);
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.2);
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #8a99ad;
+        }
+
+        .control-label span.val {
+            color: var(--accent-color);
+            font-family: monospace;
+            font-size: 1rem;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #23273a;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--accent-color);
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .btn-play {
+            width: 100%;
+            background: linear-gradient(135deg, var(--accent-dim), var(--accent-color));
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            color: #050608;
+            font-size: 1rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0, 255, 204, 0.2);
+        }
+
+        .btn-play:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 255, 204, 0.4);
+        }
+
+        .btn-play:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+
+        .btn-play:disabled {
+            background: #23273a;
+            color: #555c77;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .status {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #e2e8f0;
+            margin-top: 15px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Acoustic Raytracer</h1>
+    <p class="subtitle">Simulación Estocástica de Renderizado de Ondas</p>
+
+    <!-- VISUALIZADOR SOURCE + RAYOS -->
+    <div class="canvas-wrap">
+        <span class="canvas-label">Source</span>
+        <canvas id="ray-canvas" width="750" height="190"></canvas>
+    </div>
+
+    <div class="file-upload">
+        <label for="audio-file" class="file-label" id="upload-text">📁 Cargar WAV / MP3</label>
+        <input type="file" id="audio-file" accept="audio/*">
+    </div>
+
+    <div class="controls">
+        <!-- CONTROL DE RAYOS (N) -->
+        <div class="control-group">
+            <div class="control-label">
+                <span>Número de Rayos (N)</span>
+                <span id="ray-val" class="val">10</span>
+            </div>
+            <input type="range" id="ray-count" min="2" max="250" value="10">
+        </div>
+
+        <!-- DISPERSIÓN ESPACIAL -->
+        <div class="control-group">
+            <div class="control-label">
+                <span>Dispersión de la Lente (Apertura)</span>
+                <span id="disp-val" class="val">50 ms</span>
+            </div>
+            <input type="range" id="dispersion" min="5" max="800" value="50">
+        </div>
+
+        <!-- POSICIÓN EN EL SAMPLER -->
+        <div class="control-group">
+            <div class="control-label">
+                <span>Foco del Rayo (Posición WAV)</span>
+                <span id="pos-val" class="val">0.0s</span>
+            </div>
+            <input type="range" id="position" min="0" max="100" value="20">
+        </div>
+    </div>
+
+    <button class="btn-play" id="play-btn" disabled>Esperando Audio...</button>
+
+    <!-- VISUALIZADOR OUTPUT RENDERIZADO -->
+    <div class="canvas-wrap" style="margin-top: 18px;">
+        <span class="canvas-label">Render Output</span>
+        <canvas id="output-canvas" width="750" height="70"></canvas>
+    </div>
+
+    <div class="status" id="status-text">Sube un archivo para inicializar los rayos estocásticos.</div>
+</div>
+
+<script>
+    // Configuración del motor de Web Audio
+    let audioCtx = null;
+    let audioBuffer = null;
+    let isPlaying = false;
+    let mainGainNode = null;
+    let analyserNode = null;
+    let intervalId = null;
+    let animFrameId = null;
+
+    // Canvas
+    const rayCanvas    = document.getElementById('ray-canvas');
+    const rCtx         = rayCanvas.getContext('2d');
+    const outCanvas    = document.getElementById('output-canvas');
+    const oCtx         = outCanvas.getContext('2d');
+
+    // Waveform data reducida (un valor por pixel)
+    let waveformData = null;
+    const visRays = [];
+
+    // Analyser buffer
+    const analyserData = new Uint8Array(2048);
+
+    // Elementos del DOM
+    const fileInput = document.getElementById('audio-file');
+    const uploadText = document.getElementById('upload-text');
+    const playBtn = document.getElementById('play-btn');
+    const raySlider = document.getElementById('ray-count');
+    const rayVal = document.getElementById('ray-val');
+    const dispSlider = document.getElementById('dispersion');
+    const dispVal = document.getElementById('disp-val');
+    const posSlider = document.getElementById('position');
+    const posVal = document.getElementById('pos-val');
+    const statusText = document.getElementById('status-text');
+
+    // Inicializar displays con los valores calculados del slider
+    rayVal.innerText = Math.floor(Math.pow(parseFloat(raySlider.value), 1.6));
+    posVal.innerText = `${parseFloat(posSlider.value).toFixed(2)}s`;
+
+    // Escuchar la carga de archivos
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        uploadText.innerText = `✔ ${file.name.substring(0, 20)}...`;
+        statusText.innerText = "Decodificando matriz de audio...";
+
+        // Inicializar Audio Context en la primera interacción
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            mainGainNode = audioCtx.createGain();
+            mainGainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
+            analyserNode = audioCtx.createAnalyser();
+            analyserNode.fftSize = 2048;
+            mainGainNode.connect(analyserNode);
+            analyserNode.connect(audioCtx.destination);
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            audioCtx.decodeAudioData(evt.target.result, function(buffer) {
+                audioBuffer = buffer;
+                playBtn.disabled = false;
+                playBtn.innerText = "▶ Renderizar Drone";
+                statusText.innerText = `Audio listo. Duración: ${buffer.duration.toFixed(2)}s`;
+                
+                // Ajustar slider de posición al tamaño real del audio
+                posSlider.max = buffer.duration;
+                posSlider.value = buffer.duration * 0.2;
+                posVal.innerText = `${parseFloat(posSlider.value).toFixed(2)}s`;
+
+                // Reducir waveform al ancho del canvas
+                const raw = buffer.getChannelData(0);
+                const W = rayCanvas.width;
+                waveformData = new Float32Array(W);
+                const step = Math.floor(raw.length / W);
+                for (let i = 0; i < W; i++) {
+                    let max = 0;
+                    for (let j = 0; j < step; j++) {
+                        const v = Math.abs(raw[i * step + j] || 0);
+                        if (v > max) max = v;
+                    }
+                    waveformData[i] = max;
+                }
+
+                drawRayCanvas();
+                startAnimLoop();
+            }, function(err) {
+                statusText.innerText = "Error al decodificar el archivo de audio.";
+                console.error(err);
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    raySlider.addEventListener('input', (e) => { 
+        let N = Math.floor(Math.pow(e.target.value, 1.6));
+        rayVal.innerText = N; 
+    });
+
+    // Botón de Play / Stop
+    playBtn.addEventListener('click', function() {
+        if (isPlaying) {
+            stopEngine();
+        } else {
+            startEngine();
+        }
+    });
+
+    // Redibujar canvas source cuando cambien los sliders
+    posSlider.addEventListener('input', (e) => {
+        posVal.innerText = `${parseFloat(e.target.value).toFixed(2)}s`;
+        if (waveformData) drawRayCanvas();
+    });
+    dispSlider.addEventListener('input', (e) => {
+        dispVal.innerText = `${e.target.value} ms`;
+        if (waveformData) drawRayCanvas();
+    });
+
+    // ── DRAW FUNCTIONS ──────────────────────────────────────────────
+
+    function drawRayCanvas() {
+        const W = rayCanvas.width;
+        const H = rayCanvas.height;
+        const midY = H / 2;
+
+        rCtx.clearRect(0, 0, W, H);
+        rCtx.fillStyle = '#07080e';
+        rCtx.fillRect(0, 0, W, H);
+
+        if (!waveformData || !audioBuffer) return;
+
+        const focusSec  = parseFloat(posSlider.value);
+        const dispSec   = parseFloat(dispSlider.value) / 1000;
+        const focalX    = (focusSec / audioBuffer.duration) * W;
+        const dispX     = (dispSec  / audioBuffer.duration) * W;
+
+        // ── Zona de apertura (cono de dispersión)
+        const grad = rCtx.createLinearGradient(focalX - dispX, 0, focalX + dispX, 0);
+        grad.addColorStop(0,   'rgba(0,255,204,0)');
+        grad.addColorStop(0.5, 'rgba(0,255,204,0.08)');
+        grad.addColorStop(1,   'rgba(0,255,204,0)');
+        rCtx.fillStyle = grad;
+        rCtx.fillRect(focalX - dispX, 0, dispX * 2, H);
+
+        // ── Eje X con marcas de segundos
+        rCtx.strokeStyle = 'rgba(255,255,255,0.06)';
+        rCtx.lineWidth = 1;
+        const totalSecs = Math.floor(audioBuffer.duration);
+        for (let s = 1; s <= totalSecs; s++) {
+            const x = (s / audioBuffer.duration) * W;
+            rCtx.beginPath();
+            rCtx.moveTo(x, 0);
+            rCtx.lineTo(x, H);
+            rCtx.stroke();
+            rCtx.fillStyle = 'rgba(255,255,255,0.18)';
+            rCtx.font = '10px monospace';
+            rCtx.fillText(`${s}s`, x + 3, H - 5);
+        }
+
+        // ── Waveform source
+        rCtx.beginPath();
+        rCtx.strokeStyle = 'rgba(0,255,204,0.35)';
+        rCtx.lineWidth = 1;
+        for (let x = 0; x < W; x++) {
+            const amp = waveformData[x] * (H * 0.42);
+            rCtx.moveTo(x, midY - amp);
+            rCtx.lineTo(x, midY + amp);
+        }
+        rCtx.stroke();
+
+        // ── Rayos animados convergentes
+        for (const ray of visRays) {
+            const alpha = ray.life;
+            rCtx.beginPath();
+            rCtx.strokeStyle = `rgba(0,255,204,${alpha * 0.85})`;
+            rCtx.lineWidth = 0.8;
+            // Los rayos parten de su posición en la waveform y convergen al focal
+            const yJitter = (Math.random() - 0.5) * H * 0.6 * (1 - ray.life);
+            rCtx.moveTo(ray.x * W, midY + yJitter);
+            rCtx.lineTo(focalX, midY);
+            rCtx.stroke();
+        }
+
+        // ── Línea focal (glow)
+        rCtx.save();
+        rCtx.shadowColor = '#00ffcc';
+        rCtx.shadowBlur = 12;
+        rCtx.strokeStyle = 'rgba(0,255,204,0.95)';
+        rCtx.lineWidth = 1.5;
+        rCtx.beginPath();
+        rCtx.moveTo(focalX, 0);
+        rCtx.lineTo(focalX, H);
+        rCtx.stroke();
+        rCtx.restore();
+    }
+
+    function drawOutputCanvas() {
+        const W = outCanvas.width;
+        const H = outCanvas.height;
+        const midY = H / 2;
+
+        oCtx.clearRect(0, 0, W, H);
+        oCtx.fillStyle = '#07080e';
+        oCtx.fillRect(0, 0, W, H);
+
+        // Línea base
+        oCtx.strokeStyle = 'rgba(255,0,102,0.15)';
+        oCtx.lineWidth = 1;
+        oCtx.beginPath();
+        oCtx.moveTo(0, midY);
+        oCtx.lineTo(W, midY);
+        oCtx.stroke();
+
+        if (!isPlaying || !analyserNode) return;
+
+        analyserNode.getByteTimeDomainData(analyserData);
+
+        oCtx.save();
+        oCtx.shadowColor = '#ff0066';
+        oCtx.shadowBlur = 6;
+        oCtx.strokeStyle = 'rgba(255,0,102,0.9)';
+        oCtx.lineWidth = 1.5;
+        oCtx.beginPath();
+        const sliceW = W / analyserData.length;
+        for (let i = 0; i < analyserData.length; i++) {
+            const y = ((analyserData[i] / 128.0) - 1) * (H * 0.45) + midY;
+            if (i === 0) oCtx.moveTo(0, y);
+            else oCtx.lineTo(i * sliceW, y);
+        }
+        oCtx.stroke();
+        oCtx.restore();
+    }
+
+    function startAnimLoop() {
+        if (animFrameId) return; // ya corriendo
+        function loop() {
+            // Envejecer rayos
+            for (let i = visRays.length - 1; i >= 0; i--) {
+                visRays[i].life -= 0.035;
+                if (visRays[i].life <= 0) visRays.splice(i, 1);
+            }
+            drawRayCanvas();
+            drawOutputCanvas();
+            animFrameId = requestAnimationFrame(loop);
+        }
+        animFrameId = requestAnimationFrame(loop);
+    }
+
+    // ── MOTOR ACÚSTICO DE RAYTRACING ────────────────────────────────
+    function startEngine() {
+        if (!audioBuffer) return;
+        
+        // Asegurar que el contexto está activo
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        isPlaying = true;
+        playBtn.innerText = "■ Detener Rayos";
+        playBtn.style.background = "linear-gradient(135deg, #ff4444, #ff0055)";
+
+        const activeSources = [];
+
+        function fireRays() {
+            if (!isPlaying) return;
+
+            const N = Math.min(Math.max(1, Math.floor(Math.pow(parseFloat(raySlider.value), 1.6))), 128);
+            const dispSec = parseFloat(dispSlider.value) / 1000;
+            const focusSec = parseFloat(posSlider.value);
+            const rayDuration = Math.max(dispSec * 2, 0.05);
+
+            for (let i = 0; i < N; i++) {
+                const src = audioCtx.createBufferSource();
+                src.buffer = audioBuffer;
+
+                let offset = focusSec + (Math.random() * 2 - 1) * dispSec;
+                offset = Math.max(0, Math.min(audioBuffer.duration - 0.01, offset));
+
+                const gain = audioCtx.createGain();
+                const vol = 0.7 / Math.sqrt(Math.max(N, 1));
+                const fade = Math.min(rayDuration * 0.3, 0.04);
+                gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + fade);
+                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + rayDuration - fade);
+
+                src.connect(gain);
+                gain.connect(mainGainNode);
+                src.start(audioCtx.currentTime, offset, rayDuration);
+                activeSources.push(src);
+
+                // Rayo visual: posición normalizada [0,1]
+                visRays.push({ x: offset / audioBuffer.duration, life: 1.0 });
+
+                src.onended = () => {
+                    const idx = activeSources.indexOf(src);
+                    if (idx !== -1) activeSources.splice(idx, 1);
+                };
+            }
+
+            statusText.innerText = `Rayos activos: ${activeSources.length} | N=${N} | Foco: ${focusSec.toFixed(2)}s`;
+        }
+
+        fireRays();
+        intervalId = setInterval(fireRays, Math.max(parseFloat(dispSlider.value), 20));
+    }
+
+    function stopEngine() {
+        isPlaying = false;
+        clearInterval(intervalId);
+        intervalId = null;
+
+        if (audioCtx) {
+            mainGainNode.gain.setValueAtTime(mainGainNode.gain.value, audioCtx.currentTime);
+            mainGainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+            setTimeout(() => {
+                if (!isPlaying) mainGainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
+            }, 400);
+        }
+
+        playBtn.innerText = "▶ Renderizar Drone";
+        playBtn.style.background = "linear-gradient(135deg, var(--accent-dim), var(--accent-color))";
+        statusText.innerText = "Motor detenido. Listo para re-renderizar.";
+    }
+</script>
+</body>
+</html>
