@@ -500,11 +500,16 @@ La interfaz incluye presets rápidos para empezar sin ajustar todo a mano:
 
 ## Uso
 
+La interfaz arranca en **Modo Simple**: cargar audio, elegir un preset, un único
+knob **Carácter (Tonal → Drone)** que mueve densidad, apertura y rugosidad a la vez,
+volumen y play. El botón **⚙ Modo avanzado** despliega los 9 controles ópticos, el
+selector de muestreo y el Convergence Lab para quien quiera trastear a fondo.
+
 1. Carga un WAV o MP3.
-2. Elige un preset o ajusta los controles manualmente.
-3. Usa el foco, el barrido o la selección con mouse para definir qué parte del sampler se renderiza.
-4. Pulsa **Renderizar Drone** para escuchar el motor.
-5. Pulsa **Oír Original** para comparar el sample sin parar el render.
+2. Elige un preset, o mueve el knob **Carácter** de tonal a drone.
+3. Pulsa **Renderizar Drone** para escuchar el motor.
+4. Pulsa **Oír Original** para comparar el sample sin parar el render.
+5. ¿Quieres más control? Activa **Modo avanzado** para usar foco, barrido, selección con ratón, aberración, rebotes y estrategias de muestreo.
 6. Activa **Autoevolución** y sube `α`, `β` y `γ` poco a poco para entrar en zonas de respiración, densificación o caos controlado.
 7. Si te gusta el resultado, graba WAV desde la propia interfaz y arrástralo a tu DAW.
 

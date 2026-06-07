@@ -675,6 +675,28 @@
             border-color: rgba(255, 77, 109, 0.3); color: #ff8da0;
         }
         .sampling-row { margin-bottom: 16px; }
+
+        /* ── Modo Simple / Avanzado ────────────────────────────────── */
+        body:not(.advanced) .advanced-only { display: none !important; }
+        body.advanced .simple-only { display: none !important; }
+
+        .mode-toggle {
+            width: 100%;
+            margin-bottom: 16px;
+            padding: 10px 12px;
+            border: 1px solid rgba(0, 255, 204, 0.18);
+            border-radius: 10px;
+            background: rgba(0, 255, 204, 0.06);
+            color: #8a99ad;
+            font-family: monospace;
+            font-size: 0.78rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .mode-toggle:hover { background: rgba(0, 255, 204, 0.14); color: var(--accent-color); }
+        body.advanced .mode-toggle { color: var(--accent-color); border-color: rgba(0, 255, 204, 0.35); }
     </style>
 </head>
 <body>
@@ -762,6 +784,8 @@
                 <p class="section-subtitle">Audio load, ray optics and engine response</p>
             </div>
 
+            <button id="mode-toggle" class="mode-toggle">⚙ Modo avanzado</button>
+
             <div class="file-upload">
                 <label for="audio-file" class="file-label" id="upload-text">📁 Cargar WAV / MP3</label>
                 <input type="file" id="audio-file" accept="audio/*">
@@ -779,15 +803,24 @@
                 <button id="preset-apply" class="preset-apply">Apply</button>
             </div>
 
-            <div class="sampling-row">
+            <div class="sampling-row advanced-only">
                 <select id="sampling-method" class="preset-select">
                     <option value="random">Sampling: Random (Monte Carlo)</option>
-                    <option value="stratified">Sampling: Stratified (low variance)</option>
+                    <option value="stratified" selected>Sampling: Stratified (low variance)</option>
                     <option value="qmc">Sampling: Quasi-MC (golden ratio)</option>
                     <option value="importance">Sampling: Importance (energy)</option>
                 </select>
             </div>
             <div class="controls">
+                <!-- CARÁCTER (MACRO SIMPLE) -->
+                <div class="control-group simple-only">
+                    <div class="control-label">
+                        <span>Carácter (Tonal → Drone)</span>
+                        <span id="macro-val" class="val">Textura</span>
+                    </div>
+                    <input type="range" id="macro" min="0" max="100" value="45">
+                </div>
+
                 <!-- VOLUMEN RENDER -->
                 <div class="control-group">
                     <div class="control-label">
@@ -807,7 +840,7 @@
                 </div>
 
                 <!-- CONTROL DE RAYOS (N) -->
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>Número de Rayos (N)</span>
                         <span id="ray-val" class="val">10</span>
@@ -816,7 +849,7 @@
                 </div>
 
                 <!-- DISPERSIÓN ESPACIAL -->
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>Dispersión de la Lente (Apertura)</span>
                         <span id="disp-val" class="val">50 ms</span>
@@ -825,7 +858,7 @@
                 </div>
 
                 <!-- POSICIÓN EN EL SAMPLER -->
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>Foco del Rayo (Posición WAV)</span>
                         <span id="pos-val" class="val">0.0s</span>
@@ -834,7 +867,7 @@
                 </div>
 
                 <!-- BARRIDO AUTOMÁTICO -->
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>Barrido del Sampler</span>
                         <span id="sweep-val" class="val">OFF</span>
@@ -843,7 +876,7 @@
                 </div>
 
                 <!-- ABERRACIÓN CROMÁTICA -->
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>Aberración Cromática</span>
                         <span id="aber-val" class="val">0 %</span>
@@ -876,7 +909,7 @@
                 </div>
 
                 <!-- RUGOSIDAD BRDF -->
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>Rugosidad BRDF</span>
                         <span id="rough-val" class="val">100 %</span>
@@ -885,14 +918,14 @@
                 </div>
 
                 <!-- REBOTES -->
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>Rebotes (Bounce)</span>
                         <span id="bounce-val" class="val">0</span>
                     </div>
                     <input type="range" id="bounces" min="0" max="4" value="0" step="1">
                 </div>
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>Reflexión por Rebote</span>
                         <span id="refl-val" class="val">50 %</span>
@@ -905,7 +938,7 @@
                 <button class="btn-play" id="play-btn" disabled>Esperando Audio...</button>
             </div>
 
-            <div class="sync-row">
+            <div class="sync-row advanced-only">
                 <label for="sync-transport">Sync Original + Render</label>
                 <input id="sync-transport" type="checkbox">
             </div>
@@ -927,7 +960,7 @@
         </section>
     </div>
 
-    <section class="scene-panel lab-panel">
+    <section class="scene-panel lab-panel advanced-only">
         <div class="section-header">
             <span class="section-title">Convergence Lab</span>
             <p class="section-subtitle">Empirical proof: the stochastic render converges to a deterministic target with error ~ 1/√N</p>
@@ -2658,7 +2691,40 @@
         drawLabPlot();
     }
 
+    // ── Modo Simple / Avanzado + knob macro "Carácter" ──────────────
+    function initSimpleMode() {
+        const macroSlider = document.getElementById('macro');
+        const macroVal = document.getElementById('macro-val');
+        const modeToggle = document.getElementById('mode-toggle');
+        if (!macroSlider || !modeToggle) return;
+
+        const macroWord = (t) => t < 0.34 ? 'Tonal' : t < 0.67 ? 'Textura' : 'Drone';
+
+        // El knob "Carácter" mueve N, apertura y rugosidad a la vez, de tonal a drone.
+        function applyMacro(v) {
+            const t = clamp(v / 100, 0, 1);
+            raySlider.value = Math.round(10 + t * 35);            // raw 10..45 (N sube exponencial)
+            dispSlider.value = Math.round(90 + (t * t) * 5910);   // 90 ms .. 6 s (suave abajo)
+            roughSlider.value = Math.round(45 + t * 55);          // 45 % .. 100 %
+            rayVal.innerText = getDisplayedN();
+            dispVal.innerText = formatDispersion(dispSlider.value);
+            roughVal.innerText = `${roughSlider.value} %`;
+            macroVal.innerText = macroWord(t);
+            if (waveformData) drawRayCanvas();
+            updateStatus(activeSources.length, null);
+        }
+
+        macroSlider.addEventListener('input', (e) => applyMacro(e.target.value));
+        applyMacro(macroSlider.value);   // arranque con un default agradable (no caótico)
+
+        modeToggle.addEventListener('click', () => {
+            const adv = document.body.classList.toggle('advanced');
+            modeToggle.innerText = adv ? '◂ Modo simple' : '⚙ Modo avanzado';
+        });
+    }
+
     initLab();
+    initSimpleMode();
 </script>
 </body>
 </html>
