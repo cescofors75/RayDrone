@@ -194,26 +194,31 @@ Built entirely with **vanilla JavaScript** and the **Web Audio API**. No librari
 AudioBufferSourceNode (×burst)
         ↓
   GainNode (fade envelope per ray)
-        ↓
-  [Optional] BiquadFilter band (low / mid / high)
-        ↓
-  mainGainNode (master volume)
-        ↓
-  AnalyserNode (FFT 2048, for visual output + metering)
-        ↓
-  Feedback state (low / mid / high smoothed band energy)
-        ↓
-  AudioContext.destination
+        ├──────────────→ dryBus ─────────────┐  (full range)
+        ↓                                     │
+  Linkwitz-Riley band (LR4: low / mid / high) │
+        ↓                                     │
+  band gain (1/√P compensation) → wetBus ─────┤
+                                              ↓
+                                  mainGainNode (master volume)
+                                              ↓
+                          AnalyserNode (FFT 2048, visual + metering)
+                                              ↓
+                                  AudioContext.destination
 ```
 
-Each render cycle (`setTimeout` adaptive at dispersion interval):
+**Scheduling — lookahead clock.** Instead of firing bursts straight from `setTimeout`, a lookahead scheduler (Chris Wilson's *A Tale of Two Clocks*) wakes every ~25 ms and schedules every burst that falls inside a ~120 ms window with **exact start times on `audioCtx.currentTime`**. Timing no longer depends on `setTimeout` jitter and doesn't clump or stall when the tab is backgrounded.
+
+**Chromatic aberration — continuous crossover.** The aberration routes each ray through a 3-band **Linkwitz-Riley (LR4)** crossover (250 Hz / 2500 Hz), with per-band `1/√P` gain so the bands reconstruct ~flat (±3 dB, only −3 dB dips at the crossovers — no spectral holes). A **dry/wet bus** crossfades from fully dry at aberration 0, so the effect grows smoothly from zero instead of the old hard 0→1 % jump.
+
+Each burst:
 1. Read focal point, aperture and all optical parameters from sliders
 2. Calculate `burstN = min(rawN, burstCap, headroom)`
-3. Assign a frequency band per ray (low / mid / high)
-4. Apply **Chromatic Aberration** by scaling the aperture per band
-5. Apply **BRDF Roughness** by interpolating between harmonic placement and stochastic placement
-6. Spawn `BufferSourceNode`s with fade envelopes
-7. If **Bounce Count** is enabled, spawn child rays from the end point of each ray
+3. Assign a frequency band per ray (low / mid / high) and scale the aperture per band (**Chromatic Aberration**)
+4. Draw the diffuse offset with the chosen **sampling strategy** (random / stratified / quasi-MC / importance)
+5. Apply **BRDF Roughness** by interpolating between harmonic and stochastic placement
+6. Spawn `BufferSourceNode`s with fade envelopes at their scheduled audio-clock time
+7. On each ray end, **Russian roulette** may spawn a child ray (the transport tail)
 8. Push visual rays to `visRays[]` and animate them with `requestAnimationFrame`
 9. Update RMS / Peak meters and the clip indicator in real time
 10. If **Autoevolution** is enabled, smooth low / mid / high FFT energies and apply them to the next engine cycle through `α`, `β`, and `γ`
