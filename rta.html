@@ -200,6 +200,78 @@
             margin-top: 15px;
             font-family: monospace;
         }
+
+        .meter-panel {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid rgba(0, 255, 204, 0.14);
+            border-radius: 10px;
+            background: rgba(7, 8, 14, 0.85);
+        }
+
+        .meter-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-family: monospace;
+            font-size: 0.76rem;
+            color: #c6d2e5;
+        }
+
+        .meter-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .meter-label {
+            width: 56px;
+            color: #8a99ad;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .meter-track {
+            position: relative;
+            flex: 1;
+            height: 10px;
+            border-radius: 999px;
+            background: #1a1f2f;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .meter-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #00ffcc, #47ffd4 65%, #ffe066 85%, #ff4d6d 100%);
+            transition: width 0.06s linear;
+        }
+
+        .meter-value {
+            width: 62px;
+            text-align: right;
+            color: #00ffcc;
+            font-weight: 600;
+        }
+
+        .clip-indicator {
+            margin-left: auto;
+            padding: 3px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            font-size: 0.68rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #8a99ad;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .clip-indicator.hot {
+            color: #fff;
+            background: rgba(255, 59, 92, 0.9);
+            border-color: rgba(255, 59, 92, 1);
+            box-shadow: 0 0 14px rgba(255, 59, 92, 0.55);
+        }
     </style>
 </head>
 <body>
@@ -220,6 +292,15 @@
     </div>
 
     <div class="controls">
+        <!-- VOLUMEN MASTER -->
+        <div class="control-group">
+            <div class="control-label">
+                <span>Volumen Master</span>
+                <span id="vol-val" class="val">80 %</span>
+            </div>
+            <input type="range" id="volume" min="0" max="100" value="80">
+        </div>
+
         <!-- CONTROL DE RAYOS (N) -->
         <div class="control-group">
             <div class="control-label">
@@ -235,7 +316,7 @@
                 <span>Dispersión de la Lente (Apertura)</span>
                 <span id="disp-val" class="val">50 ms</span>
             </div>
-            <input type="range" id="dispersion" min="5" max="800" value="50">
+            <input type="range" id="dispersion" min="5" max="10000" value="50">
         </div>
 
         <!-- POSICIÓN EN EL SAMPLER -->
@@ -256,6 +337,20 @@
         <canvas id="output-canvas" width="750" height="70"></canvas>
     </div>
 
+    <div class="meter-panel">
+        <div class="meter-row">
+            <span class="meter-label">RMS</span>
+            <div class="meter-track"><div id="rms-fill" class="meter-fill"></div></div>
+            <span id="rms-value" class="meter-value">-inf dB</span>
+            <span id="clip-indicator" class="clip-indicator">OK</span>
+        </div>
+        <div class="meter-row">
+            <span class="meter-label">Peak</span>
+            <div class="meter-track"><div id="peak-fill" class="meter-fill"></div></div>
+            <span id="peak-value" class="meter-value">-inf dB</span>
+        </div>
+    </div>
+
     <div class="status" id="status-text">Sube un archivo para inicializar los rayos estocásticos.</div>
 </div>
 
@@ -268,6 +363,10 @@
     let analyserNode = null;
     let intervalId = null;
     let animFrameId = null;
+    let activeSources = [];
+
+    const MAX_SIMULTANEOUS_SOURCES = 140;
+    const MAX_VIS_RAYS = 650;
 
     // Canvas
     const rayCanvas    = document.getElementById('ray-canvas');
@@ -282,6 +381,36 @@
     // Analyser buffer
     const analyserData = new Uint8Array(2048);
 
+    function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+    }
+
+    function formatDispersion(msValue) {
+        const ms = parseFloat(msValue);
+        if (ms >= 1000) {
+            return `${(ms / 1000).toFixed(2)} s`;
+        }
+        return `${Math.round(ms)} ms`;
+    }
+
+    function getDisplayedN() {
+        return Math.floor(Math.pow(parseFloat(raySlider.value), 1.6));
+    }
+
+    function getBurstCapFromSlider() {
+        const dispSec = parseFloat(dispSlider.value) / 1000;
+        // Curva suave: apertura grande → rayos largos → se solapan menos por ciclo → Cap puede ser mayor.
+        // de ~96 en corto a ~62 en 10 s (en lugar de caer a 20).
+        return clamp(Math.round(96 - dispSec * 3.4), 38, 96);
+    }
+
+    function updateStatus(activeCount = 0, burstN = null, capN = null) {
+        const selectorN = getDisplayedN();
+        const cap = capN !== null ? capN : getBurstCapFromSlider();
+        const burst = burstN !== null ? burstN : Math.min(selectorN, cap);
+        statusText.innerText = `Selector N=${selectorN} | Cap=${cap} | Burst=${burst} | Activos=${activeCount}`;
+    }
+
     // Elementos del DOM
     const fileInput = document.getElementById('audio-file');
     const uploadText = document.getElementById('upload-text');
@@ -293,10 +422,41 @@
     const posSlider = document.getElementById('position');
     const posVal = document.getElementById('pos-val');
     const statusText = document.getElementById('status-text');
+    const volSlider = document.getElementById('volume');
+    const volVal = document.getElementById('vol-val');
+    const rmsFill = document.getElementById('rms-fill');
+    const peakFill = document.getElementById('peak-fill');
+    const rmsValueEl = document.getElementById('rms-value');
+    const peakValueEl = document.getElementById('peak-value');
+    const clipIndicator = document.getElementById('clip-indicator');
+
+    let clipHoldUntilMs = 0;
+
+    function linearToDb(linear) {
+        const floored = Math.max(linear, 0.000001);
+        return 20 * Math.log10(floored);
+    }
+
+    function dbToPercent(db) {
+        return clamp(((db + 60) / 60) * 100, 0, 100);
+    }
+
+    function resetMeters() {
+        rmsFill.style.width = '0%';
+        peakFill.style.width = '0%';
+        rmsValueEl.innerText = '-inf dB';
+        peakValueEl.innerText = '-inf dB';
+        clipIndicator.innerText = 'OK';
+        clipIndicator.classList.remove('hot');
+        clipHoldUntilMs = 0;
+    }
 
     // Inicializar displays con los valores calculados del slider
-    rayVal.innerText = Math.floor(Math.pow(parseFloat(raySlider.value), 1.6));
+    rayVal.innerText = getDisplayedN();
     posVal.innerText = `${parseFloat(posSlider.value).toFixed(2)}s`;
+    dispVal.innerText = formatDispersion(dispSlider.value);
+    volVal.innerText = `${volSlider.value} %`;
+    updateStatus(0, null);
 
     // Escuchar la carga de archivos
     fileInput.addEventListener('change', function(e) {
@@ -310,7 +470,7 @@
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             mainGainNode = audioCtx.createGain();
-            mainGainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
+            mainGainNode.gain.setValueAtTime(parseFloat(volSlider.value) / 100, audioCtx.currentTime);
             analyserNode = audioCtx.createAnalyser();
             analyserNode.fftSize = 2048;
             mainGainNode.connect(analyserNode);
@@ -354,9 +514,17 @@
         reader.readAsArrayBuffer(file);
     });
 
+    volSlider.addEventListener('input', (e) => {
+        volVal.innerText = `${e.target.value} %`;
+        if (mainGainNode) {
+            mainGainNode.gain.setValueAtTime(parseFloat(e.target.value) / 100, audioCtx.currentTime);
+        }
+    });
+
     raySlider.addEventListener('input', (e) => { 
         let N = Math.floor(Math.pow(e.target.value, 1.6));
         rayVal.innerText = N; 
+        updateStatus(activeSources.length, null);
     });
 
     // Botón de Play / Stop
@@ -372,10 +540,12 @@
     posSlider.addEventListener('input', (e) => {
         posVal.innerText = `${parseFloat(e.target.value).toFixed(2)}s`;
         if (waveformData) drawRayCanvas();
+        updateStatus(activeSources.length, null);
     });
     dispSlider.addEventListener('input', (e) => {
-        dispVal.innerText = `${e.target.value} ms`;
+        dispVal.innerText = formatDispersion(e.target.value);
         if (waveformData) drawRayCanvas();
+        updateStatus(activeSources.length, null);
     });
 
     // ── DRAW FUNCTIONS ──────────────────────────────────────────────
@@ -392,7 +562,8 @@
         if (!waveformData || !audioBuffer) return;
 
         const focusSec  = parseFloat(posSlider.value);
-        const dispSec   = parseFloat(dispSlider.value) / 1000;
+        const dispSecRaw = parseFloat(dispSlider.value) / 1000;
+        const dispSec = Math.min(dispSecRaw, Math.max(audioBuffer.duration * 0.5 - 0.01, 0.01));
         const focalX    = (focusSec / audioBuffer.duration) * W;
         const dispX     = (dispSec  / audioBuffer.duration) * W;
 
@@ -473,9 +644,37 @@
         oCtx.lineTo(W, midY);
         oCtx.stroke();
 
-        if (!isPlaying || !analyserNode) return;
+        if (!isPlaying || !analyserNode) {
+            resetMeters();
+            return;
+        }
 
         analyserNode.getByteTimeDomainData(analyserData);
+
+        let sumSq = 0;
+        let peak = 0;
+        for (let i = 0; i < analyserData.length; i++) {
+            const sample = (analyserData[i] - 128) / 128;
+            const abs = Math.abs(sample);
+            if (abs > peak) peak = abs;
+            sumSq += sample * sample;
+        }
+
+        const rms = Math.sqrt(sumSq / analyserData.length);
+        const rmsDb = linearToDb(rms);
+        const peakDb = linearToDb(peak);
+        const nowMs = Date.now();
+        if (peak >= 0.985) {
+            clipHoldUntilMs = nowMs + 700;
+        }
+        const clipHot = nowMs < clipHoldUntilMs;
+
+        rmsFill.style.width = `${dbToPercent(rmsDb)}%`;
+        peakFill.style.width = `${dbToPercent(peakDb)}%`;
+        rmsValueEl.innerText = `${rmsDb.toFixed(1)} dB`;
+        peakValueEl.innerText = `${peakDb.toFixed(1)} dB`;
+        clipIndicator.innerText = clipHot ? 'CLIP' : 'OK';
+        clipIndicator.classList.toggle('hot', clipHot);
 
         oCtx.save();
         oCtx.shadowColor = '#ff0066';
@@ -508,6 +707,23 @@
         animFrameId = requestAnimationFrame(loop);
     }
 
+    function getEngineParams() {
+        const rawN = Math.max(1, Math.floor(Math.pow(parseFloat(raySlider.value), 1.6)));
+        const dispSec = parseFloat(dispSlider.value) / 1000;
+        const rayDuration = clamp(dispSec * 1.6, 0.06, 0.45);
+        const tickMs = clamp(parseFloat(dispSlider.value) * 0.8, 28, 180);
+
+        const safeMin = Math.min(dispSec, Math.max(0, audioBuffer.duration * 0.5));
+        const safeMax = Math.max(audioBuffer.duration - dispSec, safeMin);
+        const focusRaw = parseFloat(posSlider.value);
+        const focusSec = clamp(focusRaw, safeMin, safeMax);
+
+        // Con apertura grande los rayos son más largos y se autorregulan — el Cap puede ser más generoso.
+        const burstCapByDisp = getBurstCapFromSlider();
+
+        return { rawN, burstCapByDisp, dispSec, focusSec, rayDuration, tickMs };
+    }
+
     // ── MOTOR ACÚSTICO DE RAYTRACING ────────────────────────────────
     function startEngine() {
         if (!audioBuffer) return;
@@ -521,25 +737,32 @@
         playBtn.innerText = "■ Detener Rayos";
         playBtn.style.background = "linear-gradient(135deg, #ff4444, #ff0055)";
 
-        const activeSources = [];
-
         function fireRays() {
             if (!isPlaying) return;
 
-            const N = Math.min(Math.max(1, Math.floor(Math.pow(parseFloat(raySlider.value), 1.6))), 128);
-            const dispSec = parseFloat(dispSlider.value) / 1000;
-            const focusSec = parseFloat(posSlider.value);
-            const rayDuration = Math.max(dispSec * 2, 0.05);
+            const { rawN, burstCapByDisp, dispSec, focusSec, rayDuration, tickMs } = getEngineParams();
+            const headroom = Math.max(0, MAX_SIMULTANEOUS_SOURCES - activeSources.length);
+            const burstN = Math.min(rawN, burstCapByDisp, headroom);
 
-            for (let i = 0; i < N; i++) {
+            if (burstN <= 0) {
+                updateStatus(activeSources.length, 0, burstCapByDisp);
+                if (isPlaying) {
+                    intervalId = window.setTimeout(fireRays, tickMs);
+                }
+                return;
+            }
+
+            for (let i = 0; i < burstN; i++) {
                 const src = audioCtx.createBufferSource();
                 src.buffer = audioBuffer;
 
-                let offset = focusSec + (Math.random() * 2 - 1) * dispSec;
+                // Distribución triangular para favorecer el centro del foco y reducir ruido áspero.
+                const triRnd = ((Math.random() + Math.random()) * 0.5) * 2 - 1;
+                let offset = focusSec + triRnd * dispSec;
                 offset = Math.max(0, Math.min(audioBuffer.duration - 0.01, offset));
 
                 const gain = audioCtx.createGain();
-                const vol = 0.7 / Math.sqrt(Math.max(N, 1));
+                const vol = 0.7 / Math.sqrt(Math.max(burstN, 1));
                 const fade = Math.min(rayDuration * 0.3, 0.04);
                 gain.gain.setValueAtTime(0, audioCtx.currentTime);
                 gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + fade);
@@ -552,6 +775,9 @@
 
                 // Rayo visual: posición normalizada [0,1]
                 visRays.push({ x: offset / audioBuffer.duration, life: 1.0 });
+                if (visRays.length > MAX_VIS_RAYS) {
+                    visRays.splice(0, visRays.length - MAX_VIS_RAYS);
+                }
 
                 src.onended = () => {
                     const idx = activeSources.indexOf(src);
@@ -559,29 +785,42 @@
                 };
             }
 
-            statusText.innerText = `Rayos activos: ${activeSources.length} | N=${N} | Foco: ${focusSec.toFixed(2)}s`;
+            updateStatus(activeSources.length, burstN, burstCapByDisp);
+
+            if (isPlaying) {
+                intervalId = window.setTimeout(fireRays, tickMs);
+            }
         }
 
         fireRays();
-        intervalId = setInterval(fireRays, Math.max(parseFloat(dispSlider.value), 20));
     }
 
     function stopEngine() {
         isPlaying = false;
-        clearInterval(intervalId);
+        clearTimeout(intervalId);
         intervalId = null;
+
+        for (const src of activeSources) {
+            try {
+                src.stop();
+            } catch (e) {
+                // Source may already be ended.
+            }
+        }
+        activeSources.length = 0;
 
         if (audioCtx) {
             mainGainNode.gain.setValueAtTime(mainGainNode.gain.value, audioCtx.currentTime);
             mainGainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
             setTimeout(() => {
-                if (!isPlaying) mainGainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
+                if (!isPlaying) mainGainNode.gain.setValueAtTime(parseFloat(volSlider.value) / 100, audioCtx.currentTime);
             }, 400);
         }
 
         playBtn.innerText = "▶ Renderizar Drone";
         playBtn.style.background = "linear-gradient(135deg, var(--accent-dim), var(--accent-color))";
-        statusText.innerText = "Motor detenido. Listo para re-renderizar.";
+        resetMeters();
+        updateStatus(0, null);
     }
 </script>
 </body>
