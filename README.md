@@ -102,8 +102,14 @@ This is the law the README always claimed ("more rays → less noise → cleaner
 
 ### Variance reduction (straight from the renderer)
 
-- **Stratified sampling** — one sample per stratum of the aperture's CDF, like pixel supersampling. Lower variance at the same `N`.
-- **Importance sampling** — draw `τ ∝ p(τ)·energy(τ)` and reweight by `p/q` (self-normalized). Fewer rays for the same SNR where the source energy is uneven.
+Plain random sampling gives the textbook `1/√N`. Three techniques from rendering do measurably better — verified live by the Convergence Lab (measured log-log exponents on a test signal in parentheses):
+
+- **Stratified sampling** (≈ −0.75) — one sample per stratum of the aperture's CDF, like pixel supersampling. Lower variance at the same `N`, and never worse.
+- **Quasi-Monte Carlo** (≈ −0.73) — a golden-ratio low-discrepancy sequence with a per-burst Cranley-Patterson rotation. Robust: it doesn't depend on the source content. (On smooth integrands it tends toward `1/N`; broadband audio noise caps the achievable rate.)
+- **Importance sampling** (≈ −0.75) — draw `τ ∝ p(τ)·energy(τ)` and reweight by `p/q` (self-normalized), with the importance CDF sampled *stratified* — the correct renderer recipe. Wins most where the source energy is uneven.
+
+> **A real, documented finding.** The first importance implementation was *worse* than random: it measured energy over only the first eighth of each grain and drew the CDF with plain random numbers. The Lab caught it (the yellow curve sat above red). Measuring energy over the full grain and stratifying the CDF draws fixed it. This is the methodology working as intended — the experiment falsified a bad estimator instead of marketing it.
+
 - **Russian roulette** — secondary "bounce" rays survive with probability = reflection coefficient at constant gain, instead of a fixed, attenuated echo count. Expected tail energy `= vol · Σ rᵈ`, so the bounce tail is the unbiased solution of a Neumann series — i.e. the *recursive* form of the transport equation, not an ad-hoc delay.
 
 ### How to prove it isn't hype
@@ -111,7 +117,7 @@ This is the law the README always claimed ("more rays → less noise → cleaner
 The **Convergence Lab** panel (below the scene) runs the experiment live:
 
 1. Computes the exact deterministic `target` for the current focus/aperture.
-2. Renders Monte Carlo estimates across `N = 1 … 1024` for all three sampling strategies.
+2. Renders Monte Carlo estimates across `N = 1 … 1024` for all four sampling strategies.
 3. Plots **RMS error vs N** on a log–log axis, overlaid with the ideal `1/√N` slope, and fits the measured exponent (expect ≈ −0.5).
 4. **A/B audio**: play the `target` (reference) vs `N=4` (noisy) vs `N=256` (clean), all normalized to the *same level* so you hear the **noise floor falling**, not a volume change.
 
@@ -167,7 +173,7 @@ The interface renders the ray tracing process in real time across two canvases:
 
 | Parameter | Optical Analogy | Acoustic Effect |
 |---|---|---|
-| **Sampling Strategy** | Monte Carlo estimator | `Random` = plain MC. `Stratified` = one sample per CDF stratum (lower noise). `Importance` = rays concentrate where the source has energy. |
+| **Sampling Strategy** | Monte Carlo estimator | `Random` = plain MC (error ~ 1/√N). `Stratified` = one sample per CDF stratum. `Quasi-MC` = golden-ratio low-discrepancy sequence. `Importance` = rays concentrate where the source has energy. The last three converge faster than 1/√N. |
 | **Chromatic Aberration** | Lens dispersion by wavelength | Low frequencies get a wider aperture; highs get a narrow aperture. Big low-end clouds and crystalline high-end detail. |
 | **BRDF Roughness** | Surface micro-geometry | 100 % = diffuse Monte Carlo drone. 0 % = specular / harmonic placement. |
 | **Bounce Count** | Recursive transport depth | Safety cap on secondary-ray recursion. Each ray spawns a child via **Russian roulette**, building the Neumann-series tail. |
