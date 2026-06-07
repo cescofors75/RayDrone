@@ -428,6 +428,33 @@
             margin-top: 10px;
         }
 
+        .sync-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 12px;
+            padding: 10px 12px;
+            border: 1px solid rgba(0, 255, 204, 0.12);
+            border-radius: 10px;
+            background: rgba(7, 8, 14, 0.5);
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        .sync-row label {
+            color: #b8c5d8;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .sync-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #00ffcc;
+            cursor: pointer;
+        }
+
         .btn-audition {
             width: 100%;
             background: linear-gradient(135deg, rgba(0,255,204,0.18), rgba(0,255,204,0.42));
@@ -746,6 +773,11 @@
                 <button class="btn-play" id="play-btn" disabled>Esperando Audio...</button>
             </div>
 
+            <div class="sync-row">
+                <label for="sync-transport">Sync Original + Render</label>
+                <input id="sync-transport" type="checkbox">
+            </div>
+
             <button class="btn-record" id="record-btn" disabled>⏺ Grabar WAV</button>
             <a id="download-link" class="download-link" download="acoustic-raytracer-render.wav">Descargar WAV renderizado</a>
 
@@ -832,6 +864,7 @@
     const presetApply = document.getElementById('preset-apply');
     const originalBtn = document.getElementById('original-btn');
     const playBtn = document.getElementById('play-btn');
+    const syncTransportCheckbox = document.getElementById('sync-transport');
     const recordBtn = document.getElementById('record-btn');
     const downloadLink = document.getElementById('download-link');
     const raySlider = document.getElementById('ray-count');
@@ -1044,6 +1077,27 @@
                 updateSourceMarkers();
             }
         };
+    }
+
+    function isSyncTransportEnabled() {
+        return syncTransportCheckbox.checked;
+    }
+
+    function stopBothTransports() {
+        if (isAuditioningOriginal) {
+            stopOriginalPlayback();
+        }
+        if (isPlaying) {
+            stopEngine();
+        }
+        updateStatus(activeSources.length, null);
+    }
+
+    function startBothTransports() {
+        if (!isPlaying) {
+            startEngine();
+        }
+        playOriginalFromFocus();
     }
 
     function cleanupDownloadUrl() {
@@ -1287,10 +1341,18 @@
 
     // Botón de Play / Stop
     playBtn.addEventListener('click', function() {
-        if (isPlaying) {
-            stopEngine();
+        if (isSyncTransportEnabled()) {
+            if (isPlaying || isAuditioningOriginal) {
+                stopBothTransports();
+            } else {
+                startBothTransports();
+            }
         } else {
-            startEngine();
+            if (isPlaying) {
+                stopEngine();
+            } else {
+                startEngine();
+            }
         }
     });
 
@@ -1303,12 +1365,20 @@
     });
 
     originalBtn.addEventListener('click', function() {
-        if (isAuditioningOriginal) {
-            stopOriginalPlayback();
-            updateStatus(activeSources.length, null);
-            return;
+        if (isSyncTransportEnabled()) {
+            if (isPlaying || isAuditioningOriginal) {
+                stopBothTransports();
+            } else {
+                startBothTransports();
+            }
+        } else {
+            if (isAuditioningOriginal) {
+                stopOriginalPlayback();
+                updateStatus(activeSources.length, null);
+                return;
+            }
+            playOriginalFromFocus();
         }
-        playOriginalFromFocus();
     });
 
     rayCanvas.addEventListener('pointerdown', (e) => {
