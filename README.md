@@ -8,6 +8,7 @@
 
 - [English](#english)
 - [Català](#català)
+- [Castellano](#castellano)
 
 ---
 
@@ -366,3 +367,57 @@ Cada cicle de renderitzat (`setTimeout` adaptatiu a l'interval de dispersió):
 ## Llicència
 
 MIT — lliure d'usar, adaptar i construir sobre seu. S'agraeix el crèdit.
+
+---
+
+---
+
+# Castellano
+
+## Qué es Acoustic Raytracing
+
+Acoustic Raytracing es una **metodología de renderizado sonoro**: en vez de sintetizar el audio desde bloques o partículas, toma un buffer grabado y lo trata como una escena temporal. Los rayos no “representan” el sonido; lo **convergen**.
+
+La idea no es reproducir el sample de forma fiel. La idea es **renderizarlo como un campo acústico** que puede convertirse en drone, textura, coro granular o nube armónica.
+
+---
+
+## Extensiones Ópticas
+
+- **Aberración cromática**: los graves reciben una apertura más amplia; los agudos una apertura mucho más estrecha.
+- **BRDF acústica / rugosidad**: controla si los rayos se distribuyen de forma difusa o más armónica.
+- **Bounce count**: cada rayo puede generar rebotes secundarios y construir una cola geométrica de resonancia.
+- **Barrido del sampler**: el foco puede recorrer todo el audio automáticamente en modo ping-pong o quedarse fijo.
+
+---
+
+## Interacción
+
+- Puedes hacer click sobre la onda para saltar a un punto concreto.
+- Puedes arrastrar sobre la onda para seleccionar una ventana temporal.
+- Puedes oír el **original** sin parar el render y parar el **render** sin cortar el original.
+- Los medidores RMS y Peak están arriba, de forma sutil, para comprobar nivel y clipping.
+
+---
+
+## Presets
+
+La interfaz incluye presets rápidos para empezar sin ajustar todo a mano:
+
+- **Tonal / Pitched**
+- **Dense Drone**
+- **Zimmer Brass**
+- **Fred Again Vocal**
+- **Infinite Shimmer**
+
+---
+
+## Uso
+
+1. Carga un WAV o MP3.
+2. Elige un preset o ajusta los controles manualmente.
+3. Usa el foco, el barrido o la selección con mouse para definir qué parte del sampler se renderiza.
+4. Pulsa **Renderizar Drone** para escuchar el motor.
+5. Pulsa **Oír Original** para comparar el sample sin parar el render.
+6. Si te gusta el resultado, graba WAV desde la propia interfaz y arrástralo a tu DAW.
+

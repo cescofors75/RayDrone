@@ -115,6 +115,74 @@
             font-size: 0.62rem;
         }
 
+        .preset-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .preset-select {
+            width: 100%;
+            background: #0f1320;
+            color: #e2e8f0;
+            border: 1px solid rgba(0, 255, 204, 0.18);
+            border-radius: 10px;
+            padding: 11px 12px;
+            font-family: monospace;
+            font-size: 0.82rem;
+            outline: none;
+        }
+
+        .preset-apply {
+            padding: 11px 12px;
+            border: 1px solid rgba(0, 255, 204, 0.18);
+            border-radius: 10px;
+            background: rgba(0, 255, 204, 0.12);
+            color: var(--accent-color);
+            font-family: monospace;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .preset-apply:hover {
+            background: rgba(0, 255, 204, 0.2);
+        }
+
+        .canvas-marker {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            pointer-events: none;
+            box-shadow: 0 0 14px currentColor;
+        }
+
+        .canvas-marker::after {
+            content: attr(data-label);
+            position: absolute;
+            top: 6px;
+            left: 8px;
+            font-size: 0.62rem;
+            font-family: monospace;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            white-space: nowrap;
+            color: currentColor;
+            opacity: 0.85;
+        }
+
+        .canvas-marker.render {
+            color: rgba(0, 255, 204, 0.95);
+            background: rgba(0, 255, 204, 0.92);
+        }
+
+        .canvas-marker.original {
+            color: rgba(255, 77, 109, 0.95);
+            background: rgba(255, 77, 109, 0.92);
+        }
+
         .scene-stack {
             display: grid;
             gap: 16px;
@@ -554,6 +622,8 @@
             <div class="scene-stack">
                 <!-- VISUALIZADOR SOURCE + RAYOS -->
                 <div class="canvas-wrap">
+                    <div id="render-marker" class="canvas-marker render" data-label="Render"></div>
+                    <div id="original-marker" class="canvas-marker original" data-label="Original"></div>
                     <span class="canvas-label">Source</span>
                     <div id="selection-overlay" class="selection-overlay"></div>
                     <canvas id="ray-canvas" width="750" height="190"></canvas>
@@ -576,6 +646,18 @@
             <div class="file-upload">
                 <label for="audio-file" class="file-label" id="upload-text">📁 Cargar WAV / MP3</label>
                 <input type="file" id="audio-file" accept="audio/*">
+            </div>
+
+            <div class="preset-row">
+                <select id="preset-select" class="preset-select">
+                    <option value="custom">Preset: Custom</option>
+                    <option value="tonal">Tonal / Pitched</option>
+                    <option value="drone">Dense Drone</option>
+                    <option value="zimmer">Zimmer Brass</option>
+                    <option value="fred">Fred Again Vocal</option>
+                    <option value="shimmer">Infinite Shimmer</option>
+                </select>
+                <button id="preset-apply" class="preset-apply">Apply</button>
             </div>
 
             <div class="controls">
@@ -613,6 +695,15 @@
                         <span id="pos-val" class="val">0.0s</span>
                     </div>
                     <input type="range" id="position" min="0" max="100" value="20">
+                </div>
+
+                <!-- BARRIDO AUTOMÁTICO -->
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Barrido del Sampler</span>
+                        <span id="sweep-val" class="val">OFF</span>
+                    </div>
+                    <input type="range" id="sweep-rate" min="0" max="60" value="0" step="1">
                 </div>
 
                 <!-- ABERRACIÓN CROMÁTICA -->
@@ -676,6 +767,9 @@
     let activeSources = [];
     let originalSourceNode = null;
     let isAuditioningOriginal = false;
+    let originalPlaybackStartOffset = 0;
+    let originalPlaybackStartedAt = 0;
+    let sweepPhase = 0; // 0..1, para barrido ping-pong de todo el sample
     let selectionState = { dragging: false, startX: 0, endX: 0 };
     let isRecording = false;
     let recordedChunks = [];
@@ -734,6 +828,8 @@
     // Elementos del DOM
     const fileInput = document.getElementById('audio-file');
     const uploadText = document.getElementById('upload-text');
+    const presetSelect = document.getElementById('preset-select');
+    const presetApply = document.getElementById('preset-apply');
     const originalBtn = document.getElementById('original-btn');
     const playBtn = document.getElementById('play-btn');
     const recordBtn = document.getElementById('record-btn');
@@ -744,6 +840,8 @@
     const dispVal = document.getElementById('disp-val');
     const posSlider = document.getElementById('position');
     const posVal = document.getElementById('pos-val');
+    const sweepSlider = document.getElementById('sweep-rate');
+    const sweepVal = document.getElementById('sweep-val');
     const statusText = document.getElementById('status-text');
     const volSlider    = document.getElementById('volume');
     const volVal       = document.getElementById('vol-val');
@@ -762,6 +860,8 @@
     const clipIndicator = document.getElementById('clip-indicator');
     const selectionOverlay = document.getElementById('selection-overlay');
     const sourceCanvasWrap = rayCanvas.closest('.canvas-wrap');
+    const renderMarker = document.getElementById('render-marker');
+    const originalMarker = document.getElementById('original-marker');
 
     let clipHoldUntilMs = 0;
 
@@ -800,6 +900,67 @@
         }
         isAuditioningOriginal = false;
         originalBtn.innerText = '▶ Oír Original';
+        originalMarker.style.display = 'none';
+    }
+
+    function updateSourceMarkers() {
+        if (!audioBuffer) return;
+
+        const duration = Math.max(audioBuffer.duration, 0.001);
+        const renderFocus = clamp(parseFloat(posSlider.value), 0, duration);
+        renderMarker.style.display = 'block';
+        renderMarker.style.left = `${(renderFocus / duration) * 100}%`;
+
+        if (isAuditioningOriginal && originalSourceNode) {
+            const elapsed = Math.max(0, audioCtx.currentTime - originalPlaybackStartedAt);
+            const originalPos = clamp(originalPlaybackStartOffset + elapsed, 0, duration);
+            originalMarker.style.display = 'block';
+            originalMarker.style.left = `${(originalPos / duration) * 100}%`;
+        } else {
+            originalMarker.style.display = 'none';
+        }
+    }
+
+    const presetMap = {
+        tonal:   { volume: 78, ray: 18, disp: 140, pos: 28, sweep: 0,  aber: 0,  rough: 0,   bounces: 0, refl: 45 },
+        drone:   { volume: 82, ray: 215, disp: 8500, pos: 30, sweep: 0, aber: 18, rough: 100, bounces: 0, refl: 50 },
+        zimmer:  { volume: 85, ray: 180, disp: 4200, pos: 40, sweep: 0, aber: 58, rough: 78,  bounces: 2, refl: 68 },
+        fred:    { volume: 80, ray: 92,  disp: 1600, pos: 32, sweep: 0, aber: 28, rough: 100, bounces: 0, refl: 50 },
+        shimmer: { volume: 76, ray: 128, disp: 6200, pos: 25, sweep: 12, aber: 42, rough: 64,  bounces: 4, refl: 78 },
+    };
+
+    function applyPreset(name) {
+        const preset = presetMap[name];
+        if (!preset) return;
+
+        volSlider.value = preset.volume;
+        raySlider.value = Math.min(250, Math.max(2, Math.round(preset.ray)));
+        dispSlider.value = preset.disp;
+        posSlider.value = preset.pos;
+        sweepSlider.value = preset.sweep;
+        aberSlider.value = preset.aber;
+        roughSlider.value = preset.rough;
+        bounceSlider.value = preset.bounces;
+        reflSlider.value = preset.refl;
+
+        volVal.innerText = `${preset.volume} %`;
+        rayVal.innerText = getDisplayedN();
+        dispVal.innerText = formatDispersion(dispSlider.value);
+        posVal.innerText = `${parseFloat(posSlider.value).toFixed(2)}s`;
+        sweepVal.innerText = preset.sweep <= 0 ? 'OFF' : `${preset.sweep.toFixed(0)} cpm`;
+        aberVal.innerText = `${preset.aber} %`;
+        roughVal.innerText = `${preset.rough} %`;
+        bounceVal.innerText = `${preset.bounces}`;
+        reflVal.innerText = `${preset.refl} %`;
+        presetSelect.value = name;
+
+        if (mainGainNode && audioCtx) {
+            mainGainNode.gain.setValueAtTime(preset.volume / 100, audioCtx.currentTime);
+        }
+
+        if (waveformData) drawRayCanvas();
+        updateStatus(activeSources.length, null);
+        updateSourceMarkers();
     }
 
     function setSelectionOverlay(startX, endX) {
@@ -827,8 +988,10 @@
         const focusSec = clamp((x / rayCanvas.width) * audioBuffer.duration, 0, audioBuffer.duration);
         posSlider.value = focusSec;
         posVal.innerText = `${focusSec.toFixed(2)}s`;
+        sweepPhase = clamp((focusSec / Math.max(audioBuffer.duration, 0.001)) * 0.5, 0, 0.5);
         drawRayCanvas();
         updateStatus(activeSources.length, null);
+        updateSourceMarkers();
     }
 
     function applyWindowSelection(startX, endX) {
@@ -843,12 +1006,14 @@
         dispSlider.value = clamp(widthSec * 1000, 5, 10000);
         posVal.innerText = `${centerSec.toFixed(2)}s`;
         dispVal.innerText = formatDispersion(dispSlider.value);
+        sweepPhase = clamp((centerSec / Math.max(audioBuffer.duration, 0.001)) * 0.5, 0, 0.5);
         drawRayCanvas();
         updateStatus(activeSources.length, null);
+        updateSourceMarkers();
     }
 
     function playOriginalFromFocus() {
-        if (!audioBuffer || isPlaying) return;
+        if (!audioBuffer) return;
         stopOriginalPlayback();
 
         if (audioCtx.state === 'suspended') {
@@ -863,8 +1028,11 @@
 
         originalSourceNode = source;
         isAuditioningOriginal = true;
+        originalPlaybackStartOffset = startOffset;
+        originalPlaybackStartedAt = audioCtx.currentTime;
         originalBtn.innerText = '⏹ Parar Original';
         statusText.innerText = `Escuchando original desde ${startOffset.toFixed(2)}s`;
+        updateSourceMarkers();
 
         source.onended = () => {
             if (originalSourceNode === source) {
@@ -873,6 +1041,7 @@
             if (isAuditioningOriginal) {
                 stopOriginalPlayback();
                 updateStatus(activeSources.length, null);
+                updateSourceMarkers();
             }
         };
     }
@@ -1013,6 +1182,7 @@
     roughVal.innerText  = `${roughSlider.value} %`;
     bounceVal.innerText = bounceSlider.value;
     reflVal.innerText   = `${reflSlider.value} %`;
+    sweepVal.innerText  = 'OFF';
     updateStatus(0, null);
 
     // Escuchar la carga de archivos
@@ -1097,6 +1267,17 @@
     roughSlider.addEventListener('input',  (e) => { roughVal.innerText  = `${e.target.value} %`; });
     bounceSlider.addEventListener('input', (e) => { bounceVal.innerText = e.target.value; });
     reflSlider.addEventListener('input',   (e) => { reflVal.innerText   = `${e.target.value} %`; });
+    sweepSlider.addEventListener('input',  (e) => {
+        const v = parseFloat(e.target.value);
+        sweepVal.innerText = v <= 0 ? 'OFF' : `${v.toFixed(0)} cpm`;
+    });
+
+    presetApply.addEventListener('click', () => applyPreset(presetSelect.value));
+    presetSelect.addEventListener('change', () => {
+        if (presetSelect.value !== 'custom') {
+            applyPreset(presetSelect.value);
+        }
+    });
 
     raySlider.addEventListener('input', (e) => { 
         let N = Math.floor(Math.pow(e.target.value, 1.6));
@@ -1126,9 +1307,6 @@
             stopOriginalPlayback();
             updateStatus(activeSources.length, null);
             return;
-        }
-        if (isPlaying) {
-            stopEngine();
         }
         playOriginalFromFocus();
     });
@@ -1342,6 +1520,7 @@
             }
             drawRayCanvas();
             drawOutputCanvas();
+            updateSourceMarkers();
             animFrameId = requestAnimationFrame(loop);
         }
         animFrameId = requestAnimationFrame(loop);
@@ -1353,8 +1532,21 @@
         const rayDuration = clamp(dispSec * 1.6, 0.06, 0.45);
         const tickMs = clamp(parseFloat(dispSlider.value) * 0.8, 28, 180);
 
-        const safeMin = Math.min(dispSec, Math.max(0, audioBuffer.duration * 0.5));
-        const safeMax = Math.max(audioBuffer.duration - dispSec, safeMin);
+        const sweepRateCpm = parseFloat(sweepSlider.value);
+        const sweepEnabled = sweepRateCpm > 0;
+        const cyclesPerSec = sweepRateCpm / 60;
+
+        if (sweepEnabled && audioBuffer.duration > 0) {
+            // Ping-pong sobre todo el sample: 0..1..0
+            sweepPhase = (sweepPhase + cyclesPerSec * (tickMs / 1000)) % 1;
+            const tri = sweepPhase < 0.5 ? sweepPhase * 2 : (1 - sweepPhase) * 2;
+            const sweepFocus = tri * audioBuffer.duration;
+            posSlider.value = sweepFocus;
+            posVal.innerText = `${sweepFocus.toFixed(2)}s`;
+        }
+
+        const safeMin = sweepEnabled ? 0 : Math.min(dispSec, Math.max(0, audioBuffer.duration * 0.5));
+        const safeMax = sweepEnabled ? audioBuffer.duration : Math.max(audioBuffer.duration - dispSec, safeMin);
         const focusRaw = parseFloat(posSlider.value);
         const focusSec = clamp(focusRaw, safeMin, safeMax);
 
@@ -1374,7 +1566,7 @@
         ];
 
         return { rawN, burstCapByDisp, dispSec, focusSec, rayDuration, tickMs,
-                 aberrationNorm, roughnessNorm, maxBounces, reflCoeff, bandApertureScale };
+                 aberrationNorm, roughnessNorm, maxBounces, reflCoeff, bandApertureScale, sweepEnabled };
     }
 
     // ── MOTOR ACÚSTICO DE RAYTRACING ────────────────────────────────
@@ -1385,6 +1577,8 @@
         if (audioCtx.state === 'suspended') {
             audioCtx.resume();
         }
+
+        updateSourceMarkers();
 
         isPlaying = true;
         playBtn.innerText = "■ Detener Rayos";
@@ -1500,8 +1694,6 @@
             stopRecording();
         }
 
-        stopOriginalPlayback();
-
         isPlaying = false;
         clearTimeout(intervalId);
         intervalId = null;
@@ -1527,6 +1719,7 @@
         playBtn.style.background = "linear-gradient(135deg, var(--accent-dim), var(--accent-color))";
         resetMeters();
         updateStatus(0, null);
+        updateSourceMarkers();
     }
 </script>
 </body>
