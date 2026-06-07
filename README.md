@@ -1,4 +1,4 @@
-# Temporal Raytracer
+# RayDrone
 
 > **A new methodology for audio rendering: applying the stochastic ray tracing paradigm to time-domain sampling.**
 
@@ -16,9 +16,9 @@
 
 # English
 
-## What is Temporal Raytracing?
+## What is RayDrone?
 
-Temporal Raytracing is a **new methodology** for generating drone textures and sustained soundscapes by borrowing the mathematical framework of optical ray tracing and applying it to the time domain of an audio buffer.
+RayDrone is a **new methodology** for generating drone textures and sustained soundscapes by borrowing the mathematical framework of optical ray tracing and applying it to the time domain of an audio buffer.
 
 This is **not** granular synthesis. The conceptual framework is fundamentally different.
 
@@ -36,9 +36,9 @@ The key insight: **the image does not exist until you render it.**
 
 ### Transposing the Paradigm to Audio
 
-Temporal Raytracing applies the same logic to the time axis of a recorded audio buffer:
+RayDrone applies the same logic to the time axis of a recorded audio buffer:
 
-| Optical Ray Tracing | Temporal Raytracing |
+| Optical Ray Tracing | RayDrone |
 |---|---|
 | 3D scene geometry | Audio buffer (time-domain waveform) |
 | Camera focal point | Playhead position (seconds) |
@@ -55,7 +55,7 @@ The **drone does not exist in the sample.** It emerges from the stochastic conve
 
 ## Why This Is Different from Granular Synthesis
 
-| Granular Synthesis | Temporal Raytracing |
+| Granular Synthesis | RayDrone |
 |---|---|
 | Synthesis technique | Rendering methodology |
 | Grains are building blocks | Rays are measurement samples |
@@ -455,9 +455,9 @@ MIT — lliure d'usar, adaptar i construir sobre seu. S'agraeix el crèdit.
 
 # Castellano
 
-## Qué es Temporal Raytracing
+## Qué es RayDrone
 
-Temporal Raytracing es una **metodología de renderizado sonoro**: en vez de sintetizar el audio desde bloques o partículas, toma un buffer grabado y lo trata como una escena temporal. Los rayos no “representan” el sonido; lo **convergen**.
+RayDrone es una **metodología de renderizado sonoro**: en vez de sintetizar el audio desde bloques o partículas, toma un buffer grabado y lo trata como una escena temporal. Los rayos no “representan” el sonido; lo **convergen**.
 
 La idea no es reproducir el sample de forma fiel. La idea es **renderizarlo como un campo acústico** que puede convertirse en drone, textura, coro granular o nube armónica.
 

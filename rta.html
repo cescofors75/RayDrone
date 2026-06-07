@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Temporal Raytracer</title>
+    <title>RayDrone</title>
     <style>
         :root {
             --bg-color: #070608;
@@ -702,8 +702,8 @@
 <body>
 
 <div class="container">
-    <h1>Temporal Raytracer</h1>
-    <p class="subtitle">Simulación Estocástica de Renderizado de Ondas</p>
+    <h1>RayDrone</h1>
+    <p class="subtitle">Drones y texturas a partir de tus samples</p>
 
     <div class="app-layout">
         <section class="scene-panel">
@@ -791,7 +791,7 @@
                 <input type="file" id="audio-file" accept="audio/*">
             </div>
 
-            <div class="preset-row">
+            <div class="preset-row advanced-only">
                 <select id="preset-select" class="preset-select">
                     <option value="custom">Preset: Custom</option>
                     <option value="tonal">Tonal / Pitched</option>
@@ -824,14 +824,14 @@
                 <!-- VOLUMEN RENDER -->
                 <div class="control-group">
                     <div class="control-label">
-                        <span>Volumen Render</span>
+                        <span>Volumen</span>
                         <span id="vol-val" class="val">80 %</span>
                     </div>
                     <input type="range" id="volume" min="0" max="100" value="80">
                 </div>
 
                 <!-- VOLUMEN ORIGINAL -->
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>Volumen Original</span>
                         <span id="orig-vol-val" class="val">80 %</span>
@@ -884,7 +884,7 @@
                     <input type="range" id="aberration" min="0" max="100" value="0">
                 </div>
 
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>α Dispersión</span>
                         <span id="alpha-val" class="val">0 %</span>
@@ -892,7 +892,7 @@
                     <input type="range" id="feedback-alpha" min="0" max="100" value="0">
                 </div>
 
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>β Rebotes</span>
                         <span id="beta-val" class="val">0 %</span>
@@ -900,7 +900,7 @@
                     <input type="range" id="feedback-beta" min="0" max="100" value="0">
                 </div>
 
-                <div class="control-group">
+                <div class="control-group advanced-only">
                     <div class="control-label">
                         <span>γ Rugosidad</span>
                         <span id="gamma-val" class="val">0 %</span>
@@ -943,18 +943,18 @@
                 <input id="sync-transport" type="checkbox">
             </div>
 
-            <div class="sync-row">
+            <div class="sync-row advanced-only">
                 <label for="loop-sampler">Loop Sampler</label>
                 <input id="loop-sampler" type="checkbox" checked>
             </div>
 
-            <div class="sync-row">
+            <div class="sync-row advanced-only">
                 <label for="feedback-enable">Autoevolución <span id="feedback-val" class="toggle-state">OFF</span></label>
                 <input id="feedback-enable" type="checkbox">
             </div>
 
             <button class="btn-record" id="record-btn" disabled>⏺ Grabar WAV</button>
-            <a id="download-link" class="download-link" download="temporal-raytracer-render.wav">Descargar WAV renderizado</a>
+            <a id="download-link" class="download-link" download="raydrone-render.wav">Descargar WAV renderizado</a>
 
             <div class="status" id="status-text">Sube un archivo para inicializar los rayos estocásticos.</div>
         </section>
