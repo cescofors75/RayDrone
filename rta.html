@@ -888,8 +888,10 @@
     let recordedLength = 0;
     let recordedChannels = 2;
     let downloadUrl = null;
-    // Cadenas de EQ para aberración cromática (3 bandas: low / mid / high)
+    // Crossover Linkwitz-Riley de 3 bandas + buses dry/wet para aberración cromática
     let bandChains = null;
+    let dryBus = null;
+    let wetBus = null;
 
     const MAX_SIMULTANEOUS_SOURCES = 140;
     const MAX_VIS_RAYS = 650;
@@ -1071,6 +1073,7 @@
         if (mainGainNode && audioCtx) {
             mainGainNode.gain.setValueAtTime(preset.volume / 100, audioCtx.currentTime);
         }
+        applyAberrationMix();
 
         if (waveformData) drawRayCanvas();
         updateStatus(activeSources.length, null);
@@ -1336,23 +1339,57 @@
             analyserNode = audioCtx.createAnalyser();
             analyserNode.fftSize = 2048;
 
-            // ── 3 band chains para aberración cromática
-            // Cada banda: BiquadFilter → GainNode(banda) → mainGainNode
-            const lowFilter = audioCtx.createBiquadFilter();
-            lowFilter.type = 'lowpass'; lowFilter.frequency.value = 400;
-            const midFilter = audioCtx.createBiquadFilter();
-            midFilter.type = 'bandpass'; midFilter.frequency.value = 2000; midFilter.Q.value = 0.7;
-            const highFilter = audioCtx.createBiquadFilter();
-            highFilter.type = 'highpass'; highFilter.frequency.value = 5000;
-            [lowFilter, midFilter, highFilter].forEach(f => f.connect(mainGainNode));
+            // ── Crossover Linkwitz-Riley (LR4) de 3 bandas para la aberración cromática.
+            // Cada banda son dos biquads Butterworth en cascada (Q=0.707), de modo que
+            // las bandas se reconstruyen ~planas al sumarse (sin agujeros espectrales).
+            // Un bus dry/wet hace que la aberración salga suave desde 0, eliminando el
+            // salto brusco de 0→1 % del banco de filtros anterior.
+            const XOVER_LOW = 250;     // Hz: frontera graves / medios
+            const XOVER_HIGH = 2500;   // Hz: frontera medios / agudos
+            const makeLR = (type, freq) => {
+                const a = audioCtx.createBiquadFilter();
+                const b = audioCtx.createBiquadFilter();
+                a.type = b.type = type;
+                a.frequency.value = b.frequency.value = freq;
+                a.Q.value = b.Q.value = 0.70710678;   // Butterworth ×2 = Linkwitz-Riley 4º orden
+                a.connect(b);
+                return { input: a, output: b };
+            };
+
+            dryBus = audioCtx.createGain();
+            wetBus = audioCtx.createGain();
+            dryBus.gain.value = 1;     // aberración arranca en 0 → 100 % seco
+            wetBus.gain.value = 0;
+            dryBus.connect(mainGainNode);
+            wetBus.connect(mainGainNode);
+
+            const lowBand  = makeLR('lowpass',  XOVER_LOW);
+            const highBand = makeLR('highpass', XOVER_HIGH);
+            const midHP    = makeLR('highpass', XOVER_LOW);
+            const midLP    = makeLR('lowpass',  XOVER_HIGH);
+            midHP.output.connect(midLP.input);
+
+            // Cada rayo va a UNA banda (rayos independientes → suman en potencia), con
+            // reparto 40/40/20. Compensar por 1/√P deja la reconstrucción ~plana (±3 dB,
+            // solo dips de -3 dB en los cruces), así la aberración cambia el carácter
+            // espacial por banda sin inclinar el timbre.
+            const bandComp = [1 / Math.sqrt(0.4), 1 / Math.sqrt(0.4), 1 / Math.sqrt(0.2)];
+            const bandOutputs = [lowBand.output, midLP.output, highBand.output];
+            bandOutputs.forEach((o, i) => {
+                const g = audioCtx.createGain();
+                g.gain.value = bandComp[i];
+                o.connect(g);
+                g.connect(wetBus);
+            });
             bandChains = [
-                { filter: lowFilter,  apertureScale: 0 },   // low  — se actualiza en fireRays
-                { filter: midFilter,  apertureScale: 0 },   // mid
-                { filter: highFilter, apertureScale: 0 },   // high
+                { input: lowBand.input },   // low
+                { input: midHP.input },     // mid
+                { input: highBand.input },  // high
             ];
 
             mainGainNode.connect(analyserNode);
             analyserNode.connect(audioCtx.destination);
+            applyAberrationMix();
         }
 
         const reader = new FileReader();
@@ -1400,7 +1437,7 @@
         volVal.innerText = `${e.target.value} %`;
         if (mainGainNode) mainGainNode.gain.setValueAtTime(parseFloat(e.target.value) / 100, audioCtx.currentTime);
     });
-    aberSlider.addEventListener('input',   (e) => { aberVal.innerText   = `${e.target.value} %`; });
+    aberSlider.addEventListener('input',   (e) => { aberVal.innerText   = `${e.target.value} %`; applyAberrationMix(); });
     roughSlider.addEventListener('input',  (e) => { roughVal.innerText  = `${e.target.value} %`; });
     bounceSlider.addEventListener('input', (e) => { bounceVal.innerText = e.target.value; });
     reflSlider.addEventListener('input',   (e) => { reflVal.innerText   = `${e.target.value} %`; });
@@ -1722,10 +1759,28 @@
                  aberrationNorm, roughnessNorm, maxBounces, reflCoeff, bandApertureScale, sweepEnabled };
     }
 
+    // Aplica el balance dry/wet de la aberración cromática sin clicks.
+    function applyAberrationMix() {
+        if (!dryBus || !wetBus || !audioCtx) return;
+        const wet = clamp(parseFloat(aberSlider.value) / 100, 0, 1);
+        const t = audioCtx.currentTime;
+        dryBus.gain.setTargetAtTime(1 - wet, t, 0.02);
+        wetBus.gain.setTargetAtTime(wet, t, 0.02);
+    }
+
     // ── MOTOR ACÚSTICO DE RAYTRACING ────────────────────────────────
+    // Scheduler con lookahead (reloj de audio preciso, "A Tale of Two Clocks"):
+    // un timer impreciso despierta cada LOOKAHEAD_MS y programa por adelantado
+    // todos los bursts que caen en la ventana SCHEDULE_AHEAD, con tiempos de inicio
+    // exactos en el reloj de audio. Así el timing no depende del jitter de setTimeout
+    // ni se estrangula en segundo plano.
+    const SCHEDULE_AHEAD = 0.12;   // s de futuro que programamos por delante
+    const LOOKAHEAD_MS = 25;       // cada cuánto despierta el timer
+    let nextNoteTime = 0;          // próximo burst, en segundos del reloj de audio
+
     function startEngine() {
         if (!audioBuffer) return;
-        
+
         // Asegurar que el contexto está activo
         if (audioCtx.state === 'suspended') {
             audioCtx.resume();
@@ -1737,76 +1792,81 @@
         playBtn.innerText = "■ Detener Rayos";
         playBtn.style.background = "linear-gradient(135deg, #ff4444, #ff0055)";
 
-        function fireRays() {
-            if (!isPlaying) return;
+        nextNoteTime = audioCtx.currentTime + 0.06;
+        scheduler();
+    }
 
-            const params = getEngineParams();
-            const { rawN, burstCapByDisp, dispSec, focusSec, rayDuration, tickMs } = params;
-            const headroom = Math.max(0, MAX_SIMULTANEOUS_SOURCES - activeSources.length);
-            const burstN = Math.min(rawN, burstCapByDisp, headroom);
+    function scheduler() {
+        if (!isPlaying) return;
+        let guard = 0;
+        while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD && guard++ < 64) {
+            const tickMs = scheduleBurst(nextNoteTime);
+            nextNoteTime += Math.max(tickMs, 1) / 1000;
+        }
+        intervalId = window.setTimeout(scheduler, LOOKAHEAD_MS);
+    }
 
-            if (burstN <= 0) {
-                updateStatus(activeSources.length, 0, burstCapByDisp);
-                if (isPlaying) {
-                    intervalId = window.setTimeout(fireRays, tickMs);
-                }
-                return;
-            }
+    // Programa un burst de rayos en el instante de audio `when`. Devuelve tickMs.
+    function scheduleBurst(when) {
+        const params = getEngineParams();
+        const { rawN, burstCapByDisp, dispSec, focusSec, rayDuration, tickMs,
+                roughnessNorm, maxBounces, reflCoeff, bandApertureScale } = params;
+        const headroom = Math.max(0, MAX_SIMULTANEOUS_SOURCES - activeSources.length);
+        const burstN = Math.min(rawN, burstCapByDisp, headroom);
 
-            const { aberrationNorm, roughnessNorm, maxBounces, reflCoeff, bandApertureScale } = params;
-
-            // Estrategia de muestreo Monte Carlo (random / stratified / qmc / importance)
-            const samplingMethod = samplingSel ? samplingSel.value : 'random';
-            const sr = audioBuffer.sampleRate;
-            const qmcRot = Math.random();   // rotación Cranley-Patterson para QMC (decorrela bursts)
-            let emaxLocal = 0;
-            if (samplingMethod === 'importance' && sourceSamples) {
-                // Estimar el pico de energía local para el rejection sampling
-                for (let t = 0; t < 24; t++) {
-                    const cand = focusSec + (Math.random() * 2 - 1) * dispSec;
-                    const e = Math.abs(srcSample(Math.round(cand * sr)));
-                    if (e > emaxLocal) emaxLocal = e;
-                }
-                emaxLocal = Math.max(emaxLocal, 1e-4);
-            }
-
-            for (let i = 0; i < burstN; i++) {
-                // Asignar banda aleatoria (ponderada: 40% low, 40% mid, 20% high)
-                const bandRoll = Math.random();
-                const band = bandRoll < 0.4 ? 0 : bandRoll < 0.8 ? 1 : 2;
-                const bandDisp = dispSec * bandApertureScale[band];
-
-                // Offset difuso según la estrategia de muestreo elegida
-                const diffuseOffset = drawDiffuseOffset(
-                    i, burstN, focusSec, bandDisp, samplingMethod, sr, emaxLocal, qmcRot);
-
-                // BRDF Roughness: lerp entre offset armónico (especular) y difuso
-                let offset;
-                if (roughnessNorm < 1) {
-                    const harmonicStep = (bandDisp * 2) / Math.max(burstN, 1);
-                    const harmonicOffset = focusSec - bandDisp + harmonicStep * i;
-                    offset = harmonicOffset * (1 - roughnessNorm) + diffuseOffset * roughnessNorm;
-                } else {
-                    offset = diffuseOffset;
-                }
-                offset = clamp(offset, 0, audioBuffer.duration - 0.01);
-
-                spawnRay(offset, rayDuration, burstN, band, maxBounces, reflCoeff, false);
-            }
-
-            updateStatus(activeSources.length, burstN, burstCapByDisp);
-
-            if (isPlaying) {
-                intervalId = window.setTimeout(fireRays, tickMs);
-            }
+        if (burstN <= 0) {
+            updateStatus(activeSources.length, 0, burstCapByDisp);
+            return tickMs;
         }
 
-        fireRays();
+        // Estrategia de muestreo Monte Carlo (random / stratified / qmc / importance)
+        const samplingMethod = samplingSel ? samplingSel.value : 'random';
+        const sr = audioBuffer.sampleRate;
+        const qmcRot = Math.random();   // rotación Cranley-Patterson para QMC (decorrela bursts)
+        let emaxLocal = 0;
+        if (samplingMethod === 'importance' && sourceSamples) {
+            // Estimar el pico de energía local para el rejection sampling
+            for (let t = 0; t < 24; t++) {
+                const cand = focusSec + (Math.random() * 2 - 1) * dispSec;
+                const e = Math.abs(srcSample(Math.round(cand * sr)));
+                if (e > emaxLocal) emaxLocal = e;
+            }
+            emaxLocal = Math.max(emaxLocal, 1e-4);
+        }
+
+        for (let i = 0; i < burstN; i++) {
+            // Asignar banda aleatoria (ponderada: 40% low, 40% mid, 20% high)
+            const bandRoll = Math.random();
+            const band = bandRoll < 0.4 ? 0 : bandRoll < 0.8 ? 1 : 2;
+            const bandDisp = dispSec * bandApertureScale[band];
+
+            // Offset difuso según la estrategia de muestreo elegida
+            const diffuseOffset = drawDiffuseOffset(
+                i, burstN, focusSec, bandDisp, samplingMethod, sr, emaxLocal, qmcRot);
+
+            // BRDF Roughness: lerp entre offset armónico (especular) y difuso
+            let offset;
+            if (roughnessNorm < 1) {
+                const harmonicStep = (bandDisp * 2) / Math.max(burstN, 1);
+                const harmonicOffset = focusSec - bandDisp + harmonicStep * i;
+                offset = harmonicOffset * (1 - roughnessNorm) + diffuseOffset * roughnessNorm;
+            } else {
+                offset = diffuseOffset;
+            }
+            offset = clamp(offset, 0, audioBuffer.duration - 0.01);
+
+            spawnRay(offset, rayDuration, burstN, band, maxBounces, reflCoeff, false, null, when);
+        }
+
+        updateStatus(activeSources.length, burstN, burstCapByDisp);
+        return tickMs;
     }
 
     // ── Dispara un solo rayo (reutilizado por motor principal y rebotes)
-    function spawnRay(offset, rayDuration, burstN, band, bouncesLeft, reflCoeff, isBounce, volumeOverride = null) {
+    function spawnRay(offset, rayDuration, burstN, band, bouncesLeft, reflCoeff, isBounce, volumeOverride = null, startTime = null) {
         if (activeSources.length >= MAX_SIMULTANEOUS_SOURCES) return;
+
+        const t0 = startTime !== null ? startTime : audioCtx.currentTime;
 
         const src = audioCtx.createBufferSource();
         src.buffer = audioBuffer;
@@ -1816,17 +1876,20 @@
             ? volumeOverride
             : (0.7 / Math.sqrt(Math.max(burstN, 1)));
         const fade = Math.min(rayDuration * 0.3, 0.04);
-        gain.gain.setValueAtTime(0, audioCtx.currentTime);
-        gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + fade);
-        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + rayDuration - fade);
+        gain.gain.setValueAtTime(0, t0);
+        gain.gain.linearRampToValueAtTime(vol, t0 + fade);
+        gain.gain.linearRampToValueAtTime(0, t0 + rayDuration - fade);
 
-        // Rutear por la banda correspondiente si hay aberración activa, si no directo
-        const dest = (bandChains && parseFloat(aberSlider.value) > 0)
-            ? bandChains[band].filter
-            : mainGainNode;
         src.connect(gain);
-        gain.connect(dest);
-        src.start(audioCtx.currentTime, offset, rayDuration);
+        // Cada rayo alimenta el camino seco (rango completo) y su banda del crossover
+        // (→ wetBus). El balance dry/wet lo fija la aberración, sin saltos ni agujeros.
+        if (dryBus && bandChains) {
+            gain.connect(dryBus);
+            gain.connect(bandChains[band].input);
+        } else {
+            gain.connect(mainGainNode);
+        }
+        src.start(t0, offset, rayDuration);
         activeSources.push(src);
 
         visRays.push({ x: offset / audioBuffer.duration, life: 1.0, band, isBounce });
