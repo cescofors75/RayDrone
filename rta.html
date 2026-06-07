@@ -1024,6 +1024,7 @@
     let bandChains = null;
     let dryBus = null;
     let wetBus = null;
+    let limiterNode = null;
 
     const MAX_SIMULTANEOUS_SOURCES = 140;
     const MAX_VIS_RAYS = 650;
@@ -1459,8 +1460,13 @@
     function toggleUnifiedTransport() {
         if (isPlaying || isAuditioningOriginal) {
             stopBothTransports();
-        } else {
+        } else if (isSyncTransportEnabled()) {
+            // Solo si activas "Sync Original + Render" (avanzado) se oye el original encima
             startBothTransports();
+        } else {
+            // Por defecto, Play = solo el drone renderizado (sin el sample crudo encima)
+            startEngine();
+            updateTransportButton();
         }
     }
 
@@ -1494,8 +1500,8 @@
             recordedChannels = channels > 1 ? 2 : 1;
         };
 
-        // Captura paralela sin alterar la salida audible
-        mainGainNode.connect(recorderNode);
+        // Captura paralela (tras el limitador, = lo que se oye) sin alterar la salida
+        (limiterNode || mainGainNode).connect(recorderNode);
         recorderNode.connect(audioCtx.destination);
     }
 
@@ -1649,8 +1655,8 @@
             wetBus = audioCtx.createGain();
             dryBus.gain.value = 1;     // aberración arranca en 0 → 100 % seco
             wetBus.gain.value = 0;
-            dryBus.connect(mainGainNode);
-            wetBus.connect(mainGainNode);
+            dryBus.connect(renderGainNode);
+            wetBus.connect(renderGainNode);
 
             const lowBand  = makeLR('lowpass',  XOVER_LOW);
             const highBand = makeLR('highpass', XOVER_HIGH);
@@ -1678,7 +1684,19 @@
 
             renderGainNode.connect(mainGainNode);
             originalGainNode.connect(mainGainNode);
-            mainGainNode.connect(analyserNode);
+
+            // Limitador de seguridad: la suma de muchos rayos correlacionados (apertura
+            // estrecha → audio casi idéntico) crece ≈N×, no √N×, y satura. Un compresor
+            // rápido con ratio alto atrapa los picos y evita la distorsión por clipping.
+            limiterNode = audioCtx.createDynamicsCompressor();
+            limiterNode.threshold.value = -6;
+            limiterNode.knee.value = 6;
+            limiterNode.ratio.value = 20;
+            limiterNode.attack.value = 0.003;
+            limiterNode.release.value = 0.25;
+
+            mainGainNode.connect(limiterNode);
+            limiterNode.connect(analyserNode);
             analyserNode.connect(audioCtx.destination);
             applyAberrationMix();
         }
@@ -2197,7 +2215,7 @@
         const gain = audioCtx.createGain();
         const vol = volumeOverride !== null
             ? volumeOverride
-            : (0.7 / Math.sqrt(Math.max(burstN, 1)));
+            : (0.45 / Math.sqrt(Math.max(burstN, 1)));
         const fade = Math.min(rayDuration * 0.3, 0.04);
         gain.gain.setValueAtTime(0, t0);
         gain.gain.linearRampToValueAtTime(vol, t0 + fade);
@@ -2702,9 +2720,9 @@
         // El knob "Carácter" mueve N, apertura y rugosidad a la vez, de tonal a drone.
         function applyMacro(v) {
             const t = clamp(v / 100, 0, 1);
-            raySlider.value = Math.round(10 + t * 35);            // raw 10..45 (N sube exponencial)
-            dispSlider.value = Math.round(90 + (t * t) * 5910);   // 90 ms .. 6 s (suave abajo)
-            roughSlider.value = Math.round(45 + t * 55);          // 45 % .. 100 %
+            raySlider.value = Math.round(6 + t * 16);             // raw 6..22 → N ≈ 16..130 (sin saturar)
+            dispSlider.value = Math.round(60 + (t * t) * 3940);   // 60 ms .. 4 s (suave abajo)
+            roughSlider.value = Math.round(40 + t * 55);          // 40 % .. 95 %
             rayVal.innerText = getDisplayedN();
             dispVal.innerText = formatDispersion(dispSlider.value);
             roughVal.innerText = `${roughSlider.value} %`;
