@@ -72,6 +72,49 @@
             margin: 0;
         }
 
+        .scene-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+
+        .scene-meta {
+            min-width: 0;
+        }
+
+        .scene-topbar .meter-panel {
+            margin: 0;
+            padding: 8px 10px;
+            width: min(420px, 100%);
+            background: rgba(7, 8, 14, 0.62);
+        }
+
+        .scene-topbar .meter-row {
+            margin-bottom: 4px;
+            gap: 8px;
+        }
+
+        .scene-topbar .meter-label {
+            width: 42px;
+            font-size: 0.68rem;
+        }
+
+        .scene-topbar .meter-track {
+            height: 8px;
+        }
+
+        .scene-topbar .meter-value {
+            width: 56px;
+            font-size: 0.7rem;
+        }
+
+        .scene-topbar .clip-indicator {
+            padding: 2px 7px;
+            font-size: 0.62rem;
+        }
+
         .scene-stack {
             display: grid;
             gap: 16px;
@@ -84,6 +127,21 @@
             overflow: hidden;
             border: 1px solid rgba(0, 255, 204, 0.12);
             background: #07080e;
+        }
+
+        .canvas-wrap.selecting {
+            box-shadow: 0 0 0 1px rgba(0, 255, 204, 0.18), 0 0 24px rgba(0, 255, 204, 0.08);
+        }
+
+        .selection-overlay {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            pointer-events: none;
+            display: none;
+            border: 1px solid rgba(0, 255, 204, 0.75);
+            background: rgba(0, 255, 204, 0.12);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
         }
 
         canvas {
@@ -295,6 +353,92 @@
             box-shadow: none;
         }
 
+        .button-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-audition {
+            width: 100%;
+            background: linear-gradient(135deg, rgba(0,255,204,0.18), rgba(0,255,204,0.42));
+            border: 1px solid rgba(0,255,204,0.25);
+            padding: 13px 14px;
+            border-radius: 10px;
+            color: #dffdf7;
+            font-size: 0.92rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-audition:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 22px rgba(0,255,204,0.16);
+        }
+
+        .btn-audition:disabled {
+            background: #23273a;
+            color: #777c92;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .btn-record {
+            width: 100%;
+            margin-top: 10px;
+            background: linear-gradient(135deg, #7a1cff, #ff4d6d);
+            border: none;
+            padding: 13px 15px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.95rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(255, 77, 109, 0.2);
+        }
+
+        .btn-record:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 77, 109, 0.38);
+        }
+
+        .btn-record:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+
+        .btn-record:disabled {
+            background: #23273a;
+            color: #777c92;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .btn-record.recording {
+            background: linear-gradient(135deg, #ff2e63, #ff8a5b);
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 0 18px rgba(255, 46, 99, 0.42);
+        }
+
+        .download-link {
+            display: none;
+            margin-top: 10px;
+            text-align: center;
+            color: var(--accent-color);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-family: monospace;
+        }
+
+        .download-link.visible {
+            display: block;
+        }
+
         .status {
             text-align: center;
             font-size: 0.8rem;
@@ -384,15 +528,34 @@
 
     <div class="app-layout">
         <section class="scene-panel">
-            <div class="section-header">
-                <span class="section-title">Scene</span>
-                <p class="section-subtitle">Source waveform, focal cone and rendered output</p>
+            <div class="scene-topbar">
+                <div class="scene-meta">
+                    <div class="section-header">
+                        <span class="section-title">Scene</span>
+                        <p class="section-subtitle">Source waveform, focal cone and rendered output</p>
+                    </div>
+                </div>
+
+                <div class="meter-panel">
+                    <div class="meter-row">
+                        <span class="meter-label">RMS</span>
+                        <div class="meter-track"><div id="rms-fill" class="meter-fill"></div></div>
+                        <span id="rms-value" class="meter-value">-inf dB</span>
+                        <span id="clip-indicator" class="clip-indicator">OK</span>
+                    </div>
+                    <div class="meter-row">
+                        <span class="meter-label">Peak</span>
+                        <div class="meter-track"><div id="peak-fill" class="meter-fill"></div></div>
+                        <span id="peak-value" class="meter-value">-inf dB</span>
+                    </div>
+                </div>
             </div>
 
             <div class="scene-stack">
                 <!-- VISUALIZADOR SOURCE + RAYOS -->
                 <div class="canvas-wrap">
                     <span class="canvas-label">Source</span>
+                    <div id="selection-overlay" class="selection-overlay"></div>
                     <canvas id="ray-canvas" width="750" height="190"></canvas>
                 </div>
 
@@ -487,21 +650,13 @@
                 </div>
             </div>
 
-            <button class="btn-play" id="play-btn" disabled>Esperando Audio...</button>
-
-            <div class="meter-panel">
-                <div class="meter-row">
-                    <span class="meter-label">RMS</span>
-                    <div class="meter-track"><div id="rms-fill" class="meter-fill"></div></div>
-                    <span id="rms-value" class="meter-value">-inf dB</span>
-                    <span id="clip-indicator" class="clip-indicator">OK</span>
-                </div>
-                <div class="meter-row">
-                    <span class="meter-label">Peak</span>
-                    <div class="meter-track"><div id="peak-fill" class="meter-fill"></div></div>
-                    <span id="peak-value" class="meter-value">-inf dB</span>
-                </div>
+            <div class="button-row">
+                <button class="btn-audition" id="original-btn" disabled>▶ Oír Original</button>
+                <button class="btn-play" id="play-btn" disabled>Esperando Audio...</button>
             </div>
+
+            <button class="btn-record" id="record-btn" disabled>⏺ Grabar WAV</button>
+            <a id="download-link" class="download-link" download="acoustic-raytracer-render.wav">Descargar WAV renderizado</a>
 
             <div class="status" id="status-text">Sube un archivo para inicializar los rayos estocásticos.</div>
         </section>
@@ -515,9 +670,18 @@
     let isPlaying = false;
     let mainGainNode = null;
     let analyserNode = null;
+    let recorderNode = null;
     let intervalId = null;
     let animFrameId = null;
     let activeSources = [];
+    let originalSourceNode = null;
+    let isAuditioningOriginal = false;
+    let selectionState = { dragging: false, startX: 0, endX: 0 };
+    let isRecording = false;
+    let recordedChunks = [];
+    let recordedLength = 0;
+    let recordedChannels = 2;
+    let downloadUrl = null;
     // Cadenas de EQ para aberración cromática (3 bandas: low / mid / high)
     let bandChains = null;
 
@@ -570,7 +734,10 @@
     // Elementos del DOM
     const fileInput = document.getElementById('audio-file');
     const uploadText = document.getElementById('upload-text');
+    const originalBtn = document.getElementById('original-btn');
     const playBtn = document.getElementById('play-btn');
+    const recordBtn = document.getElementById('record-btn');
+    const downloadLink = document.getElementById('download-link');
     const raySlider = document.getElementById('ray-count');
     const rayVal = document.getElementById('ray-val');
     const dispSlider = document.getElementById('dispersion');
@@ -593,6 +760,8 @@
     const rmsValueEl = document.getElementById('rms-value');
     const peakValueEl = document.getElementById('peak-value');
     const clipIndicator = document.getElementById('clip-indicator');
+    const selectionOverlay = document.getElementById('selection-overlay');
+    const sourceCanvasWrap = rayCanvas.closest('.canvas-wrap');
 
     let clipHoldUntilMs = 0;
 
@@ -613,6 +782,226 @@
         clipIndicator.innerText = 'OK';
         clipIndicator.classList.remove('hot');
         clipHoldUntilMs = 0;
+    }
+
+    function stopOriginalPlayback() {
+        if (originalSourceNode) {
+            try {
+                originalSourceNode.stop();
+            } catch (e) {
+                // already ended
+            }
+            try {
+                originalSourceNode.disconnect();
+            } catch (e) {
+                // ignore
+            }
+            originalSourceNode = null;
+        }
+        isAuditioningOriginal = false;
+        originalBtn.innerText = '▶ Oír Original';
+    }
+
+    function setSelectionOverlay(startX, endX) {
+        const left = Math.min(startX, endX);
+        const width = Math.max(1, Math.abs(endX - startX));
+        selectionOverlay.style.display = 'block';
+        selectionOverlay.style.left = `${left}px`;
+        selectionOverlay.style.width = `${width}px`;
+    }
+
+    function clearSelectionOverlay() {
+        selectionOverlay.style.display = 'none';
+        selectionOverlay.style.left = '0px';
+        selectionOverlay.style.width = '0px';
+        sourceCanvasWrap.classList.remove('selecting');
+    }
+
+    function canvasXFromPointerEvent(e) {
+        const rect = rayCanvas.getBoundingClientRect();
+        return clamp(((e.clientX - rect.left) / rect.width) * rayCanvas.width, 0, rayCanvas.width);
+    }
+
+    function setFocusFromCanvasX(x) {
+        if (!audioBuffer) return;
+        const focusSec = clamp((x / rayCanvas.width) * audioBuffer.duration, 0, audioBuffer.duration);
+        posSlider.value = focusSec;
+        posVal.innerText = `${focusSec.toFixed(2)}s`;
+        drawRayCanvas();
+        updateStatus(activeSources.length, null);
+    }
+
+    function applyWindowSelection(startX, endX) {
+        if (!audioBuffer) return;
+        const left = Math.min(startX, endX);
+        const right = Math.max(startX, endX);
+        const startSec = clamp((left / rayCanvas.width) * audioBuffer.duration, 0, audioBuffer.duration);
+        const endSec = clamp((right / rayCanvas.width) * audioBuffer.duration, 0, audioBuffer.duration);
+        const widthSec = Math.max(0.05, endSec - startSec);
+        const centerSec = clamp(startSec + widthSec / 2, 0, audioBuffer.duration);
+        posSlider.value = centerSec;
+        dispSlider.value = clamp(widthSec * 1000, 5, 10000);
+        posVal.innerText = `${centerSec.toFixed(2)}s`;
+        dispVal.innerText = formatDispersion(dispSlider.value);
+        drawRayCanvas();
+        updateStatus(activeSources.length, null);
+    }
+
+    function playOriginalFromFocus() {
+        if (!audioBuffer || isPlaying) return;
+        stopOriginalPlayback();
+
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        const startOffset = clamp(parseFloat(posSlider.value), 0, Math.max(0, audioBuffer.duration - 0.01));
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(mainGainNode);
+        source.start(audioCtx.currentTime, startOffset, audioBuffer.duration - startOffset);
+
+        originalSourceNode = source;
+        isAuditioningOriginal = true;
+        originalBtn.innerText = '⏹ Parar Original';
+        statusText.innerText = `Escuchando original desde ${startOffset.toFixed(2)}s`;
+
+        source.onended = () => {
+            if (originalSourceNode === source) {
+                originalSourceNode = null;
+            }
+            if (isAuditioningOriginal) {
+                stopOriginalPlayback();
+                updateStatus(activeSources.length, null);
+            }
+        };
+    }
+
+    function cleanupDownloadUrl() {
+        if (downloadUrl) {
+            URL.revokeObjectURL(downloadUrl);
+            downloadUrl = null;
+        }
+        downloadLink.classList.remove('visible');
+        downloadLink.removeAttribute('href');
+    }
+
+    function initRecorderNode() {
+        if (!audioCtx || recorderNode) return;
+
+        const bufferSize = 4096;
+        recorderNode = audioCtx.createScriptProcessor(bufferSize, 2, 2);
+        recorderNode.onaudioprocess = function(e) {
+            if (!isRecording) return;
+
+            const input = e.inputBuffer;
+            const channels = Math.max(1, input.numberOfChannels);
+            const left = input.getChannelData(0);
+            const right = channels > 1 ? input.getChannelData(1) : left;
+
+            const leftCopy = new Float32Array(left);
+            const rightCopy = new Float32Array(right);
+            recordedChunks[0].push(leftCopy);
+            recordedChunks[1].push(rightCopy);
+            recordedLength += leftCopy.length;
+            recordedChannels = channels > 1 ? 2 : 1;
+        };
+
+        // Captura paralela sin alterar la salida audible
+        mainGainNode.connect(recorderNode);
+        recorderNode.connect(audioCtx.destination);
+    }
+
+    function concatFloatChunks(chunks, totalLength) {
+        const result = new Float32Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            result.set(chunk, offset);
+            offset += chunk.length;
+        }
+        return result;
+    }
+
+    function encodeWav(interleaved, sampleRate, numChannels) {
+        const bytesPerSample = 2;
+        const blockAlign = numChannels * bytesPerSample;
+        const buffer = new ArrayBuffer(44 + interleaved.length * bytesPerSample);
+        const view = new DataView(buffer);
+        const writeString = (offset, str) => {
+            for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+        };
+
+        let offset = 0;
+        writeString(offset, 'RIFF'); offset += 4;
+        view.setUint32(offset, 36 + interleaved.length * bytesPerSample, true); offset += 4;
+        writeString(offset, 'WAVE'); offset += 4;
+        writeString(offset, 'fmt '); offset += 4;
+        view.setUint32(offset, 16, true); offset += 4;
+        view.setUint16(offset, 1, true); offset += 2;
+        view.setUint16(offset, numChannels, true); offset += 2;
+        view.setUint32(offset, sampleRate, true); offset += 4;
+        view.setUint32(offset, sampleRate * blockAlign, true); offset += 4;
+        view.setUint16(offset, blockAlign, true); offset += 2;
+        view.setUint16(offset, 16, true); offset += 2;
+        writeString(offset, 'data'); offset += 4;
+        view.setUint32(offset, interleaved.length * bytesPerSample, true); offset += 4;
+
+        let idx = 0;
+        for (let i = 0; i < interleaved.length; i++) {
+            const s = clamp(interleaved[i], -1, 1);
+            view.setInt16(offset + idx, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            idx += 2;
+        }
+        return new Blob([buffer], { type: 'audio/wav' });
+    }
+
+    function exportRecording() {
+        if (!recordedChunks[0].length) return;
+
+        const left = concatFloatChunks(recordedChunks[0], recordedLength);
+        const right = recordedChannels > 1
+            ? concatFloatChunks(recordedChunks[1], recordedLength)
+            : left;
+
+        const interleaved = new Float32Array(recordedLength * 2);
+        for (let i = 0; i < recordedLength; i++) {
+            interleaved[i * 2] = left[i] || 0;
+            interleaved[i * 2 + 1] = right[i] || 0;
+        }
+
+        const wavBlob = encodeWav(interleaved, audioCtx.sampleRate, 2);
+        cleanupDownloadUrl();
+        downloadUrl = URL.createObjectURL(wavBlob);
+        downloadLink.href = downloadUrl;
+        downloadLink.classList.add('visible');
+        downloadLink.innerText = 'Descargar WAV renderizado';
+        downloadLink.click();
+    }
+
+    function startRecording() {
+        if (!audioCtx || isRecording) return;
+        initRecorderNode();
+        recordedChunks = [[], []];
+        recordedLength = 0;
+        recordedChannels = 2;
+        isRecording = true;
+        recordBtn.classList.add('recording');
+        recordBtn.innerText = '⏹ Detener y Exportar WAV';
+        downloadLink.classList.remove('visible');
+        cleanupDownloadUrl();
+        statusText.innerText = 'Grabando render en WAV...';
+    }
+
+    function stopRecording() {
+        if (!isRecording) return;
+        isRecording = false;
+        recordBtn.classList.remove('recording');
+        recordBtn.innerText = '⏺ Grabar WAV';
+        statusText.innerText = 'Exportando WAV renderizado...';
+        setTimeout(() => {
+            exportRecording();
+            statusText.innerText = 'WAV listo para descargar y llevar al DAW.';
+        }, 0);
     }
 
     // Inicializar displays con los valores calculados del slider
@@ -666,6 +1055,8 @@
             audioCtx.decodeAudioData(evt.target.result, function(buffer) {
                 audioBuffer = buffer;
                 playBtn.disabled = false;
+                originalBtn.disabled = false;
+                recordBtn.disabled = false;
                 playBtn.innerText = "▶ Renderizar Drone";
                 statusText.innerText = `Audio listo. Duración: ${buffer.duration.toFixed(2)}s`;
                 
@@ -720,6 +1111,64 @@
         } else {
             startEngine();
         }
+    });
+
+    recordBtn.addEventListener('click', function() {
+        if (isRecording) {
+            stopRecording();
+        } else {
+            startRecording();
+        }
+    });
+
+    originalBtn.addEventListener('click', function() {
+        if (isAuditioningOriginal) {
+            stopOriginalPlayback();
+            updateStatus(activeSources.length, null);
+            return;
+        }
+        if (isPlaying) {
+            stopEngine();
+        }
+        playOriginalFromFocus();
+    });
+
+    rayCanvas.addEventListener('pointerdown', (e) => {
+        if (!audioBuffer) return;
+        sourceCanvasWrap.classList.add('selecting');
+        selectionState.dragging = true;
+        selectionState.startX = canvasXFromPointerEvent(e);
+        selectionState.endX = selectionState.startX;
+        setSelectionOverlay(selectionState.startX, selectionState.endX);
+        rayCanvas.setPointerCapture(e.pointerId);
+    });
+
+    rayCanvas.addEventListener('pointermove', (e) => {
+        if (!selectionState.dragging) return;
+        selectionState.endX = canvasXFromPointerEvent(e);
+        setSelectionOverlay(selectionState.startX, selectionState.endX);
+    });
+
+    function commitSelectionOrClick(e) {
+        if (!selectionState.dragging) return;
+
+        const endX = canvasXFromPointerEvent(e);
+        const dragged = Math.abs(endX - selectionState.startX) > 6;
+
+        if (dragged) {
+            applyWindowSelection(selectionState.startX, endX);
+        } else {
+            setFocusFromCanvasX(endX);
+        }
+
+        selectionState.dragging = false;
+        clearSelectionOverlay();
+    }
+
+    rayCanvas.addEventListener('pointerup', commitSelectionOrClick);
+    rayCanvas.addEventListener('pointercancel', () => {
+        selectionState.dragging = false;
+        clearSelectionOverlay();
     });
 
     // Redibujar canvas source cuando cambien los sliders
@@ -1047,6 +1496,12 @@
     }
 
     function stopEngine() {
+        if (isRecording) {
+            stopRecording();
+        }
+
+        stopOriginalPlayback();
+
         isPlaying = false;
         clearTimeout(intervalId);
         intervalId = null;
