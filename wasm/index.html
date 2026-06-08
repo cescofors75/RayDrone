@@ -97,6 +97,11 @@
             <input type="range" id="oct" min="0" max="100" value="0">
         </div>
 
+        <div class="ctl">
+            <label>Pitch (transposición) <span class="v" id="pitch-v">0 st</span></label>
+            <input type="range" id="pitch" min="-12" max="12" value="0" step="1">
+        </div>
+
         <div class="ctl" style="display:flex; justify-content:space-between; align-items:center;">
             <label style="margin:0;">Muestreo suave (QMC) <span class="v" id="smooth-v">ON</span></label>
             <input type="checkbox" id="smooth" checked style="width:20px; height:20px; accent-color:#ff355e; cursor:pointer;">
@@ -116,6 +121,7 @@
     const evoSlider = $('evo'), evoV = $('evo-v');
     const widthSlider = $('width'), widthV = $('width-v');
     const octSlider = $('oct'), octV = $('oct-v');
+    const pitchSlider = $('pitch'), pitchV = $('pitch-v');
     const meterFill = $('meter-fill');
     const presets = Array.from(document.querySelectorAll('.preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
@@ -166,6 +172,12 @@
         });
     }
 
+    function sendPitch() {
+        if (!node) return;
+        const semis = parseFloat(pitchSlider.value);
+        node.port.postMessage({ type: 'pitch', mult: Math.pow(2, semis / 12) });
+    }
+
     function charWord() {
         const t = parseFloat(charSlider.value) / 100;
         return t < 0.34 ? 'Tonal' : t < 0.67 ? 'Textura' : 'Drone';
@@ -203,6 +215,7 @@
             node.port.postMessage({ type: 'mode', value: smoothChk.checked ? 1 : 0 });
             sendFx();
             sendSpace();
+            sendPitch();
         }
         if (sampleData) {
             node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
@@ -328,6 +341,12 @@
         });
     });
 
+    pitchSlider.addEventListener('input', () => {
+        const s = parseInt(pitchSlider.value, 10);
+        pitchV.innerText = `${s > 0 ? '+' : ''}${s} st`;
+        sendPitch();
+    });
+
     let meterTarget = 0;
     function setMeter(level) {
         // level ~ envolvente media; mapear a % con un poco de ganancia visual
@@ -367,6 +386,7 @@
 
         const dur = Math.max(duration, 0.001);
         const focusX = (focusSec / dur) * W;
+        const glow = 0.4 + Math.min(1, meterShown / 70) * 0.6; // los visuales pulsan con el nivel
 
         // Cono de dispersión (apertura): zona alrededor del foco de la que salen los rayos
         if (sampleData) {
@@ -399,7 +419,7 @@
             if (r.life <= 0) { visRays.splice(i, 1); continue; }
             const jit = (Math.random() - 0.5) * H * 0.55 * (1 - r.life);
             const c = BAND_RGB[r.band] || BAND_RGB[1];
-            wctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${r.life * 0.5})`;
+            wctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${r.life * 0.5 * glow})`;
             wctx.beginPath();
             wctx.moveTo(r.x * W, mid + jit);
             wctx.lineTo(focusX, mid);
@@ -407,9 +427,9 @@
         }
         wctx.lineWidth = 1;
 
-        // Línea de foco (glow)
+        // Línea de foco (glow que pulsa con el nivel de salida)
         wctx.save();
-        wctx.shadowColor = '#ff355e'; wctx.shadowBlur = 10;
+        wctx.shadowColor = '#ff355e'; wctx.shadowBlur = 6 + glow * 16;
         wctx.strokeStyle = 'rgba(255,53,94,0.95)'; wctx.lineWidth = 2;
         wctx.beginPath(); wctx.moveTo(focusX, 0); wctx.lineTo(focusX, H); wctx.stroke();
         wctx.restore();
