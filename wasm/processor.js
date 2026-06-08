@@ -34,6 +34,8 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             ex.set_params(d.focus, d.aperture, d.grainMs, d.grainRate, d.gain, d.master);
         } else if (d.type === 'mode') {
             ex.set_mode(d.value >>> 0);
+        } else if (d.type === 'fx') {
+            ex.set_fx(d.aber, d.bounces >>> 0, d.refl, d.feedback);
         }
     }
 

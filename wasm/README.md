@@ -69,10 +69,19 @@ y abre **http://localhost:8080/wasm/**.
 
 ## Estado
 
-Primera versión (v1) del motor: nube granular continua con foco, apertura,
-duración de grano y densidad. Pendiente para futuras versiones: aberración
-cromática (crossover), rebotes (Russian roulette) e *importance/QMC* sampling,
-que en la versión JS ya existen.
+Motor con paridad casi completa con la versión JS:
+
+- ✅ Nube granular continua (foco, apertura, grano, densidad).
+- ✅ Muestreo **Random / Stratified / Quasi-MC** (golden ratio) — checkbox para A/B.
+- ✅ **Aberración cromática**: bandas grave/medio/agudo con apertura escalada por
+  banda (graves abren, agudos enfocan) y filtro one-pole por voz.
+- ✅ **Rebotes (Russian roulette)**: al morir un grano, con probabilidad = reflexión
+  nace un grano hijo (cola/transporte), con tope de profundidad.
+- ✅ **Autoevolución recursiva**: la envolvente de la salida realimenta foco y
+  apertura → el drone se modula a sí mismo.
+
+Pendiente respecto a la versión JS: el *Convergence Lab* (la demostración medible
+1/√N) sigue solo en JS.
 
 > ⚠️ Este `.wasm` se compila en tu máquina (el entorno donde se escribió el código
 > no podía compilar a wasm). Si `rustc` se queja de algo al compilar, es un ajuste

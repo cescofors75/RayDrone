@@ -54,6 +54,17 @@ static mut STRAT_I: u32 = 0; // índice de estrato (modo stratified)
 const GOLDEN: f32 = 0.618_034; // 1/φ — base de la secuencia de baja discrepancia
 const STRATA: u32 = 17; // nº de estratos (coprimo para buen barrido)
 
+// FX: aberración cromática, rebotes (Russian roulette) y autoevolución recursiva.
+static mut ABER: f32 = 0.0; // 0..1 — graves abren, agudos enfocan
+static mut A_LOW: f32 = 0.06; // coef. one-pole del paso-bajo (banda grave)
+static mut A_HIGH: f32 = 0.35; // coef. one-pole para el paso-alto (banda aguda)
+static mut BOUNCES: u32 = 0; // profundidad máxima de rebote
+static mut REFL: f32 = 0.5; // probabilidad de supervivencia del rebote (Russian roulette)
+static mut FEEDBACK: f32 = 0.0; // 0..1 — cantidad de autoevolución
+static mut ENV: f32 = 0.0; // envolvente de la salida (la recursión)
+static mut EVO: f32 = 0.5; // fase de evolución (ping-pong del foco)
+static mut EVO_DIR: f32 = 1.0;
+
 #[derive(Clone, Copy)]
 struct Voice {
     active: bool,
@@ -61,6 +72,9 @@ struct Voice {
     age: f32,     // muestras transcurridas
     inv_dur: f32, // 1 / duración_en_muestras
     gain: f32,
+    band: u8,     // 0 grave, 1 medio, 2 agudo (aberración)
+    lp: f32,      // estado del filtro one-pole por voz
+    depth: u32,   // rebotes restantes
 }
 
 static mut VOICES: [Voice; MAX_VOICES] = [Voice {
@@ -69,6 +83,9 @@ static mut VOICES: [Voice; MAX_VOICES] = [Voice {
     age: 0.0,
     inv_dur: 0.0,
     gain: 0.0,
+    band: 1,
+    lp: 0.0,
+    depth: 0,
 }; MAX_VOICES];
 
 #[inline]
@@ -108,6 +125,7 @@ pub extern "C" fn set_sample(len: usize, sr: f32) {
         SAMPLE_LEN = if len > SAMPLE_CAP { SAMPLE_CAP } else { len };
         SR = if sr > 1.0 { sr } else { 44100.0 };
     }
+    update_coeffs();
 }
 
 #[no_mangle]
@@ -133,6 +151,37 @@ pub extern "C" fn seed(s: u32) {
 pub extern "C" fn set_mode(m: u32) {
     unsafe {
         MODE = m;
+    }
+}
+
+#[inline]
+fn clampf(x: f32, a: f32, b: f32) -> f32 {
+    if x < a {
+        a
+    } else if x > b {
+        b
+    } else {
+        x
+    }
+}
+
+// Coeficientes one-pole de las bandas (a ≈ 2π·fc/sr, válido para fc << sr).
+fn update_coeffs() {
+    unsafe {
+        let tp = 6.283_185_5f32;
+        A_LOW = clampf(tp * 500.0 / SR, 0.0, 0.99);
+        A_HIGH = clampf(tp * 2500.0 / SR, 0.0, 0.99);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn set_fx(aber: f32, bounces: u32, refl: f32, feedback: f32) {
+    unsafe {
+        ABER = clampf(aber, 0.0, 1.0);
+        BOUNCES = bounces;
+        REFL = clampf(refl, 0.0, 1.0);
+        FEEDBACK = clampf(feedback, 0.0, 1.0);
+        update_coeffs();
     }
 }
 
@@ -222,49 +271,98 @@ fn soft(x: f32) -> f32 {
     }
 }
 
-fn spawn() {
+// Reserva una voz libre; si no hay, roba la más vieja.
+fn alloc_voice() -> usize {
     unsafe {
-        if SAMPLE_LEN < 2 {
-            return;
-        }
-        // Offset dentro del cono de dispersión, según la estrategia de muestreo.
-        let off_sec = FOCUS + tri_inv(next_u()) * APERTURE;
-        let mut pos = off_sec * SR;
-        let maxp = (SAMPLE_LEN - 2) as f32;
-        if pos < 0.0 {
-            pos = 0.0;
-        }
-        if pos > maxp {
-            pos = maxp;
-        }
-        let dur_samp = GRAIN_DUR * SR;
-        if dur_samp < 1.0 {
-            return;
-        }
-        // Buscar una voz libre; si no hay, robar la más vieja.
-        let mut slot = usize::MAX;
         let mut oldest = -1.0f32;
         let mut oldest_i = 0usize;
         for i in 0..MAX_VOICES {
             if !VOICES[i].active {
-                slot = i;
-                break;
+                return i;
             }
             if VOICES[i].age > oldest {
                 oldest = VOICES[i].age;
                 oldest_i = i;
             }
         }
-        if slot == usize::MAX {
-            slot = oldest_i;
+        oldest_i
+    }
+}
+
+// Coloca un grano en una posición dada del sample (usado por granos y rebotes).
+fn place(pos: f32, band: u8, depth: u32) {
+    unsafe {
+        let dur_samp = GRAIN_DUR * SR;
+        if dur_samp < 1.0 {
+            return;
         }
+        let slot = alloc_voice();
         VOICES[slot] = Voice {
             active: true,
             pos,
             age: 0.0,
             inv_dur: 1.0 / dur_samp,
             gain: GAIN,
+            band,
+            lp: 0.0,
+            depth,
         };
+    }
+}
+
+// Filtro de banda por voz (aberración): grave → paso-bajo, agudo → paso-alto.
+#[inline]
+fn band_filter(i: usize, x: f32) -> f32 {
+    unsafe {
+        if ABER <= 0.0 {
+            return x;
+        }
+        match VOICES[i].band {
+            0 => {
+                VOICES[i].lp += A_LOW * (x - VOICES[i].lp);
+                VOICES[i].lp
+            }
+            2 => {
+                VOICES[i].lp += A_HIGH * (x - VOICES[i].lp);
+                x - VOICES[i].lp
+            }
+            _ => x,
+        }
+    }
+}
+
+fn spawn() {
+    unsafe {
+        if SAMPLE_LEN < 2 {
+            return;
+        }
+        // Banda del rayo (40% grave / 40% medio / 20% agudo).
+        let r = rng01();
+        let band: u8 = if r < 0.4 {
+            0
+        } else if r < 0.8 {
+            1
+        } else {
+            2
+        };
+        // Aberración cromática: los graves abren la apertura, los agudos la cierran.
+        let scale = if ABER <= 0.0 {
+            1.0
+        } else {
+            match band {
+                0 => 1.0 + ABER * 2.2,
+                2 => clampf(1.0 - ABER * 0.72, 0.08, 1.0),
+                _ => 1.0,
+            }
+        };
+        // Autoevolución (recursión): la envolvente de la salida modula foco y apertura.
+        let span = (SAMPLE_LEN as f32) / SR;
+        let eff_focus = clampf(FOCUS + (EVO - 0.5) * FEEDBACK * span, 0.0, span);
+        let eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 1.5);
+        let off_sec = eff_focus + tri_inv(next_u()) * eff_ap * scale;
+        let maxp = (SAMPLE_LEN - 2) as f32;
+        let pos = clampf(off_sec * SR, 0.0, maxp);
+        place(pos, band, BOUNCES);
     }
 }
 
@@ -273,6 +371,11 @@ pub extern "C" fn process(frames: usize) {
     unsafe {
         let n = if frames > BLOCK { BLOCK } else { frames };
         let rate_per_sample = GRAIN_RATE / SR;
+        let maxp = if SAMPLE_LEN >= 2 {
+            (SAMPLE_LEN - 2) as f32
+        } else {
+            0.0
+        };
         for f in 0..n {
             // Nacimiento continuo de granos (reparto fino, sin bursts → sin pulso).
             SPAWN_ACC += rate_per_sample;
@@ -280,23 +383,55 @@ pub extern "C" fn process(frames: usize) {
                 spawn();
                 SPAWN_ACC -= 1.0;
             }
-            // Mezcla de todas las voces activas.
+            // Mezcla de todas las voces activas (acceso por índice, sin refs colgando).
             let mut acc = 0.0f32;
             for i in 0..MAX_VOICES {
-                let v = &mut VOICES[i];
-                if !v.active {
+                if !VOICES[i].active {
                     continue;
                 }
-                let ph = v.age * v.inv_dur;
+                let ph = VOICES[i].age * VOICES[i].inv_dur;
                 if ph >= 1.0 {
-                    v.active = false;
+                    // Fin del grano: Russian roulette → rebote con prob. REFL.
+                    let dep = VOICES[i].depth;
+                    let bnd = VOICES[i].band;
+                    let endpos = VOICES[i].pos;
+                    VOICES[i].active = false;
+                    if dep > 0 && rng01() < REFL {
+                        let jitter = (rng01() - 0.5) * 0.1 * SR;
+                        let cpos = clampf(endpos + jitter, 0.0, maxp);
+                        place(cpos, bnd, dep - 1);
+                    }
                     continue;
                 }
-                acc += sample_at(v.pos) * win_at(ph) * v.gain;
-                v.pos += 1.0;
-                v.age += 1.0;
+                let raw = sample_at(VOICES[i].pos);
+                let s = band_filter(i, raw);
+                acc += s * win_at(ph) * VOICES[i].gain;
+                VOICES[i].pos += 1.0;
+                VOICES[i].age += 1.0;
             }
             OUT[f] = soft(acc * MASTER);
+        }
+
+        // Recursión / autoevolución: la envolvente de la salida realimenta los
+        // parámetros (foco y apertura via EVO/ENV), así el drone se modula solo.
+        let mut s = 0.0f32;
+        for f in 0..n {
+            let a = OUT[f];
+            s += if a < 0.0 { -a } else { a };
+        }
+        let blk = s / (n as f32);
+        ENV = ENV * 0.9 + blk * 0.1;
+        if FEEDBACK > 0.0 {
+            let step = FEEDBACK * (0.0006 + ENV * 0.004);
+            EVO += EVO_DIR * step;
+            if EVO >= 1.0 {
+                EVO = 1.0;
+                EVO_DIR = -1.0;
+            }
+            if EVO <= 0.0 {
+                EVO = 0.0;
+                EVO_DIR = 1.0;
+            }
         }
     }
 }

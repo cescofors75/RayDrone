@@ -53,9 +53,9 @@
         <canvas id="wave" width="700" height="90"></canvas>
 
         <div class="presets">
-            <button class="preset active" data-mode="dry">Original (Dry)</button>
-            <button class="preset" data-mode="drone" data-t="0.35">Drone</button>
-            <button class="preset" data-mode="shimmer" data-t="0.62">Shimmer</button>
+            <button class="preset active" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0">Original (Dry)</button>
+            <button class="preset" data-mode="drone" data-t="0.35" data-aber="10" data-tail="15" data-evo="0">Drone</button>
+            <button class="preset" data-mode="shimmer" data-t="0.62" data-aber="60" data-tail="45" data-evo="25">Shimmer</button>
         </div>
 
         <div class="ctl">
@@ -66,6 +66,21 @@
         <div class="ctl">
             <label>Volumen <span class="v" id="vol-v">80 %</span></label>
             <input type="range" id="vol" min="0" max="100" value="80">
+        </div>
+
+        <div class="ctl">
+            <label>Aberración (graves anchos / agudos finos) <span class="v" id="aber-v">0 %</span></label>
+            <input type="range" id="aber" min="0" max="100" value="0">
+        </div>
+
+        <div class="ctl">
+            <label>Cola / Rebotes <span class="v" id="tail-v">0 %</span></label>
+            <input type="range" id="tail" min="0" max="100" value="0">
+        </div>
+
+        <div class="ctl">
+            <label>Autoevolución (recursiva) <span class="v" id="evo-v">0 %</span></label>
+            <input type="range" id="evo" min="0" max="100" value="0">
         </div>
 
         <div class="ctl" style="display:flex; justify-content:space-between; align-items:center;">
@@ -82,6 +97,9 @@
     const fileInput = $('file'), fileLabel = $('file-label'), playBtn = $('play'), statusEl = $('status');
     const charSlider = $('char'), charV = $('char-v'), volSlider = $('vol'), volV = $('vol-v');
     const smoothChk = $('smooth'), smoothV = $('smooth-v');
+    const aberSlider = $('aber'), aberV = $('aber-v');
+    const tailSlider = $('tail'), tailV = $('tail-v');
+    const evoSlider = $('evo'), evoV = $('evo-v');
     const presets = Array.from(document.querySelectorAll('.preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
 
@@ -106,6 +124,16 @@
         const p = paramsFromChar();
         if (!active) p.grainRate = 0; // motor en silencio (las voces se apagan solas)
         node.port.postMessage({ type: 'params', ...p });
+    }
+
+    function sendFx() {
+        if (!node) return;
+        const aber = parseFloat(aberSlider.value) / 100;
+        const tail = parseFloat(tailSlider.value) / 100;
+        const bounces = Math.round(tail * 4);        // 0..4 rebotes
+        const refl = 0.35 + tail * 0.5;              // 0.35..0.85 supervivencia
+        const feedback = parseFloat(evoSlider.value) / 100;
+        node.port.postMessage({ type: 'fx', aber, bounces, refl, feedback });
     }
 
     function charWord() {
@@ -138,6 +166,7 @@
             for (let i = 0; i < 2048; i++) win[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / 2047));
             node.port.postMessage({ type: 'window', data: win });
             node.port.postMessage({ type: 'mode', value: smoothChk.checked ? 1 : 0 });
+            sendFx();
         }
         if (sampleData) {
             node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
@@ -208,6 +237,12 @@
                 charSlider.value = Math.round(parseFloat(btn.dataset.t) * 100);
                 charV.innerText = charWord();
             }
+            if (btn.dataset.aber !== undefined) {
+                aberSlider.value = btn.dataset.aber; aberV.innerText = `${btn.dataset.aber} %`;
+                tailSlider.value = btn.dataset.tail; tailV.innerText = `${btn.dataset.tail} %`;
+                evoSlider.value = btn.dataset.evo;   evoV.innerText = `${btn.dataset.evo} %`;
+            }
+            sendFx();
             if (isPlaying) {            // aplicar el cambio al vuelo
                 stopAll();
                 if (mode === 'dry') startDry(); else sendParams(true);
@@ -234,6 +269,15 @@
     smoothChk.addEventListener('change', () => {
         smoothV.innerText = smoothChk.checked ? 'ON' : 'OFF';
         if (node) node.port.postMessage({ type: 'mode', value: smoothChk.checked ? 1 : 0 });
+    });
+
+    [aberSlider, tailSlider, evoSlider].forEach((sl) => {
+        sl.addEventListener('input', () => {
+            aberV.innerText = `${aberSlider.value} %`;
+            tailV.innerText = `${tailSlider.value} %`;
+            evoV.innerText = `${evoSlider.value} %`;
+            sendFx();
+        });
     });
 
     // ── Waveform + click para mover el foco ─────────────────────────────────
