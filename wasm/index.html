@@ -5,27 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RayDrone · WASM</title>
     <style>
-        :root { --bg:#0a0b10; --panel:#141622; --accent:#00ffcc; --accent-dim:#00aa88; --text:#e2e8f0; }
+        :root { --bg:#0c0809; --panel:#170f12; --accent:#ff355e; --accent-dim:#b3132f; --text:#f0e2e6; }
         * { box-sizing: border-box; }
         body { background:var(--bg); color:var(--text); font-family:'Segoe UI',Tahoma,sans-serif;
                display:flex; justify-content:center; padding:28px 16px; margin:0; min-height:100vh; }
         .container { background:var(--panel); padding:28px; border-radius:18px; width:min(560px,100%);
-                     border:1px solid rgba(0,255,204,0.12); box-shadow:0 20px 50px rgba(0,255,204,0.05); }
+                     border:1px solid rgba(255,53,94,0.12); box-shadow:0 20px 50px rgba(255,53,94,0.05); }
         h1 { font-size:1.5rem; text-align:center; margin:0; letter-spacing:2px; text-transform:uppercase;
-             color:var(--accent); text-shadow:0 0 10px rgba(0,255,204,0.3); }
+             color:var(--accent); text-shadow:0 0 10px rgba(255,53,94,0.3); }
         .sub { text-align:center; color:#8a99ad; font-size:0.82rem; margin:6px 0 22px; }
         .badge { display:block; text-align:center; font-family:monospace; font-size:0.66rem; letter-spacing:2px;
                  color:var(--accent-dim); text-transform:uppercase; margin-bottom:18px; }
-        .file-label { display:block; text-align:center; background:rgba(0,255,204,0.1); border:1px dashed var(--accent);
+        .file-label { display:block; text-align:center; background:rgba(255,53,94,0.1); border:1px dashed var(--accent);
                       padding:12px; border-radius:8px; cursor:pointer; color:var(--accent); font-weight:600; }
         input[type="file"] { display:none; }
         canvas { display:block; width:100%; height:90px; background:#07080e; border-radius:8px;
-                 border:1px solid rgba(0,255,204,0.12); margin:16px 0; cursor:crosshair; }
+                 border:1px solid rgba(255,53,94,0.12); margin:16px 0; cursor:crosshair; }
         .presets { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:18px; }
-        .preset { padding:11px 8px; border:1px solid rgba(0,255,204,0.18); border-radius:8px; background:#0f1320;
+        .preset { padding:11px 8px; border:1px solid rgba(255,53,94,0.18); border-radius:8px; background:#0f1320;
                   color:#cfe; font-family:monospace; font-size:0.8rem; cursor:pointer; transition:all .2s; }
-        .preset:hover { background:rgba(0,255,204,0.14); }
-        .preset.active { background:rgba(0,255,204,0.22); border-color:var(--accent); color:var(--accent); }
+        .preset:hover { background:rgba(255,53,94,0.14); }
+        .preset.active { background:rgba(255,53,94,0.22); border-color:var(--accent); color:var(--accent); }
         .ctl { margin-bottom:16px; }
         .ctl label { display:flex; justify-content:space-between; font-size:0.8rem; text-transform:uppercase;
                      letter-spacing:1px; color:#8a99ad; margin-bottom:8px; }
@@ -53,8 +53,8 @@
         <canvas id="wave" width="700" height="90"></canvas>
 
         <div class="presets">
-            <button class="preset active" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0">Original (Dry)</button>
-            <button class="preset" data-mode="drone" data-t="0.35" data-aber="0" data-tail="0" data-evo="0">Drone</button>
+            <button class="preset" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0">Original (Dry)</button>
+            <button class="preset active" data-mode="drone" data-t="0.35" data-aber="0" data-tail="0" data-evo="0">Drone</button>
             <button class="preset" data-mode="shimmer" data-t="0.6" data-aber="18" data-tail="0" data-evo="12">Shimmer</button>
         </div>
 
@@ -85,7 +85,7 @@
 
         <div class="ctl" style="display:flex; justify-content:space-between; align-items:center;">
             <label style="margin:0;">Muestreo suave (QMC) <span class="v" id="smooth-v">ON</span></label>
-            <input type="checkbox" id="smooth" checked style="width:20px; height:20px; accent-color:#00ffcc; cursor:pointer;">
+            <input type="checkbox" id="smooth" checked style="width:20px; height:20px; accent-color:#ff355e; cursor:pointer;">
         </div>
 
         <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
@@ -105,7 +105,7 @@
 
     let ctx = null, jsGain = null, node = null, wasmModule = null;
     let sampleData = null, sampleRate = 44100, duration = 0;
-    let focusSec = 0, mode = 'dry', isPlaying = false, drySource = null;
+    let focusSec = 0, mode = 'drone', isPlaying = false, drySource = null;
     let wavePeaks = null;   // pico por pixel (precalculado al cargar)
     let visRays = [];       // rayos a dibujar (posiciones de granos reales)
 
@@ -116,9 +116,9 @@
         const grainMs  = 80 + t * 120;                 // 80 .. 200 ms
         const grainRate = 140 + t * 260;               // 140 .. 400 granos/s
         const concurrency = Math.max(1, grainRate * grainMs / 1000);
-        // Fuentes tonales (p.ej. una nota) suman casi en fase (~N×), no √N×. Normalizar
-        // por 1/N evita que el soft-clip distorsione el drone limpio.
-        const gain = 0.7 / concurrency;
+        // Nivel pleno (como el drone por defecto, que suena lleno) pero escalando con la
+        // densidad. El soft-clip del motor le da cuerpo sin distorsionar en exceso.
+        const gain = clamp(1.5 / Math.sqrt(concurrency), 0, 0.5);
         return { focus: focusSec, aperture, grainMs, grainRate, gain, master: 1.0 };
     }
     const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
@@ -194,6 +194,7 @@
             duration = buf.duration;
             focusSec = duration * 0.3;
             node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
+            sendParams(false); // silencio hasta que se pulse Play (el motor arranca con rate=0)
             computePeaks();
             playBtn.disabled = false;
             playBtn.innerText = '▶ Play';
@@ -316,7 +317,7 @@
 
         // Onda original
         if (wavePeaks) {
-            wctx.strokeStyle = 'rgba(0,255,204,0.28)'; wctx.beginPath();
+            wctx.strokeStyle = 'rgba(255,53,94,0.28)'; wctx.beginPath();
             for (let x = 0; x < W; x++) {
                 const a = wavePeaks[x] * (H * 0.45);
                 wctx.moveTo(x, mid - a); wctx.lineTo(x, mid + a);
@@ -330,7 +331,7 @@
             r.life -= 0.03;
             if (r.life <= 0) { visRays.splice(i, 1); continue; }
             const jit = (Math.random() - 0.5) * H * 0.55 * (1 - r.life);
-            wctx.strokeStyle = `rgba(0,255,204,${r.life * 0.5})`;
+            wctx.strokeStyle = `rgba(255,53,94,${r.life * 0.5})`;
             wctx.lineWidth = 0.8;
             wctx.beginPath();
             wctx.moveTo(r.x * W, mid + jit);
@@ -341,8 +342,8 @@
 
         // Línea de foco (glow)
         wctx.save();
-        wctx.shadowColor = '#00ffcc'; wctx.shadowBlur = 10;
-        wctx.strokeStyle = 'rgba(0,255,204,0.95)'; wctx.lineWidth = 2;
+        wctx.shadowColor = '#ff355e'; wctx.shadowBlur = 10;
+        wctx.strokeStyle = 'rgba(255,53,94,0.95)'; wctx.lineWidth = 2;
         wctx.beginPath(); wctx.moveTo(focusX, 0); wctx.lineTo(focusX, H); wctx.stroke();
         wctx.restore();
 
