@@ -1,9 +1,4 @@
-// AudioWorkletProcessor que ejecuta el motor RayDrone (Rust→wasm).
-//
-// El módulo wasm se compila en el hilo principal y se pasa ya compilado por
-// processorOptions (WebAssembly.Module es clonable hacia el worklet). Aquí lo
-// instanciamos de forma SÍNCRONA (permitido en el constructor del worklet) y, en
-// cada bloque de 128 muestras, llamamos a process() y copiamos la salida.
+// AudioWorkletProcessor que ejecuta el motor RayDrone (Rust→wasm). Estéreo.
 
 class RayDroneProcessor extends AudioWorkletProcessor {
     constructor(options) {
@@ -12,11 +7,13 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.inst = new WebAssembly.Instance(mod, {});
         this.ex = this.inst.exports;
         this.mem = this.ex.memory;
-        this.outPtr = this.ex.out_ptr();
+        this.outL = this.ex.out_l_ptr();
+        this.outR = this.ex.out_r_ptr();
         this.ready = false;
         this.ex.seed(0x9e3779b9);
-        this.lastW = 0;        // último índice de rayo leído del registro
-        this.rayAccum = [];    // rayos acumulados para enviar al hilo principal
+        this.lastW = 0;
+        this.rayOff = [];
+        this.rayBand = [];
         this.blockCount = 0;
         this.port.onmessage = (e) => this.onMsg(e.data);
     }
@@ -26,54 +23,61 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         if (d.type === 'sample') {
             const cap = ex.sample_capacity();
             const len = Math.min(d.data.length, cap);
-            const dst = new Float32Array(this.mem.buffer, ex.sample_ptr(), len);
-            dst.set(d.data.subarray(0, len));
+            new Float32Array(this.mem.buffer, ex.sample_ptr(), len).set(d.data.subarray(0, len));
             ex.set_sample(len, d.sampleRate);
             this.ready = true;
         } else if (d.type === 'window') {
-            const w = new Float32Array(this.mem.buffer, ex.window_ptr(), d.data.length);
-            w.set(d.data);
+            new Float32Array(this.mem.buffer, ex.window_ptr(), d.data.length).set(d.data);
         } else if (d.type === 'params') {
             ex.set_params(d.focus, d.aperture, d.grainMs, d.grainRate, d.gain, d.master);
         } else if (d.type === 'mode') {
             ex.set_mode(d.value >>> 0);
         } else if (d.type === 'fx') {
             ex.set_fx(d.aber, d.bounces >>> 0, d.refl, d.feedback);
+        } else if (d.type === 'space') {
+            ex.set_space(d.width, d.oct);
         }
     }
 
     process(inputs, outputs) {
         const out = outputs[0];
-        const frames = out[0].length; // 128
+        const frames = out[0].length;
         if (this.ready) {
             this.ex.process(frames);
-            // Reconstruimos la vista cada bloque por si la memoria creciera (no debería).
-            const o = new Float32Array(this.mem.buffer, this.outPtr, frames);
-            out[0].set(o);
-            if (out[1]) out[1].set(o); // mono → estéreo
+            out[0].set(new Float32Array(this.mem.buffer, this.outL, frames));
+            if (out[1]) out[1].set(new Float32Array(this.mem.buffer, this.outR, frames));
 
-            // Recoger los rayos (posiciones de granos) y enviarlos throttle ~21 fps.
+            // Recoger rayos (offset + banda) y nivel, y enviarlos throttle (~21 fps).
             const w = this.ex.slog_w() >>> 0;
             if (w !== this.lastW) {
                 const cap = this.ex.slog_cap();
-                const log = new Float32Array(this.mem.buffer, this.ex.slog_ptr(), cap);
+                const off = new Float32Array(this.mem.buffer, this.ex.slog_ptr(), cap);
+                const bnd = new Float32Array(this.mem.buffer, this.ex.slog_b_ptr(), cap);
                 let count = (w - this.lastW) >>> 0;
                 if (count > cap) count = cap;
-                for (let k = 0; k < count; k++) this.rayAccum.push(log[(this.lastW + k) % cap]);
+                for (let k = 0; k < count; k++) {
+                    const idx = (this.lastW + k) % cap;
+                    this.rayOff.push(off[idx]);
+                    this.rayBand.push(bnd[idx]);
+                }
                 this.lastW = w;
             }
             if (++this.blockCount >= 16) {
                 this.blockCount = 0;
-                if (this.rayAccum.length) {
-                    this.port.postMessage({ type: 'rays', offsets: this.rayAccum });
-                    this.rayAccum = [];
+                const level = this.ex.out_level();
+                if (this.rayOff.length) {
+                    this.port.postMessage({ type: 'rays', offsets: this.rayOff, bands: this.rayBand, level });
+                    this.rayOff = [];
+                    this.rayBand = [];
+                } else {
+                    this.port.postMessage({ type: 'level', level });
                 }
             }
         } else {
             out[0].fill(0);
             if (out[1]) out[1].fill(0);
         }
-        return true; // mantener vivo el procesador
+        return true;
     }
 }
 
