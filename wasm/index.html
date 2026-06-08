@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RayDrone · WASM</title>
+    <style>
+        :root { --bg:#0a0b10; --panel:#141622; --accent:#00ffcc; --accent-dim:#00aa88; --text:#e2e8f0; }
+        * { box-sizing: border-box; }
+        body { background:var(--bg); color:var(--text); font-family:'Segoe UI',Tahoma,sans-serif;
+               display:flex; justify-content:center; padding:28px 16px; margin:0; min-height:100vh; }
+        .container { background:var(--panel); padding:28px; border-radius:18px; width:min(560px,100%);
+                     border:1px solid rgba(0,255,204,0.12); box-shadow:0 20px 50px rgba(0,255,204,0.05); }
+        h1 { font-size:1.5rem; text-align:center; margin:0; letter-spacing:2px; text-transform:uppercase;
+             color:var(--accent); text-shadow:0 0 10px rgba(0,255,204,0.3); }
+        .sub { text-align:center; color:#8a99ad; font-size:0.82rem; margin:6px 0 22px; }
+        .badge { display:block; text-align:center; font-family:monospace; font-size:0.66rem; letter-spacing:2px;
+                 color:var(--accent-dim); text-transform:uppercase; margin-bottom:18px; }
+        .file-label { display:block; text-align:center; background:rgba(0,255,204,0.1); border:1px dashed var(--accent);
+                      padding:12px; border-radius:8px; cursor:pointer; color:var(--accent); font-weight:600; }
+        input[type="file"] { display:none; }
+        canvas { display:block; width:100%; height:90px; background:#07080e; border-radius:8px;
+                 border:1px solid rgba(0,255,204,0.12); margin:16px 0; cursor:crosshair; }
+        .presets { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:18px; }
+        .preset { padding:11px 8px; border:1px solid rgba(0,255,204,0.18); border-radius:8px; background:#0f1320;
+                  color:#cfe; font-family:monospace; font-size:0.8rem; cursor:pointer; transition:all .2s; }
+        .preset:hover { background:rgba(0,255,204,0.14); }
+        .preset.active { background:rgba(0,255,204,0.22); border-color:var(--accent); color:var(--accent); }
+        .ctl { margin-bottom:16px; }
+        .ctl label { display:flex; justify-content:space-between; font-size:0.8rem; text-transform:uppercase;
+                     letter-spacing:1px; color:#8a99ad; margin-bottom:8px; }
+        .ctl label .v { color:var(--accent); font-family:monospace; }
+        input[type="range"] { -webkit-appearance:none; appearance:none; width:100%; height:6px; background:#23273a;
+                              border-radius:3px; outline:none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
+                              background:var(--accent); cursor:pointer; box-shadow:0 0 10px var(--accent); }
+        .btn { width:100%; border:none; padding:15px; border-radius:10px; font-size:1rem; font-weight:bold;
+               text-transform:uppercase; letter-spacing:1px; cursor:pointer; transition:all .25s; }
+        .btn-play { background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; margin-top:6px; }
+        .btn-play:disabled { background:#23273a; color:#555c77; cursor:not-allowed; }
+        .status { text-align:center; font-family:monospace; font-size:0.76rem; color:#c6d2e5; margin-top:16px; min-height:1em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RayDrone</h1>
+        <p class="sub">Drones y texturas a partir de tus samples</p>
+        <span class="badge">Rust · WebAssembly · AudioWorklet</span>
+
+        <label class="file-label" id="file-label" for="file">📁 Cargar WAV / MP3</label>
+        <input type="file" id="file" accept="audio/*">
+
+        <canvas id="wave" width="700" height="90"></canvas>
+
+        <div class="presets">
+            <button class="preset active" data-mode="dry">Original (Dry)</button>
+            <button class="preset" data-mode="drone" data-t="0.35">Drone</button>
+            <button class="preset" data-mode="shimmer" data-t="0.62">Shimmer</button>
+        </div>
+
+        <div class="ctl">
+            <label>Carácter (Tonal → Drone) <span class="v" id="char-v">—</span></label>
+            <input type="range" id="char" min="0" max="100" value="35">
+        </div>
+
+        <div class="ctl">
+            <label>Volumen <span class="v" id="vol-v">80 %</span></label>
+            <input type="range" id="vol" min="0" max="100" value="80">
+        </div>
+
+        <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
+        <div class="status" id="status">Carga un WAV o MP3 para empezar.</div>
+    </div>
+
+    <script>
+    const $ = (id) => document.getElementById(id);
+    const fileInput = $('file'), fileLabel = $('file-label'), playBtn = $('play'), statusEl = $('status');
+    const charSlider = $('char'), charV = $('char-v'), volSlider = $('vol'), volV = $('vol-v');
+    const presets = Array.from(document.querySelectorAll('.preset'));
+    const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
+
+    let ctx = null, jsGain = null, node = null, wasmModule = null;
+    let sampleData = null, sampleRate = 44100, duration = 0;
+    let focusSec = 0, mode = 'dry', isPlaying = false, drySource = null;
+
+    // ── Mapeo del knob Carácter → parámetros del motor ──────────────────────
+    function paramsFromChar() {
+        const t = clamp(parseFloat(charSlider.value) / 100, 0, 1);
+        const aperture = 0.02 + t * t * 0.6;          // 20 ms .. 620 ms
+        const grainMs  = 80 + t * 120;                 // 80 .. 200 ms
+        const grainRate = 140 + t * 260;               // 140 .. 400 granos/s
+        const concurrency = Math.max(1, grainRate * grainMs / 1000);
+        const gain = 0.9 / Math.sqrt(concurrency);     // normaliza el nivel del cloud
+        return { focus: focusSec, aperture, grainMs, grainRate, gain, master: 1.0 };
+    }
+    const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
+
+    function sendParams(active) {
+        if (!node) return;
+        const p = paramsFromChar();
+        if (!active) p.grainRate = 0; // motor en silencio (las voces se apagan solas)
+        node.port.postMessage({ type: 'params', ...p });
+    }
+
+    function charWord() {
+        const t = parseFloat(charSlider.value) / 100;
+        return t < 0.34 ? 'Tonal' : t < 0.67 ? 'Textura' : 'Drone';
+    }
+
+    // ── Motor (lazy): AudioContext + worklet + módulo wasm ──────────────────
+    async function ensureEngine() {
+        if (!ctx) {
+            ctx = new (window.AudioContext || window.webkitAudioContext)();
+            jsGain = ctx.createGain();
+            jsGain.gain.value = parseFloat(volSlider.value) / 100;
+            jsGain.connect(ctx.destination);
+        }
+        if (ctx.state === 'suspended') await ctx.resume();
+        if (!wasmModule) {
+            const bytes = await fetch('raydrone.wasm').then(r => r.arrayBuffer());
+            wasmModule = await WebAssembly.compile(bytes);
+            await ctx.audioWorklet.addModule('processor.js');
+        }
+        if (!node) {
+            node = new AudioWorkletNode(ctx, 'raydrone', {
+                numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+                processorOptions: { module: wasmModule },
+            });
+            node.connect(jsGain);
+            // LUT de ventana Hann (JS sí tiene Math.cos)
+            const win = new Float32Array(2048);
+            for (let i = 0; i < 2048; i++) win[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / 2047));
+            node.port.postMessage({ type: 'window', data: win });
+        }
+        if (sampleData) {
+            node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
+        }
+    }
+
+    // ── Carga de audio ──────────────────────────────────────────────────────
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        fileLabel.innerText = `✔ ${file.name.substring(0, 26)}`;
+        statusEl.innerText = 'Decodificando…';
+        try {
+            await ensureEngine();
+            const buf = await ctx.decodeAudioData(await file.arrayBuffer());
+            sampleData = buf.getChannelData(0).slice(); // copia del canal 0
+            sampleRate = buf.sampleRate;
+            duration = buf.duration;
+            focusSec = duration * 0.3;
+            node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
+            drawWave();
+            playBtn.disabled = false;
+            playBtn.innerText = '▶ Play';
+            statusEl.innerText = `Audio listo · ${duration.toFixed(2)} s · click en la onda para mover el foco`;
+        } catch (err) {
+            statusEl.innerText = 'Error al decodificar el audio.';
+            console.error(err);
+        }
+    });
+
+    // ── Transporte ──────────────────────────────────────────────────────────
+    function stopDry() {
+        if (drySource) { try { drySource.stop(); } catch (_) {} drySource = null; }
+    }
+    function startDry() {
+        stopDry();
+        const buf = ctx.createBuffer(1, sampleData.length, sampleRate);
+        buf.copyToChannel(sampleData, 0);
+        const s = ctx.createBufferSource();
+        s.buffer = buf; s.loop = true;
+        s.connect(jsGain);
+        s.start(ctx.currentTime, focusSec);
+        drySource = s;
+    }
+    function stopAll() { stopDry(); sendParams(false); }
+
+    async function play() {
+        await ensureEngine();
+        isPlaying = true;
+        playBtn.innerText = '⏸ Pause';
+        if (mode === 'dry') startDry();
+        else sendParams(true);
+    }
+    function stop() {
+        isPlaying = false;
+        playBtn.innerText = '▶ Play';
+        stopAll();
+    }
+
+    playBtn.addEventListener('click', () => { isPlaying ? stop() : play(); });
+
+    presets.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            presets.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            mode = btn.dataset.mode;
+            if (btn.dataset.t !== undefined) {
+                charSlider.value = Math.round(parseFloat(btn.dataset.t) * 100);
+                charV.innerText = charWord();
+            }
+            if (isPlaying) {            // aplicar el cambio al vuelo
+                stopAll();
+                if (mode === 'dry') startDry(); else sendParams(true);
+            }
+        });
+    });
+
+    charSlider.addEventListener('input', () => {
+        charV.innerText = charWord();
+        if (mode === 'dry') {           // tocar el carácter = quieres el motor
+            mode = 'drone';
+            presets.forEach(b => b.classList.toggle('active', b.dataset.mode === 'drone'));
+            if (isPlaying) { stopDry(); sendParams(true); }
+        } else if (isPlaying) {
+            sendParams(true);
+        }
+    });
+
+    volSlider.addEventListener('input', () => {
+        volV.innerText = `${volSlider.value} %`;
+        if (jsGain) jsGain.gain.value = parseFloat(volSlider.value) / 100;
+    });
+
+    // ── Waveform + click para mover el foco ─────────────────────────────────
+    function drawWave() {
+        const W = waveCanvas.width, H = waveCanvas.height, mid = H / 2;
+        wctx.clearRect(0, 0, W, H);
+        wctx.fillStyle = '#07080e'; wctx.fillRect(0, 0, W, H);
+        if (sampleData) {
+            wctx.strokeStyle = 'rgba(0,255,204,0.4)'; wctx.beginPath();
+            for (let x = 0; x < W; x++) {
+                const start = Math.floor(x / W * sampleData.length);
+                const end = Math.floor((x + 1) / W * sampleData.length);
+                let peak = 0;
+                for (let i = start; i < end; i++) { const v = Math.abs(sampleData[i]); if (v > peak) peak = v; }
+                const a = peak * (H * 0.45);
+                wctx.moveTo(x, mid - a); wctx.lineTo(x, mid + a);
+            }
+            wctx.stroke();
+            // línea de foco
+            const fx = (focusSec / Math.max(duration, 0.001)) * W;
+            wctx.strokeStyle = 'rgba(0,255,204,0.95)'; wctx.lineWidth = 2;
+            wctx.beginPath(); wctx.moveTo(fx, 0); wctx.lineTo(fx, H); wctx.stroke();
+            wctx.lineWidth = 1;
+        }
+    }
+    waveCanvas.addEventListener('click', (e) => {
+        if (!sampleData) return;
+        const rect = waveCanvas.getBoundingClientRect();
+        focusSec = clamp((e.clientX - rect.left) / rect.width * duration, 0, duration);
+        drawWave();
+        if (isPlaying) { if (mode === 'dry') startDry(); else sendParams(true); }
+    });
+
+    charV.innerText = charWord();
+    drawWave();
+    </script>
+</body>
+</html>
