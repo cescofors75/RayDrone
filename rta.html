@@ -818,7 +818,7 @@
                         <span>Carácter (Tonal → Drone)</span>
                         <span id="macro-val" class="val">Textura</span>
                     </div>
-                    <input type="range" id="macro" min="0" max="100" value="45">
+                    <input type="range" id="macro" min="0" max="100" value="35">
                 </div>
 
                 <!-- VOLUMEN RENDER -->
@@ -1273,10 +1273,10 @@
     const presetMap = {
         none:      { volume: 80, ray: 5,  disp: 45,  pos: 25, sweep: 0, aber: 0,  rough: 15, bounces: 0, refl: 25, ae: 0, alpha: 0, beta: 0, gamma: 0 },
         tonal:     { volume: 82, ray: 6,  disp: 70,  pos: 30, sweep: 0, aber: 0,  rough: 25, bounces: 0, refl: 30, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        drone:     { volume: 80, ray: 26, disp: 350, pos: 35, sweep: 0, aber: 0,  rough: 90, bounces: 0, refl: 40, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        drone:     { volume: 80, ray: 20, disp: 70,  pos: 30, sweep: 0, aber: 0,  rough: 55, bounces: 0, refl: 40, ae: 0, alpha: 0, beta: 0, gamma: 0 },
         zimmer:    { volume: 82, ray: 22, disp: 500, pos: 40, sweep: 0, aber: 20, rough: 70, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
         fred:      { volume: 80, ray: 12, disp: 180, pos: 35, sweep: 0, aber: 18, rough: 85, bounces: 0, refl: 45, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        shimmer:   { volume: 78, ray: 20, disp: 450, pos: 30, sweep: 5, aber: 30, rough: 60, bounces: 2, refl: 65, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        shimmer:   { volume: 78, ray: 22, disp: 200, pos: 30, sweep: 4, aber: 55, rough: 70, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
         abyss:     { volume: 80, ray: 30, disp: 700, pos: 45, sweep: 0, aber: 0,  rough: 95, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
         nebula:    { volume: 76, ray: 16, disp: 300, pos: 30, sweep: 7, aber: 45, rough: 65, bounces: 0, refl: 50, ae: 0, alpha: 0, beta: 0, gamma: 0 },
         cathedral: { volume: 80, ray: 18, disp: 600, pos: 40, sweep: 0, aber: 12, rough: 40, bounces: 2, refl: 65, ae: 0, alpha: 0, beta: 0, gamma: 0 },
@@ -2063,8 +2063,9 @@
 
         const dispFeedbackSec = feedbackOn ? alpha * feedbackState.high * 6.0 : 0;
         const dispSec = clamp(baseDispSec + dispFeedbackSec, 0.005, 10);
-        // Granos cortos (no reproducen el ritmo del sample) → drone suave y sostenido.
-        const rayDuration = clamp(0.06 + dispSec * 0.05, 0.08, 0.20);
+        // Granos de tamaño medio: suficientes ciclos para sonar suave en material tonal,
+        // sin llegar a reproducir el ritmo de un loop.
+        const rayDuration = clamp(0.11 + dispSec * 0.08, 0.11, 0.30);
         // Tick pequeño con ~4× de solape: flujo continuo de granos, sin pulso audible.
         const tickMs = clamp(rayDuration * 1000 / 4, 16, 45);
 
@@ -2147,6 +2148,14 @@
 
         isPlaying = true;
         updateTransportButton();
+
+        // Restaurar el volumen del render: cancela cualquier rampa-a-0 pendiente de un
+        // stopEngine reciente (si no, al reiniciar el motor se quedaba en silencio).
+        if (renderGainNode) {
+            const now = audioCtx.currentTime;
+            renderGainNode.gain.cancelScheduledValues(now);
+            renderGainNode.gain.setValueAtTime(parseFloat(volSlider.value) / 100, now);
+        }
 
         nextNoteTime = audioCtx.currentTime + 0.06;
         scheduler();
@@ -2738,7 +2747,7 @@
         function applyMacro(v) {
             const t = clamp(v / 100, 0, 1);
             raySlider.value = Math.round(6 + t * 16);             // raw 6..22 → N ≈ 16..130 (sin saturar)
-            dispSlider.value = Math.round(60 + (t * t) * 3940);   // 60 ms .. 4 s (suave abajo)
+            dispSlider.value = Math.round(30 + (t * t) * 970);    // 30 ms .. 1 s (apertura estrecha = tono limpio)
             roughSlider.value = Math.round(40 + t * 55);          // 40 % .. 95 %
             rayVal.innerText = getDisplayedN();
             dispVal.innerText = formatDispersion(dispSlider.value);
