@@ -81,6 +81,7 @@ Motor con paridad casi completa con la versión JS:
   apertura → el drone se modula a sí mismo.
 - ✅ **Estéreo (Width)**: paneo equal-power por grano → nube ancha e inmersiva.
 - ✅ **Octava / Shimmer**: probabilidad de que cada grano suene una octava arriba.
+- ✅ **Pitch (transposición)**: ±12 semitonos (multiplicador de velocidad de lectura).
 - ✅ **Visual**: cono de dispersión, rayos coloreados por banda (grave/medio/agudo)
   y medidor de salida en tiempo real.
 
