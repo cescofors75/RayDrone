@@ -763,17 +763,17 @@
                 </div>
 
                 <div class="scene-presets" id="scene-presets">
-                    <button class="scene-preset-btn" data-preset="none">None / Dry</button>
-                    <button class="scene-preset-btn" data-preset="tonal">Tonal / Pitched</button>
-                    <button class="scene-preset-btn" data-preset="drone">Dense Drone</button>
-                    <button class="scene-preset-btn" data-preset="zimmer">Zimmer Brass</button>
-                    <button class="scene-preset-btn" data-preset="fred">Fred Again Vocal</button>
-                    <button class="scene-preset-btn" data-preset="shimmer">Infinite Shimmer</button>
-                    <button class="scene-preset-btn" data-preset="abyss">Sub Abyss</button>
-                    <button class="scene-preset-btn" data-preset="nebula">Neon Nebula</button>
-                    <button class="scene-preset-btn" data-preset="cathedral">Cathedral Bloom</button>
-                    <button class="scene-preset-btn" data-preset="arctic">Arctic Glass</button>
-                    <button class="scene-preset-btn" data-preset="catacomb">Catacomb Storm</button>
+                    <button class="scene-preset-btn" data-preset="none">Original (Dry)</button>
+                    <button class="scene-preset-btn" data-preset="drone">Drone</button>
+                    <button class="scene-preset-btn" data-preset="shimmer">Shimmer</button>
+                    <button class="scene-preset-btn advanced-only" data-preset="tonal">Tonal / Pitched</button>
+                    <button class="scene-preset-btn advanced-only" data-preset="zimmer">Zimmer Brass</button>
+                    <button class="scene-preset-btn advanced-only" data-preset="fred">Fred Again Vocal</button>
+                    <button class="scene-preset-btn advanced-only" data-preset="abyss">Sub Abyss</button>
+                    <button class="scene-preset-btn advanced-only" data-preset="nebula">Neon Nebula</button>
+                    <button class="scene-preset-btn advanced-only" data-preset="cathedral">Cathedral Bloom</button>
+                    <button class="scene-preset-btn advanced-only" data-preset="arctic">Arctic Glass</button>
+                    <button class="scene-preset-btn advanced-only" data-preset="catacomb">Catacomb Storm</button>
                 </div>
             </div>
         </section>
@@ -1010,6 +1010,7 @@
     let activeSources = [];
     let originalSourceNode = null;
     let isAuditioningOriginal = false;
+    let dryMode = false; // "Original (Dry)": reproduce el sample tal cual, sin motor granular
     let originalPlaybackStartOffset = 0;
     let originalPlaybackStartedAt = 0;
     let sweepPhase = 0; // 0..1, para barrido ping-pong de todo el sample
@@ -1301,6 +1302,8 @@
         const preset = presetMap[name];
         if (!preset) return;
 
+        dryMode = (name === 'none'); // "Original (Dry)" = bypass real del motor
+
         volSlider.value = preset.volume;
         raySlider.value = Math.min(250, Math.max(2, Math.round(preset.ray)));
         dispSlider.value = preset.disp;
@@ -1460,6 +1463,10 @@
     function toggleUnifiedTransport() {
         if (isPlaying || isAuditioningOriginal) {
             stopBothTransports();
+        } else if (dryMode) {
+            // "Original (Dry)": solo el sample original, sin motor granular (para comparar)
+            playOriginalFromFocus();
+            updateTransportButton();
         } else if (isSyncTransportEnabled()) {
             // Solo si activas "Sync Original + Render" (avanzado) se oye el original encima
             startBothTransports();
@@ -1777,7 +1784,13 @@
     scenePresetButtons.forEach((btn) => {
         btn.addEventListener('click', () => {
             const presetName = btn.dataset.preset;
-            if (presetName) applyPreset(presetName);
+            if (!presetName) return;
+            const wasRunning = isPlaying || isAuditioningOriginal;
+            applyPreset(presetName);
+            if (wasRunning) {            // rearrancar para aplicar el cambio de modo al vuelo
+                stopBothTransports();
+                toggleUnifiedTransport();
+            }
         });
     });
 
@@ -2735,7 +2748,13 @@
             updateStatus(activeSources.length, null);
         }
 
-        macroSlider.addEventListener('input', (e) => applyMacro(e.target.value));
+        macroSlider.addEventListener('input', (e) => {
+            applyMacro(e.target.value);
+            if (dryMode) {               // tocar el Carácter = quieres el motor, sales de Dry
+                dryMode = false;
+                if (isAuditioningOriginal) { stopBothTransports(); startEngine(); updateTransportButton(); }
+            }
+        });
         applyMacro(macroSlider.value);   // arranque con un default agradable (no caótico)
 
         modeToggle.addEventListener('click', () => {
