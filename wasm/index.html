@@ -39,6 +39,9 @@
         .btn-play { background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; margin-top:6px; }
         .btn-play:disabled { background:#23273a; color:#555c77; cursor:not-allowed; }
         .status { text-align:center; font-family:monospace; font-size:0.76rem; color:#c6d2e5; margin-top:16px; min-height:1em; }
+        #meter { height:6px; background:#23273a; border-radius:3px; overflow:hidden; margin:-6px 0 14px; }
+        #meter-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--accent-dim),var(--accent),#ffb3c1);
+                      transition:width .08s linear; }
     </style>
 </head>
 <body>
@@ -51,11 +54,12 @@
         <input type="file" id="file" accept="audio/*">
 
         <canvas id="wave" width="700" height="90"></canvas>
+        <div id="meter"><div id="meter-fill"></div></div>
 
         <div class="presets">
-            <button class="preset" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0">Original (Dry)</button>
-            <button class="preset active" data-mode="drone" data-t="0.35" data-aber="0" data-tail="0" data-evo="0">Drone</button>
-            <button class="preset" data-mode="shimmer" data-t="0.6" data-aber="18" data-tail="0" data-evo="12">Shimmer</button>
+            <button class="preset" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0" data-width="0" data-oct="0">Original (Dry)</button>
+            <button class="preset active" data-mode="drone" data-t="0.35" data-aber="0" data-tail="0" data-evo="0" data-width="35" data-oct="0">Drone</button>
+            <button class="preset" data-mode="shimmer" data-t="0.6" data-aber="18" data-tail="0" data-evo="12" data-width="60" data-oct="50">Shimmer</button>
         </div>
 
         <div class="ctl">
@@ -83,6 +87,16 @@
             <input type="range" id="evo" min="0" max="100" value="0">
         </div>
 
+        <div class="ctl">
+            <label>Estéreo (Width) <span class="v" id="width-v">0 %</span></label>
+            <input type="range" id="width" min="0" max="100" value="0">
+        </div>
+
+        <div class="ctl">
+            <label>Octava / Shimmer <span class="v" id="oct-v">0 %</span></label>
+            <input type="range" id="oct" min="0" max="100" value="0">
+        </div>
+
         <div class="ctl" style="display:flex; justify-content:space-between; align-items:center;">
             <label style="margin:0;">Muestreo suave (QMC) <span class="v" id="smooth-v">ON</span></label>
             <input type="checkbox" id="smooth" checked style="width:20px; height:20px; accent-color:#ff355e; cursor:pointer;">
@@ -100,6 +114,9 @@
     const aberSlider = $('aber'), aberV = $('aber-v');
     const tailSlider = $('tail'), tailV = $('tail-v');
     const evoSlider = $('evo'), evoV = $('evo-v');
+    const widthSlider = $('width'), widthV = $('width-v');
+    const octSlider = $('oct'), octV = $('oct-v');
+    const meterFill = $('meter-fill');
     const presets = Array.from(document.querySelectorAll('.preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
 
@@ -140,6 +157,15 @@
         node.port.postMessage({ type: 'fx', aber, bounces, refl, feedback });
     }
 
+    function sendSpace() {
+        if (!node) return;
+        node.port.postMessage({
+            type: 'space',
+            width: parseFloat(widthSlider.value) / 100,
+            oct: parseFloat(octSlider.value) / 100,
+        });
+    }
+
     function charWord() {
         const t = parseFloat(charSlider.value) / 100;
         return t < 0.34 ? 'Tonal' : t < 0.67 ? 'Textura' : 'Drone';
@@ -165,8 +191,10 @@
                 processorOptions: { module: wasmModule },
             });
             node.connect(jsGain);
-            node.port.onmessage = (e) => {       // rayos reales desde el worklet
-                if (e.data.type === 'rays') pushRays(e.data.offsets);
+            node.port.onmessage = (e) => {       // rayos + nivel desde el worklet
+                const d = e.data;
+                if (d.type === 'rays') { pushRays(d.offsets, d.bands); setMeter(d.level); }
+                else if (d.type === 'level') setMeter(d.level);
             };
             // LUT de ventana Hann (JS sí tiene Math.cos)
             const win = new Float32Array(2048);
@@ -174,6 +202,7 @@
             node.port.postMessage({ type: 'window', data: win });
             node.port.postMessage({ type: 'mode', value: smoothChk.checked ? 1 : 0 });
             sendFx();
+            sendSpace();
         }
         if (sampleData) {
             node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
@@ -249,8 +278,11 @@
                 aberSlider.value = btn.dataset.aber; aberV.innerText = `${btn.dataset.aber} %`;
                 tailSlider.value = btn.dataset.tail; tailV.innerText = `${btn.dataset.tail} %`;
                 evoSlider.value = btn.dataset.evo;   evoV.innerText = `${btn.dataset.evo} %`;
+                widthSlider.value = btn.dataset.width; widthV.innerText = `${btn.dataset.width} %`;
+                octSlider.value = btn.dataset.oct;     octV.innerText = `${btn.dataset.oct} %`;
             }
             sendFx();
+            sendSpace();
             if (isPlaying) {            // aplicar el cambio al vuelo
                 stopAll();
                 if (mode === 'dry') startDry(); else sendParams(true);
@@ -288,6 +320,20 @@
         });
     });
 
+    [widthSlider, octSlider].forEach((sl) => {
+        sl.addEventListener('input', () => {
+            widthV.innerText = `${widthSlider.value} %`;
+            octV.innerText = `${octSlider.value} %`;
+            sendSpace();
+        });
+    });
+
+    let meterTarget = 0;
+    function setMeter(level) {
+        // level ~ envolvente media; mapear a % con un poco de ganancia visual
+        meterTarget = Math.min(100, level * 180);
+    }
+
     // ── Visualización: onda + rayos (granos reales) + foco ──────────────────
     function computePeaks() {
         const W = waveCanvas.width;
@@ -302,22 +348,42 @@
         }
     }
 
-    function pushRays(offsets) {
+    function pushRays(offsets, bands) {
         const inv = 1 / Math.max(duration, 0.001);
-        for (let k = 0; k < offsets.length; k++) visRays.push({ x: offsets[k] * inv, life: 1.0 });
+        for (let k = 0; k < offsets.length; k++) {
+            visRays.push({ x: offsets[k] * inv, band: bands ? (bands[k] | 0) : 1, life: 1.0 });
+        }
         if (visRays.length > 800) visRays.splice(0, visRays.length - 800);
     }
 
+    // Color por banda: grave=naranja, medio=rojo, agudo=rosa claro (se ve la aberración)
+    const BAND_RGB = [[255, 138, 61], [255, 53, 94], [255, 190, 215]];
+
+    let meterShown = 0;
     function frame() {
         const W = waveCanvas.width, H = waveCanvas.height, mid = H / 2;
         wctx.clearRect(0, 0, W, H);
         wctx.fillStyle = '#07080e'; wctx.fillRect(0, 0, W, H);
 
-        const focusX = (focusSec / Math.max(duration, 0.001)) * W;
+        const dur = Math.max(duration, 0.001);
+        const focusX = (focusSec / dur) * W;
+
+        // Cono de dispersión (apertura): zona alrededor del foco de la que salen los rayos
+        if (sampleData) {
+            const t = clamp(parseFloat(charSlider.value) / 100, 0, 1);
+            const apSec = 0.02 + t * t * 0.6;
+            const apX = (apSec / dur) * W;
+            const grad = wctx.createLinearGradient(focusX - apX, 0, focusX + apX, 0);
+            grad.addColorStop(0, 'rgba(255,53,94,0)');
+            grad.addColorStop(0.5, 'rgba(255,53,94,0.10)');
+            grad.addColorStop(1, 'rgba(255,53,94,0)');
+            wctx.fillStyle = grad;
+            wctx.fillRect(focusX - apX, 0, apX * 2, H);
+        }
 
         // Onda original
         if (wavePeaks) {
-            wctx.strokeStyle = 'rgba(255,53,94,0.28)'; wctx.beginPath();
+            wctx.strokeStyle = 'rgba(255,53,94,0.26)'; wctx.beginPath();
             for (let x = 0; x < W; x++) {
                 const a = wavePeaks[x] * (H * 0.45);
                 wctx.moveTo(x, mid - a); wctx.lineTo(x, mid + a);
@@ -326,13 +392,14 @@
         }
 
         // Rayos: cada grano nace en su offset y converge al foco mientras se desvanece
+        wctx.lineWidth = 0.8;
         for (let i = visRays.length - 1; i >= 0; i--) {
             const r = visRays[i];
             r.life -= 0.03;
             if (r.life <= 0) { visRays.splice(i, 1); continue; }
             const jit = (Math.random() - 0.5) * H * 0.55 * (1 - r.life);
-            wctx.strokeStyle = `rgba(255,53,94,${r.life * 0.5})`;
-            wctx.lineWidth = 0.8;
+            const c = BAND_RGB[r.band] || BAND_RGB[1];
+            wctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${r.life * 0.5})`;
             wctx.beginPath();
             wctx.moveTo(r.x * W, mid + jit);
             wctx.lineTo(focusX, mid);
@@ -346,6 +413,10 @@
         wctx.strokeStyle = 'rgba(255,53,94,0.95)'; wctx.lineWidth = 2;
         wctx.beginPath(); wctx.moveTo(focusX, 0); wctx.lineTo(focusX, H); wctx.stroke();
         wctx.restore();
+
+        // Medidor de salida (suavizado)
+        meterShown += (meterTarget - meterShown) * 0.25;
+        meterFill.style.width = `${meterShown}%`;
 
         requestAnimationFrame(frame);
     }
