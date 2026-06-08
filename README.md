@@ -47,6 +47,44 @@ control set (depth of field, aperture, focus) and a *measurable* mathematical fo
 
 ---
 
+## Genesis: from a pixel to a sound
+
+The whole idea started with a question about graphics: **how is a single pixel actually
+defined in ray tracing?**
+
+A pixel is not a stored colour. In physically based rendering it is the solution of
+Kajiya's **rendering equation** — the light leaving a point, an *integral* over every
+incoming direction:
+
+```
+L_o(x, ω_o) = L_e(x, ω_o) + ∫_Ω f_r(x, ω_i, ω_o) · L_i(x, ω_i) · (ω_i · n) dω_i
+```
+
+That integral has no closed form, so a renderer **estimates** it by Monte Carlo: cast `N`
+random rays, evaluate the integrand along each one, and average them:
+
+```
+pixel ≈ (1/N) Σᵢ contribution(rayᵢ)
+```
+
+The pixel **emerges** from the average of N stochastic samples; more rays → the estimate
+converges → less noise.
+
+Then came the flip that started everything: **what if a single audio sample were defined
+the same way?** Not stored, but the result of an integral estimated by stochastic samples.
+Swap the hemisphere of directions for a *window of time* around a focal instant, light rays
+for *grains*, and radiance for *amplitude*:
+
+```
+output[n] ≈ (1/N) Σᵢ s(τᵢ + n) · w[n]      (τᵢ drawn from the dispersion around the focus)
+```
+
+Same shape. Same Monte Carlo estimator. Same `1/√N` convergence. The **drone is the audio
+pixel**: it does not exist in the sample — it emerges when you render it. That parallel
+between the pixel formula and the sample formula *is* the whole project.
+
+---
+
 ## The theory
 
 ### Ray tracing in graphics (the origin)
@@ -225,6 +263,44 @@ obertura, focus) i una base matemàtica **mesurable**.
 
 ---
 
+## Gènesi: d'un píxel a un so
+
+Tot va començar amb una pregunta sobre gràfics: **com es defineix realment un píxel en el
+ray tracing?**
+
+Un píxel no és un color emmagatzemat. En el renderitzat basat en física és la solució de
+l'**equació de renderitzat** de Kajiya — la llum que surt d'un punt, una *integral* sobre
+totes les direccions d'entrada:
+
+```
+L_o(x, ω_o) = L_e(x, ω_o) + ∫_Ω f_r(x, ω_i, ω_o) · L_i(x, ω_i) · (ω_i · n) dω_i
+```
+
+Aquesta integral no té forma tancada, així que el renderer l'**estima** per Monte Carlo:
+llança `N` raigs aleatoris, avalua l'integrand a cadascun i en fa la mitjana:
+
+```
+píxel ≈ (1/N) Σᵢ contribució(raigᵢ)
+```
+
+El píxel **emergeix** de la mitjana de N mostres estocàstiques; més raigs → l'estimació
+convergeix → menys soroll.
+
+Llavors va arribar el gir que ho va engegar tot: **i si una mostra d'àudio es definís igual?**
+No emmagatzemada, sinó el resultat d'una integral estimada amb mostres estocàstiques.
+Canvia l'hemisferi de direccions per una *finestra de temps* al voltant d'un instant focal,
+els raigs de llum per *grans* i la radiància per *amplitud*:
+
+```
+output[n] ≈ (1/N) Σᵢ s(τᵢ + n) · w[n]      (τᵢ pres de la dispersió al voltant del focus)
+```
+
+Mateixa forma. Mateix estimador Monte Carlo. Mateixa convergència `1/√N`. El **drone és el
+píxel d'àudio**: no existeix a la mostra — emergeix quan el renderitzes. Aquest paral·lelisme
+entre la fórmula del píxel i la de la mostra *és* tot el projecte.
+
+---
+
 ## La teoria
 
 En el renderitzat 3D, el ray tracing llança **N raigs estocàstics** des d'una càmera. El
@@ -358,6 +434,44 @@ Ambas implementan la misma idea. La versión **Rust/WebAssembly** mezcla **cada 
 un bucle en el hilo de audio, lo que elimina por diseño los límites de la versión JS (sin
 tope de voces, sin jitter, sin pulsos) y añade **estéreo** y **octava/shimmer**. Cómo
 compilarla y usarla: **[wasm/README.md](wasm/README.md)**.
+
+---
+
+## Génesis: de un píxel a un sonido
+
+Toda la idea empezó con una pregunta sobre gráficos: **¿cómo se define realmente un píxel
+en ray tracing?**
+
+Un píxel no es un color almacenado. En el renderizado basado en física es la solución de la
+**ecuación de renderizado** de Kajiya — la luz que sale de un punto, una *integral* sobre
+todas las direcciones de entrada:
+
+```
+L_o(x, ω_o) = L_e(x, ω_o) + ∫_Ω f_r(x, ω_i, ω_o) · L_i(x, ω_i) · (ω_i · n) dω_i
+```
+
+Esa integral no tiene forma cerrada, así que el renderer la **estima** por Monte Carlo:
+lanza `N` rayos aleatorios, evalúa el integrando en cada uno y los promedia:
+
+```
+píxel ≈ (1/N) Σᵢ contribución(rayoᵢ)
+```
+
+El píxel **emerge** del promedio de N muestras estocásticas; más rayos → la estimación
+converge → menos ruido.
+
+Entonces llegó el giro que lo arrancó todo: **¿y si una muestra de audio se definiera
+igual?** No almacenada, sino el resultado de una integral estimada con muestras
+estocásticas. Cambia el hemisferio de direcciones por una *ventana de tiempo* alrededor de
+un instante focal, los rayos de luz por *granos* y la radiancia por *amplitud*:
+
+```
+output[n] ≈ (1/N) Σᵢ s(τᵢ + n) · w[n]      (τᵢ tomado de la dispersión alrededor del foco)
+```
+
+Misma forma. Mismo estimador Monte Carlo. Misma convergencia `1/√N`. El **drone es el píxel
+de audio**: no existe en el sample — emerge cuando lo renderizas. Ese paralelismo entre la
+fórmula del píxel y la de la muestra *es* todo el proyecto.
 
 ---
 
