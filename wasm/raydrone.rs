@@ -45,6 +45,15 @@ static mut MASTER: f32 = 1.0; // ganancia global (pre soft-clip)
 static mut SPAWN_ACC: f32 = 0.0; // acumulador para repartir nacimientos
 static mut RNG: u32 = 0x1234_5678;
 
+// Estrategia de muestreo del offset: 0 = random, 1 = quasi-MC (golden ratio),
+// 2 = stratified. QMC/stratified reparten los rayos uniformemente por la apertura
+// (baja discrepancia) → menos "grumos" aleatorios → drone más liso con menos granos.
+static mut MODE: u32 = 1;
+static mut QMC: f32 = 0.5; // estado de la secuencia aditiva golden-ratio
+static mut STRAT_I: u32 = 0; // índice de estrato (modo stratified)
+const GOLDEN: f32 = 0.618_034; // 1/φ — base de la secuencia de baja discrepancia
+const STRATA: u32 = 17; // nº de estratos (coprimo para buen barrido)
+
 #[derive(Clone, Copy)]
 struct Voice {
     active: bool,
@@ -120,6 +129,60 @@ pub extern "C" fn seed(s: u32) {
     }
 }
 
+#[no_mangle]
+pub extern "C" fn set_mode(m: u32) {
+    unsafe {
+        MODE = m;
+    }
+}
+
+// Raíz cuadrada sin std: estimación por bit-hack + 3 iteraciones de Newton.
+#[inline]
+fn sqrtf(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    let mut y = f32::from_bits((x.to_bits() >> 1) + 0x1fbd_1df5);
+    y = 0.5 * (y + x / y);
+    y = 0.5 * (y + x / y);
+    y = 0.5 * (y + x / y);
+    y
+}
+
+// Inversa de la CDF triangular en [-1,1] (pico en 0): mapea u∈[0,1) → offset.
+#[inline]
+fn tri_inv(u: f32) -> f32 {
+    if u < 0.5 {
+        -1.0 + sqrtf(2.0 * u)
+    } else {
+        1.0 - sqrtf(2.0 * (1.0 - u))
+    }
+}
+
+// Siguiente muestra u∈[0,1) según la estrategia activa.
+#[inline]
+fn next_u() -> f32 {
+    unsafe {
+        match MODE {
+            1 => {
+                // Quasi-Monte Carlo: recurrencia aditiva golden-ratio (baja discrepancia).
+                QMC += GOLDEN;
+                if QMC >= 1.0 {
+                    QMC -= 1.0;
+                }
+                QMC
+            }
+            2 => {
+                // Stratified: un rayo por estrato, ciclando, con jitter dentro del estrato.
+                let u = (STRAT_I as f32 + rng01()) / (STRATA as f32);
+                STRAT_I = (STRAT_I + 1) % STRATA;
+                u
+            }
+            _ => rng01(), // Random (Monte Carlo puro)
+        }
+    }
+}
+
 #[inline]
 fn sample_at(pos: f32) -> f32 {
     unsafe {
@@ -164,9 +227,8 @@ fn spawn() {
         if SAMPLE_LEN < 2 {
             return;
         }
-        // Distribución triangular en [-1,1] sin sqrt: suma de dos uniformes.
-        let u = (rng01() + rng01()) - 1.0;
-        let off_sec = FOCUS + u * APERTURE;
+        // Offset dentro del cono de dispersión, según la estrategia de muestreo.
+        let off_sec = FOCUS + tri_inv(next_u()) * APERTURE;
         let mut pos = off_sec * SR;
         let maxp = (SAMPLE_LEN - 2) as f32;
         if pos < 0.0 {

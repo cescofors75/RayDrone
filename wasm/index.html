@@ -68,6 +68,11 @@
             <input type="range" id="vol" min="0" max="100" value="80">
         </div>
 
+        <div class="ctl" style="display:flex; justify-content:space-between; align-items:center;">
+            <label style="margin:0;">Muestreo suave (QMC) <span class="v" id="smooth-v">ON</span></label>
+            <input type="checkbox" id="smooth" checked style="width:20px; height:20px; accent-color:#00ffcc; cursor:pointer;">
+        </div>
+
         <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
         <div class="status" id="status">Carga un WAV o MP3 para empezar.</div>
     </div>
@@ -76,6 +81,7 @@
     const $ = (id) => document.getElementById(id);
     const fileInput = $('file'), fileLabel = $('file-label'), playBtn = $('play'), statusEl = $('status');
     const charSlider = $('char'), charV = $('char-v'), volSlider = $('vol'), volV = $('vol-v');
+    const smoothChk = $('smooth'), smoothV = $('smooth-v');
     const presets = Array.from(document.querySelectorAll('.preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
 
@@ -131,6 +137,7 @@
             const win = new Float32Array(2048);
             for (let i = 0; i < 2048; i++) win[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / 2047));
             node.port.postMessage({ type: 'window', data: win });
+            node.port.postMessage({ type: 'mode', value: smoothChk.checked ? 1 : 0 });
         }
         if (sampleData) {
             node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
@@ -222,6 +229,11 @@
     volSlider.addEventListener('input', () => {
         volV.innerText = `${volSlider.value} %`;
         if (jsGain) jsGain.gain.value = parseFloat(volSlider.value) / 100;
+    });
+
+    smoothChk.addEventListener('change', () => {
+        smoothV.innerText = smoothChk.checked ? 'ON' : 'OFF';
+        if (node) node.port.postMessage({ type: 'mode', value: smoothChk.checked ? 1 : 0 });
     });
 
     // ── Waveform + click para mover el foco ─────────────────────────────────
