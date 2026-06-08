@@ -1027,7 +1027,7 @@
     let wetBus = null;
     let limiterNode = null;
 
-    const MAX_SIMULTANEOUS_SOURCES = 140;
+    const MAX_SIMULTANEOUS_SOURCES = 220;
     const MAX_VIS_RAYS = 650;
 
     // Canvas
@@ -1271,17 +1271,17 @@
     }
 
     const presetMap = {
-        none:      { volume: 80, ray: 5,  disp: 45,  pos: 25, sweep: 0, aber: 0,  rough: 15, bounces: 0, refl: 25, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        tonal:     { volume: 82, ray: 6,  disp: 70,  pos: 30, sweep: 0, aber: 0,  rough: 25, bounces: 0, refl: 30, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        drone:     { volume: 80, ray: 20, disp: 70,  pos: 30, sweep: 0, aber: 0,  rough: 55, bounces: 0, refl: 40, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        zimmer:    { volume: 82, ray: 22, disp: 500, pos: 40, sweep: 0, aber: 20, rough: 70, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        fred:      { volume: 80, ray: 12, disp: 180, pos: 35, sweep: 0, aber: 18, rough: 85, bounces: 0, refl: 45, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        shimmer:   { volume: 78, ray: 22, disp: 200, pos: 30, sweep: 4, aber: 55, rough: 70, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        abyss:     { volume: 80, ray: 30, disp: 700, pos: 45, sweep: 0, aber: 0,  rough: 95, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        nebula:    { volume: 76, ray: 16, disp: 300, pos: 30, sweep: 7, aber: 45, rough: 65, bounces: 0, refl: 50, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        cathedral: { volume: 80, ray: 18, disp: 600, pos: 40, sweep: 0, aber: 12, rough: 40, bounces: 2, refl: 65, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        arctic:    { volume: 74, ray: 10, disp: 120, pos: 25, sweep: 0, aber: 35, rough: 12, bounces: 0, refl: 45, ae: 0, alpha: 0, beta: 0, gamma: 0 },
-        catacomb:  { volume: 78, ray: 26, disp: 550, pos: 35, sweep: 3, aber: 28, rough: 90, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        none:      { volume: 80, ray: 4,  disp: 45,  pos: 25, sweep: 0, aber: 0,  rough: 15, bounces: 0, refl: 25, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        tonal:     { volume: 82, ray: 5,  disp: 70,  pos: 30, sweep: 0, aber: 0,  rough: 25, bounces: 0, refl: 30, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        drone:     { volume: 80, ray: 8,  disp: 70,  pos: 30, sweep: 0, aber: 0,  rough: 55, bounces: 0, refl: 40, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        zimmer:    { volume: 82, ray: 9,  disp: 500, pos: 40, sweep: 0, aber: 20, rough: 70, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        fred:      { volume: 80, ray: 6,  disp: 180, pos: 35, sweep: 0, aber: 18, rough: 85, bounces: 0, refl: 45, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        shimmer:   { volume: 78, ray: 9,  disp: 200, pos: 30, sweep: 4, aber: 55, rough: 70, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        abyss:     { volume: 80, ray: 10, disp: 700, pos: 45, sweep: 0, aber: 0,  rough: 95, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        nebula:    { volume: 76, ray: 7,  disp: 300, pos: 30, sweep: 7, aber: 45, rough: 65, bounces: 0, refl: 50, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        cathedral: { volume: 80, ray: 8,  disp: 600, pos: 40, sweep: 0, aber: 12, rough: 40, bounces: 2, refl: 65, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        arctic:    { volume: 74, ray: 5,  disp: 120, pos: 25, sweep: 0, aber: 35, rough: 12, bounces: 0, refl: 45, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        catacomb:  { volume: 78, ray: 9,  disp: 550, pos: 35, sweep: 3, aber: 28, rough: 90, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
     };
 
     const presetCharacter = {
@@ -2067,7 +2067,7 @@
         // sin llegar a reproducir el ritmo de un loop.
         const rayDuration = clamp(0.11 + dispSec * 0.08, 0.11, 0.30);
         // Tick pequeño con ~4× de solape: flujo continuo de granos, sin pulso audible.
-        const tickMs = clamp(rayDuration * 1000 / 4, 16, 45);
+        const tickMs = clamp(rayDuration * 1000 / 3, 18, 60);
 
         const sweepRateCpm = parseFloat(sweepSlider.value);
         const sweepEnabled = sweepRateCpm > 0;
@@ -2746,7 +2746,7 @@
         // El knob "Carácter" mueve N, apertura y rugosidad a la vez, de tonal a drone.
         function applyMacro(v) {
             const t = clamp(v / 100, 0, 1);
-            raySlider.value = Math.round(6 + t * 16);             // raw 6..22 → N ≈ 16..130 (sin saturar)
+            raySlider.value = Math.round(5 + t * 7);              // raw 5..12 → N ≈ 13..48 (densidad estable, sin pulsos)
             dispSlider.value = Math.round(30 + (t * t) * 970);    // 30 ms .. 1 s (apertura estrecha = tono limpio)
             roughSlider.value = Math.round(40 + t * 55);          // 40 % .. 95 %
             rayVal.innerText = getDisplayedN();
