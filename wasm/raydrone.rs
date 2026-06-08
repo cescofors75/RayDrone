@@ -65,6 +65,7 @@ static mut EVO_DIR: f32 = 1.0;
 // Espacio: ancho estéreo y probabilidad de octava (shimmer)
 static mut WIDTH: f32 = 0.0;
 static mut OCT: f32 = 0.0;
+static mut PITCH_STEP: f32 = 1.0; // multiplicador de velocidad de lectura (transposición)
 
 // Registro de rayos para la visualización (offset en seg + banda)
 static mut SLOG: [f32; SLOG_CAP] = [0.0; SLOG_CAP];
@@ -274,6 +275,14 @@ pub extern "C" fn set_space(width: f32, oct: f32) {
     }
 }
 
+// Transposición: el multiplicador 2^(semitons/12) se calcula en JS (sin exp en no_std).
+#[no_mangle]
+pub extern "C" fn set_pitch(mult: f32) {
+    unsafe {
+        PITCH_STEP = if mult > 0.01 { mult } else { 1.0 };
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn seed(s: u32) {
     unsafe {
@@ -355,14 +364,14 @@ fn alloc_voice() -> usize {
     }
 }
 
-// Coloca un grano (usado por granos nuevos y rebotes). Decide octava y paneo.
+// Coloca un grano (usado por granos nuevos y rebotes). Decide octava, transposición y paneo.
 fn place(pos: f32, band: u8, depth: u32) {
     unsafe {
         let dur_samp = GRAIN_DUR * SR;
         if dur_samp < 1.0 {
             return;
         }
-        let step = if rng01() < OCT { 2.0 } else { 1.0 }; // octava arriba (shimmer)
+        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP; // octava (shimmer) × transposición
         let pan = (rng01() * 2.0 - 1.0) * WIDTH; // paneo aleatorio según el ancho
         let panl = sqrtf((1.0 - pan) * 0.5); // equal-power
         let panr = sqrtf((1.0 + pan) * 0.5);
