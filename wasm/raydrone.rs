@@ -65,6 +65,20 @@ static mut ENV: f32 = 0.0; // envolvente de la salida (la recursión)
 static mut EVO: f32 = 0.5; // fase de evolución (ping-pong del foco)
 static mut EVO_DIR: f32 = 1.0;
 
+// Registro circular de posiciones (segundos) de los granos disparados, para que el
+// worklet lo lea y la página dibuje los rayos. Es solo visualización.
+const SLOG_CAP: usize = 512;
+static mut SLOG: [f32; SLOG_CAP] = [0.0; SLOG_CAP];
+static mut SLOG_W: u32 = 0;
+
+#[inline]
+fn log_push(off_sec: f32) {
+    unsafe {
+        SLOG[(SLOG_W as usize) % SLOG_CAP] = off_sec;
+        SLOG_W = SLOG_W.wrapping_add(1);
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Voice {
     active: bool,
@@ -117,6 +131,18 @@ pub extern "C" fn out_ptr() -> *mut f32 {
 #[no_mangle]
 pub extern "C" fn sample_capacity() -> usize {
     SAMPLE_CAP
+}
+#[no_mangle]
+pub extern "C" fn slog_ptr() -> *mut f32 {
+    unsafe { SLOG.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn slog_w() -> u32 {
+    unsafe { SLOG_W }
+}
+#[no_mangle]
+pub extern "C" fn slog_cap() -> usize {
+    SLOG_CAP
 }
 
 #[no_mangle]
@@ -307,6 +333,7 @@ fn place(pos: f32, band: u8, depth: u32) {
             lp: 0.0,
             depth,
         };
+        log_push(pos / SR); // registrar el rayo para la visualización
     }
 }
 

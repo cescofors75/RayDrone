@@ -54,8 +54,8 @@
 
         <div class="presets">
             <button class="preset active" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0">Original (Dry)</button>
-            <button class="preset" data-mode="drone" data-t="0.35" data-aber="10" data-tail="15" data-evo="0">Drone</button>
-            <button class="preset" data-mode="shimmer" data-t="0.62" data-aber="60" data-tail="45" data-evo="25">Shimmer</button>
+            <button class="preset" data-mode="drone" data-t="0.35" data-aber="0" data-tail="0" data-evo="0">Drone</button>
+            <button class="preset" data-mode="shimmer" data-t="0.6" data-aber="18" data-tail="0" data-evo="12">Shimmer</button>
         </div>
 
         <div class="ctl">
@@ -106,6 +106,8 @@
     let ctx = null, jsGain = null, node = null, wasmModule = null;
     let sampleData = null, sampleRate = 44100, duration = 0;
     let focusSec = 0, mode = 'dry', isPlaying = false, drySource = null;
+    let wavePeaks = null;   // pico por pixel (precalculado al cargar)
+    let visRays = [];       // rayos a dibujar (posiciones de granos reales)
 
     // ── Mapeo del knob Carácter → parámetros del motor ──────────────────────
     function paramsFromChar() {
@@ -114,7 +116,9 @@
         const grainMs  = 80 + t * 120;                 // 80 .. 200 ms
         const grainRate = 140 + t * 260;               // 140 .. 400 granos/s
         const concurrency = Math.max(1, grainRate * grainMs / 1000);
-        const gain = 0.9 / Math.sqrt(concurrency);     // normaliza el nivel del cloud
+        // Fuentes tonales (p.ej. una nota) suman casi en fase (~N×), no √N×. Normalizar
+        // por 1/N evita que el soft-clip distorsione el drone limpio.
+        const gain = 0.7 / concurrency;
         return { focus: focusSec, aperture, grainMs, grainRate, gain, master: 1.0 };
     }
     const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
@@ -161,6 +165,9 @@
                 processorOptions: { module: wasmModule },
             });
             node.connect(jsGain);
+            node.port.onmessage = (e) => {       // rayos reales desde el worklet
+                if (e.data.type === 'rays') pushRays(e.data.offsets);
+            };
             // LUT de ventana Hann (JS sí tiene Math.cos)
             const win = new Float32Array(2048);
             for (let i = 0; i < 2048; i++) win[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / 2047));
@@ -187,7 +194,7 @@
             duration = buf.duration;
             focusSec = duration * 0.3;
             node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
-            drawWave();
+            computePeaks();
             playBtn.disabled = false;
             playBtn.innerText = '▶ Play';
             statusEl.innerText = `Audio listo · ${duration.toFixed(2)} s · click en la onda para mover el foco`;
@@ -280,39 +287,77 @@
         });
     });
 
-    // ── Waveform + click para mover el foco ─────────────────────────────────
-    function drawWave() {
+    // ── Visualización: onda + rayos (granos reales) + foco ──────────────────
+    function computePeaks() {
+        const W = waveCanvas.width;
+        wavePeaks = new Float32Array(W);
+        if (!sampleData) return;
+        for (let x = 0; x < W; x++) {
+            const start = Math.floor(x / W * sampleData.length);
+            const end = Math.floor((x + 1) / W * sampleData.length);
+            let peak = 0;
+            for (let i = start; i < end; i++) { const v = Math.abs(sampleData[i]); if (v > peak) peak = v; }
+            wavePeaks[x] = peak;
+        }
+    }
+
+    function pushRays(offsets) {
+        const inv = 1 / Math.max(duration, 0.001);
+        for (let k = 0; k < offsets.length; k++) visRays.push({ x: offsets[k] * inv, life: 1.0 });
+        if (visRays.length > 800) visRays.splice(0, visRays.length - 800);
+    }
+
+    function frame() {
         const W = waveCanvas.width, H = waveCanvas.height, mid = H / 2;
         wctx.clearRect(0, 0, W, H);
         wctx.fillStyle = '#07080e'; wctx.fillRect(0, 0, W, H);
-        if (sampleData) {
-            wctx.strokeStyle = 'rgba(0,255,204,0.4)'; wctx.beginPath();
+
+        const focusX = (focusSec / Math.max(duration, 0.001)) * W;
+
+        // Onda original
+        if (wavePeaks) {
+            wctx.strokeStyle = 'rgba(0,255,204,0.28)'; wctx.beginPath();
             for (let x = 0; x < W; x++) {
-                const start = Math.floor(x / W * sampleData.length);
-                const end = Math.floor((x + 1) / W * sampleData.length);
-                let peak = 0;
-                for (let i = start; i < end; i++) { const v = Math.abs(sampleData[i]); if (v > peak) peak = v; }
-                const a = peak * (H * 0.45);
+                const a = wavePeaks[x] * (H * 0.45);
                 wctx.moveTo(x, mid - a); wctx.lineTo(x, mid + a);
             }
             wctx.stroke();
-            // línea de foco
-            const fx = (focusSec / Math.max(duration, 0.001)) * W;
-            wctx.strokeStyle = 'rgba(0,255,204,0.95)'; wctx.lineWidth = 2;
-            wctx.beginPath(); wctx.moveTo(fx, 0); wctx.lineTo(fx, H); wctx.stroke();
-            wctx.lineWidth = 1;
         }
+
+        // Rayos: cada grano nace en su offset y converge al foco mientras se desvanece
+        for (let i = visRays.length - 1; i >= 0; i--) {
+            const r = visRays[i];
+            r.life -= 0.03;
+            if (r.life <= 0) { visRays.splice(i, 1); continue; }
+            const jit = (Math.random() - 0.5) * H * 0.55 * (1 - r.life);
+            wctx.strokeStyle = `rgba(0,255,204,${r.life * 0.5})`;
+            wctx.lineWidth = 0.8;
+            wctx.beginPath();
+            wctx.moveTo(r.x * W, mid + jit);
+            wctx.lineTo(focusX, mid);
+            wctx.stroke();
+        }
+        wctx.lineWidth = 1;
+
+        // Línea de foco (glow)
+        wctx.save();
+        wctx.shadowColor = '#00ffcc'; wctx.shadowBlur = 10;
+        wctx.strokeStyle = 'rgba(0,255,204,0.95)'; wctx.lineWidth = 2;
+        wctx.beginPath(); wctx.moveTo(focusX, 0); wctx.lineTo(focusX, H); wctx.stroke();
+        wctx.restore();
+
+        requestAnimationFrame(frame);
     }
+
     waveCanvas.addEventListener('click', (e) => {
         if (!sampleData) return;
         const rect = waveCanvas.getBoundingClientRect();
         focusSec = clamp((e.clientX - rect.left) / rect.width * duration, 0, duration);
-        drawWave();
         if (isPlaying) { if (mode === 'dry') startDry(); else sendParams(true); }
     });
 
     charV.innerText = charWord();
-    drawWave();
+    requestAnimationFrame(frame);
     </script>
 </body>
 </html>

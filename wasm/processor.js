@@ -15,6 +15,9 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.outPtr = this.ex.out_ptr();
         this.ready = false;
         this.ex.seed(0x9e3779b9);
+        this.lastW = 0;        // último índice de rayo leído del registro
+        this.rayAccum = [];    // rayos acumulados para enviar al hilo principal
+        this.blockCount = 0;
         this.port.onmessage = (e) => this.onMsg(e.data);
     }
 
@@ -48,6 +51,24 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             const o = new Float32Array(this.mem.buffer, this.outPtr, frames);
             out[0].set(o);
             if (out[1]) out[1].set(o); // mono → estéreo
+
+            // Recoger los rayos (posiciones de granos) y enviarlos throttle ~21 fps.
+            const w = this.ex.slog_w() >>> 0;
+            if (w !== this.lastW) {
+                const cap = this.ex.slog_cap();
+                const log = new Float32Array(this.mem.buffer, this.ex.slog_ptr(), cap);
+                let count = (w - this.lastW) >>> 0;
+                if (count > cap) count = cap;
+                for (let k = 0; k < count; k++) this.rayAccum.push(log[(this.lastW + k) % cap]);
+                this.lastW = w;
+            }
+            if (++this.blockCount >= 16) {
+                this.blockCount = 0;
+                if (this.rayAccum.length) {
+                    this.port.postMessage({ type: 'rays', offsets: this.rayAccum });
+                    this.rayAccum = [];
+                }
+            }
         } else {
             out[0].fill(0);
             if (out[1]) out[1].fill(0);
