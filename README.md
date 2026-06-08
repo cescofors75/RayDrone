@@ -1,6 +1,11 @@
 # RayDrone
 
-> **A new methodology for audio rendering: applying the stochastic ray tracing paradigm to time-domain sampling.**
+> **A new methodology for audio rendering: applying the stochastic ray tracing paradigm to the time domain of an audio buffer.**
+
+RayDrone turns any WAV/MP3 into evolving **drones, pads and textures** by treating the
+sample as a *scene* and casting **stochastic rays** (audio grains) at a focal point.
+The drone is not stored in the sample — it **emerges** from the convergence of the rays,
+exactly as a rendered image emerges from the convergence of light rays.
 
 ---
 
@@ -12,33 +17,48 @@
 
 ---
 
+## 📦 Two versions
+
+| Version | File | Engine | Best for |
+|---|---|---|---|
+| **Classic** | [`rta.html`](rta.html) | Vanilla JS + Web Audio API | Full UI, the **Convergence Lab** (the measurable 1/√N proof) |
+| **WASM** | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** | Cleanest sound: per-sample engine, stereo, octave/shimmer |
+
+Both implement the same idea. The **Rust/WebAssembly** build mixes **every sample** in a
+tight loop on the audio thread, which removes the JS engine's limits by design (no voice
+cap, no `setTimeout` jitter, no pulsing) and adds **stereo** and **octave shimmer**.
+See **[wasm/README.md](wasm/README.md)** for how to build and run it.
+
+---
 ---
 
 # English
 
 ## What is RayDrone?
 
-RayDrone is a **new methodology** for generating drone textures and sustained soundscapes by borrowing the mathematical framework of optical ray tracing and applying it to the time domain of an audio buffer.
+RayDrone is a **rendering methodology** for sound: instead of synthesizing audio from
+blocks or particles, it takes a recorded buffer and treats it as a *temporal scene*. Each
+**ray** is a short grain extracted from a random position within a dispersion cone around a
+focal point. All rays play together and their statistical convergence **is** the drone.
 
-This is **not** granular synthesis. The conceptual framework is fundamentally different.
-
----
-
-## The Theory
-
-### Ray Tracing in Graphics (the origin)
-
-In 3D rendering, ray tracing works by casting **N stochastic rays** from a camera through a scene. Each ray samples a different path, a different light interaction. The final pixel is not stored anywhere — it **emerges** from the statistical convergence of all those rays. More rays → less noise → cleaner render.
-
-The key insight: **the image does not exist until you render it.**
+It is, mechanically, a close relative of **asynchronous granular synthesis** — but
+reinterpreted through the lens of optical rendering, which gives it both an intuitive
+control set (depth of field, aperture, focus) and a *measurable* mathematical foundation.
 
 ---
 
-### Transposing the Paradigm to Audio
+## The theory
 
-RayDrone applies the same logic to the time axis of a recorded audio buffer:
+### Ray tracing in graphics (the origin)
 
-| Optical Ray Tracing | RayDrone |
+In 3D rendering, ray tracing casts **N stochastic rays** from a camera through a scene.
+Each ray samples a different path. The final pixel is not stored anywhere — it **emerges**
+from the statistical convergence of all those rays. More rays → less noise → cleaner
+render. The key insight: *the image does not exist until you render it.*
+
+### Transposing the paradigm to audio
+
+| Optical ray tracing | RayDrone |
 |---|---|
 | 3D scene geometry | Audio buffer (time-domain waveform) |
 | Camera focal point | Playhead position (seconds) |
@@ -47,115 +67,63 @@ RayDrone applies the same logic to the time axis of a recorded audio buffer:
 | Pixel luminance convergence | Drone / sustained texture emergence |
 | Render output | Acoustic field |
 
-Each **ray** is a short audio fragment extracted from a random position within the dispersion cone around the focal point. All N rays play simultaneously. Their amplitudes are normalized by `1/√N` to prevent clipping regardless of ray count.
-
-The **drone does not exist in the sample.** It emerges from the stochastic convergence of the rays, exactly as a rendered image emerges from the convergence of light rays.
-
 ---
 
-## Why This Is Different from Granular Synthesis
+## Why this is different from granular synthesis
 
-| Granular Synthesis | RayDrone |
+| Granular synthesis | RayDrone |
 |---|---|
 | Synthesis technique | Rendering methodology |
 | Grains are building blocks | Rays are measurement samples |
 | Result is constructed | Result converges |
 | Rooted in time-frequency theory | Rooted in stochastic geometry |
-| Controls: grain size, density, pitch | Controls: N (rays), aperture, focal point |
 | Mental model: particles | Mental model: optics / physics of light |
 
-The distinction is not merely semantic. The mental model determines how you **compose** with the instrument. A photographer controlling depth of field thinks differently from a synthesis programmer controlling grain density — even if some results can sound similar on the surface.
-
-> **Honest framing.** Mechanically, the engine is a close relative of *asynchronous granular synthesis* (Xenakis, Roads, Truax, Gabor). We don't hide that — we **reinterpret** it. The claim here is not "a brand-new kind of sound generation"; it is that granular resynthesis can be cast as **Monte Carlo estimation of a transport integral**, which lets us import the *machinery* of the rendering equation — importance sampling, stratification, Russian roulette, recursive transport — as a control-and-quality paradigm. That reframing is what is new, and unlike a metaphor, it is **measurable**. See the Convergence Lab.
-
----
-
-## Mathematical Foundation (the theory, for real)
-
-The optical metaphor only earns the name "ray tracing" if it has the one property that defines Monte Carlo rendering: **a fixed ground truth that the samples converge toward, with quantifiable variance.** Here it does.
-
-### The render target is a defined integral
-
-Given a source buffer `s`, a focal point `τ₀`, and an aperture described by a sampling density `p(τ)` (triangular, peaking at the focus), define the rendered grain as the **deterministic** signal:
-
-```
-target[n] = w[n] · ∫ p(τ) · s(τ + n) dτ        (w = window)
-```
-
-This is exactly a windowed blur of the source by the aperture kernel — a real, computable signal. It is the audio analogue of the pixel value `L(x) = ∫ f(x,ω) dω` in Kajiya's rendering equation.
-
-### Each ray is an unbiased estimator
-
-Drawing `N` offsets `τᵢ ~ p`, the Monte Carlo estimator
-
-```
-render_N[n] = w[n] · (1/N) Σᵢ s(τᵢ + n)
-```
-
-is **unbiased**: `E[render_N] = target`. The error falls as
-
-```
-RMS(render_N − target) ∝ 1/√N
-```
-
-This is the law the README always claimed ("more rays → less noise → cleaner render"). It is now literally true and **falsifiable** — and the Convergence Lab plots it.
-
-### Variance reduction (straight from the renderer)
-
-Plain random sampling gives the textbook `1/√N`. Three techniques from rendering do measurably better — verified live by the Convergence Lab (measured log-log exponents on a test signal in parentheses):
-
-- **Stratified sampling** (≈ −0.75) — one sample per stratum of the aperture's CDF, like pixel supersampling. Lower variance at the same `N`, and never worse.
-- **Quasi-Monte Carlo** (≈ −0.73) — a golden-ratio low-discrepancy sequence with a per-burst Cranley-Patterson rotation. Robust: it doesn't depend on the source content. (On smooth integrands it tends toward `1/N`; broadband audio noise caps the achievable rate.)
-- **Importance sampling** (≈ −0.75) — draw `τ ∝ p(τ)·energy(τ)` and reweight by `p/q` (self-normalized), with the importance CDF sampled *stratified* — the correct renderer recipe. Wins most where the source energy is uneven.
-
-> **A real, documented finding.** The first importance implementation was *worse* than random: it measured energy over only the first eighth of each grain and drew the CDF with plain random numbers. The Lab caught it (the yellow curve sat above red). Measuring energy over the full grain and stratifying the CDF draws fixed it. This is the methodology working as intended — the experiment falsified a bad estimator instead of marketing it.
-
-- **Russian roulette** — secondary "bounce" rays survive with probability = reflection coefficient at constant gain, instead of a fixed, attenuated echo count. Expected tail energy `= vol · Σ rᵈ`, so the bounce tail is the unbiased solution of a Neumann series — i.e. the *recursive* form of the transport equation, not an ad-hoc delay.
-
-### How to prove it isn't hype
-
-The **Convergence Lab** panel (below the scene) runs the experiment live:
-
-1. Computes the exact deterministic `target` for the current focus/aperture.
-2. Renders Monte Carlo estimates across `N = 1 … 1024` for all four sampling strategies.
-3. Plots **RMS error vs N** on a log–log axis, overlaid with the ideal `1/√N` slope, and fits the measured exponent (expect ≈ −0.5).
-4. **A/B audio**: play the `target` (reference) vs `N=4` (noisy) vs `N=256` (clean), all normalized to the *same level* so you hear the **noise floor falling**, not a volume change.
-
-If the random curve tracks `1/√N` and stratified/importance sit below it, the theory holds — by measurement, not by adjective.
+> **Honest framing.** The engine is a close relative of *asynchronous granular synthesis*
+> (Xenakis, Roads, Truax, Gabor). The claim is **not** "a brand-new kind of sound
+> generation"; it is that granular resynthesis can be cast as **Monte Carlo estimation of a
+> transport integral**, which lets us import the *machinery* of the rendering equation —
+> importance sampling, stratification, Russian roulette, recursive transport — as a
+> control-and-quality paradigm. That reframing is what is new, and unlike a metaphor it is
+> **measurable** (see the Convergence Lab).
 
 ---
 
-## Acoustic Analogy: Depth of Field
+## Mathematical foundation (the theory, for real)
 
-Think of a photographic lens:
+The optical metaphor only earns the name "ray tracing" if it has the one property that
+defines Monte Carlo rendering: **a fixed ground truth that the samples converge toward,
+with quantifiable variance.** Here it does.
 
-- **Narrow aperture, short focal distance** → sharp focus, few overlapping planes → coherent tonal result, almost pitched
-- **Wide aperture, long focal distance** → deep blur, many planes collapsing → dense atmospheric texture, the "drone"
-- **More rays (N)** → less stochastic noise, smoother convergence → cleaner render
+- **The target is a defined integral.** For a source `s`, focus `τ₀` and a sampling density
+  `p(τ)` (triangular, peaking at the focus), the rendered grain is the *deterministic*
+  signal `target[n] = w[n] · ∫ p(τ)·s(τ+n) dτ` — a windowed blur of the source. It is the
+  audio analogue of the pixel `L(x) = ∫ f(x,ω) dω` in Kajiya's rendering equation.
+- **Each ray is an unbiased estimator.** With `N` offsets `τᵢ ~ p`,
+  `render_N[n] = w[n]·(1/N) Σ s(τᵢ+n)` satisfies `E[render_N] = target`, and the error
+  falls as `RMS(render_N − target) ∝ 1/√N`. *More rays → less noise → cleaner render* is now
+  literally true and falsifiable.
+- **Variance reduction (straight from the renderer):** *stratified* (≈ −0.75), *quasi-Monte
+  Carlo* golden-ratio (≈ −0.73) and *importance* (≈ −0.75) all beat the textbook `1/√N`.
+- **Russian roulette** bounces: a path survives with probability = reflection coefficient at
+  constant gain, so the tail is the unbiased solution of a Neumann series — the *recursive*
+  form of the transport equation, not an ad-hoc delay.
 
-This is exactly how Hans Zimmer's brass drones or Fred Again's vocal textures behave: a voice or instrument ceases to be a recognizable sample and becomes an **acoustic field**.
+### Convergence Lab (classic version)
+
+The `rta.html` build ships a **Convergence Lab** panel that runs the experiment live:
+computes the exact deterministic target, renders Monte Carlo estimates across `N = 1…1024`
+for all four sampling strategies, plots **RMS error vs N** on a log–log axis with the ideal
+`1/√N` line, and offers an audible A/B (target vs N=4 vs N=256 at the same level). The
+theory holds by measurement, not by adjective.
 
 ---
 
-## Visual Rendering
+## Acoustic analogy: depth of field
 
-The interface renders the ray tracing process in real time across two canvases:
-
-### SOURCE Canvas (top)
-- The original waveform of the loaded audio file
-- A **focal line** (vertical, glowing) showing the current playhead focus
-- A **dispersion zone** (semi-transparent gradient) showing the aperture cone
-- **Animated rays**: thin lines appearing at their random offset positions and converging toward the focal point, fading as they decay
-- Time axis markers (seconds)
-
-### RENDER OUTPUT Canvas (bottom)
-- The **emergent waveform** in real time, read directly from the Web Audio AnalyserNode
-- Shows the acoustic result of ray convergence — the rendered drone
-
-### Metering
-- Real-time RMS and Peak meters with dB readouts
-- Red **CLIP** indicator if the output reaches 0 dBFS
-- Compact **FFT Feedback** panel showing live **Low / Mid / High** band energy used by the recursive modulation system
+- **Narrow aperture / short focal distance** → sharp focus, coherent, almost pitched.
+- **Wide aperture / long focal distance** → deep blur, dense atmospheric texture — the drone.
+- **More rays (N)** → less stochastic noise, smoother convergence — cleaner render.
 
 ---
 
@@ -166,66 +134,56 @@ The interface renders the ray tracing process in real time across two canvases:
 | Parameter | Description |
 |---|---|
 | **Master Volume** | Global output level 0–100 % |
-| **N (Number of Rays)** | Density of the render. More rays → smoother, richer drone. Exponential scale: `floor(slider^1.6)` |
-| **Aperture (Dispersion)** | Width of the temporal cone in milliseconds. Up to 10 s. Narrow = coherent/tonal. Wide = diffuse/textural. |
-| **Focal Point (Position)** | The point in time around which rays are cast. Moving this across the waveform changes the timbral character entirely. |
+| **N (Number of Rays)** | Density of the render. More rays → smoother, richer drone |
+| **Aperture (Dispersion)** | Width of the temporal cone (ms). Narrow = tonal, wide = textural |
+| **Focal Point (Position)** | The point in time the rays are cast around |
 
-### Advanced Optical Extensions
+### Advanced optical extensions
 
-| Parameter | Optical Analogy | Acoustic Effect |
+| Parameter | Optical analogy | Acoustic effect |
 |---|---|---|
-| **Sampling Strategy** | Monte Carlo estimator | `Random` = plain MC (error ~ 1/√N). `Stratified` = one sample per CDF stratum. `Quasi-MC` = golden-ratio low-discrepancy sequence. `Importance` = rays concentrate where the source has energy. The last three converge faster than 1/√N. |
-| **Chromatic Aberration** | Lens dispersion by wavelength | Low frequencies get a wider aperture; highs get a narrow aperture. Big low-end clouds and crystalline high-end detail. |
-| **Autoevolution** | Recursive feedback loop | Reads the previous FFT frame and feeds spectral energy back into the engine so the render can self-modulate over time. |
-| **α Dispersion** | High-band spectral gain | More high-frequency energy widens the aperture on the next cycle. |
-| **β Bounces** | Mid-band structural density | More mid energy increases secondary ray generation. |
-| **γ Roughness** | Low-band diffusion driver | More low-frequency energy increases BRDF roughness and cloudiness. |
-| **BRDF Roughness** | Surface micro-geometry | 100 % = diffuse Monte Carlo drone. 0 % = specular / harmonic placement. |
-| **Bounce Count** | Recursive transport depth | Safety cap on secondary-ray recursion. Each ray spawns a child via **Russian roulette**, building the Neumann-series tail. |
-| **Reflection Coefficient** | Path survival probability | Probability a bounce survives (and, in expectation, the tail energy `Σ rᵈ` and its length). |
+| **Sampling Strategy** | Monte Carlo estimator | `Random` / `Stratified` / `Quasi-MC` / `Importance` (the last three converge faster than 1/√N) |
+| **Chromatic Aberration** | Lens dispersion by wavelength | Lows get a wider aperture, highs a narrow one → big low clouds, crisp highs |
+| **BRDF Roughness** | Surface micro-geometry | 100 % = diffuse Monte Carlo drone; 0 % = specular / harmonic placement |
+| **Bounce Count** | Recursive transport depth | Depth cap for Russian-roulette secondary rays (the Neumann tail) |
+| **Reflection Coefficient** | Path survival probability | Probability a bounce survives → tail energy & length |
+| **Autoevolution (α/β/γ)** | Recursive feedback | Low/Mid/High FFT energy is fed back to modulate the next cycle |
 
 ---
 
-## Technical Implementation
+## The WASM upgrade (Rust + WebAssembly)
 
-Built entirely with **vanilla JavaScript** and the **Web Audio API**. No libraries, no frameworks.
+A separate page, [`wasm/`](wasm/), reimplements the engine in **Rust compiled to
+WebAssembly**, running inside an **AudioWorklet** — mixing every sample in a tight loop.
+This is the architecture where WASM genuinely helps, and it fixes the JS engine's pain
+points by design:
 
-```
-AudioBufferSourceNode (×burst)
-        ↓
-  GainNode (fade envelope per ray)
-        ├──────────────→ dryBus ─────────────┐  (full range)
-        ↓                                     │
-  Linkwitz-Riley band (LR4: low / mid / high) │
-        ↓                                     │
-  band gain (1/√P compensation) → wetBus ─────┤
-                                              ↓
-                                  mainGainNode (master volume)
-                                              ↓
-                          AnalyserNode (FFT 2048, visual + metering)
-                                              ↓
-                                  AudioContext.destination
-```
-
-**Scheduling — lookahead clock.** Instead of firing bursts straight from `setTimeout`, a lookahead scheduler (Chris Wilson's *A Tale of Two Clocks*) wakes every ~25 ms and schedules every burst that falls inside a ~120 ms window with **exact start times on `audioCtx.currentTime`**. Timing no longer depends on `setTimeout` jitter and doesn't clump or stall when the tab is backgrounded.
-
-**Chromatic aberration — continuous crossover.** The aberration routes each ray through a 3-band **Linkwitz-Riley (LR4)** crossover (250 Hz / 2500 Hz), with per-band `1/√P` gain so the bands reconstruct ~flat (±3 dB, only −3 dB dips at the crossovers — no spectral holes). A **dry/wet bus** crossfades from fully dry at aberration 0, so the effect grows smoothly from zero instead of the old hard 0→1 % jump.
-
-Each burst:
-1. Read focal point, aperture and all optical parameters from sliders
-2. Calculate `burstN = min(rawN, burstCap, headroom)`
-3. Assign a frequency band per ray (low / mid / high) and scale the aperture per band (**Chromatic Aberration**)
-4. Draw the diffuse offset with the chosen **sampling strategy** (random / stratified / quasi-MC / importance)
-5. Apply **BRDF Roughness** by interpolating between harmonic and stochastic placement
-6. Spawn `BufferSourceNode`s with fade envelopes at their scheduled audio-clock time
-7. On each ray end, **Russian roulette** may spawn a child ray (the transport tail)
-8. Push visual rays to `visRays[]` and animate them with `requestAnimationFrame`
-9. Update RMS / Peak meters and the clip indicator in real time
-10. If **Autoevolution** is enabled, smooth low / mid / high FFT energies and apply them to the next engine cycle through `α`, `β`, and `γ`
+- **No voice cap / no starvation pulsing**, **sample-accurate timing** (no `setTimeout`),
+  a **continuous grain cloud**, and an integrated **soft-clip**.
+- Sampling: **Random / Stratified / Quasi-MC**.
+- **Chromatic aberration** (per-band aperture + one-pole filter), **Russian-roulette
+  bounces**, **recursive autoevolution** (output envelope feeds back into focus/aperture).
+- **Stereo width** (per-grain equal-power pan) and **octave / shimmer** (grains an octave up).
+- **Visuals:** dispersion cone, **rays colored by band** (low/mid/high) and a live output meter.
+- **Dependency-free build:** no `wasm-bindgen`, no crates → no crates.io needed, just `rustc`
+  + the `wasm32-unknown-unknown` target. Build & run instructions in
+  **[wasm/README.md](wasm/README.md)**.
 
 ---
 
-## Inspired By
+## Usage (classic)
+
+1. Open `rta.html` in any modern browser.
+2. Load a WAV or MP3 file.
+3. It starts in **Simple mode**: pick a preset (Original / Drone / Shimmer), move the single
+   **Character (Tonal → Drone)** knob, set volume and play.
+4. Hit **⚙ Advanced** to reveal the full optical controls, the sampling selector and the
+   **Convergence Lab**.
+5. Record a WAV straight from the interface and drag it into your DAW.
+
+---
+
+## Inspired by
 
 - **Iannis Xenakis** — stochastic music theory
 - **James Kajiya** — The Rendering Equation (1986)
@@ -235,281 +193,284 @@ Each burst:
 
 ---
 
-## Usage
-
-1. Open `rta.html` in any modern browser
-2. Load a WAV or MP3 file
-3. Adjust the **Focal Point** to a region of the waveform you find interesting
-4. Set a narrow **Aperture** and low **N** first — listen to the coherent result
-5. Gradually open the aperture and increase N — hear the drone emerge
-6. Watch the SOURCE canvas: the rays converge visually as they converge acoustically
-7. Enable **Autoevolution** and raise `α`, `β`, or `γ` carefully to move from slow breathing motion into unstable attractors
-
-### Sound Character Presets
-
-| Sound Goal | N | Aperture | Aberration | Roughness | Bounces |
-|---|---|---|---|---|---|
-| Tonal / Pitched | low | narrow | 0 % | 0 % | 0 |
-| Dense Drone | high | wide | 0 % | 100 % | 0 |
-| Zimmer Brass | high | 2–5 s | 60 % | 80 % | 1–2 |
-| Fred Again Vocal | mid | 500 ms–2 s | 30 % | 100 % | 0 |
-| Infinite Shimmer | mid | wide | 40 % | 60 % | 4 + high reflection |
-
----
-
 ## License
 
-MIT — free to use, adapt, and build upon. Credit appreciated.
+MIT — free to use, adapt and build upon. Credit appreciated.
 
 ---
-
 ---
 
 # Català
 
-## Què és el Rastreig Acústic de Raigs?
+## Què és RayDrone?
 
-El Rastreig Acústic de Raigs és una **nova metodologia** per generar textures de drone i paisatges sonors sostinguts, prenent prestada l'estructura matemàtica del rastreig de raigs òptic i aplicant-la al domini temporal d'un buffer d'àudio.
+RayDrone és una **metodologia de renderitzat** per al so: en comptes de sintetitzar l'àudio
+des de blocs o partícules, agafa un buffer gravat i el tracta com una *escena temporal*.
+Cada **raig** és un gra curt extret d'una posició aleatòria dins del con de dispersió al
+voltant d'un punt focal. Tots els raigs sonen alhora i la seva convergència estadística
+**és** el drone — no existeix a la mostra, **emergeix**.
 
-Això **no** és síntesi granular. El marc conceptual és fonamentalment diferent.
-
----
-
-## La Teoria
-
-### Ray Tracing en Gràfics (l'origen)
-
-En el renderitzat 3D, el ray tracing funciona llançant **N raigs estocàstics** des d'una càmera a través d'una escena. Cada raig mostra un camí diferent, una interacció de llum diferent. El píxel final no està emmagatzemat en cap lloc — **emergeix** de la convergència estadística de tots aquells raigs. Més raigs → menys soroll → renderitzat més net.
-
-La idea clau: **la imatge no existeix fins que no la renderitzes.**
+Mecànicament és parent proper de la **síntesi granular asíncrona**, però reinterpretada amb
+la lent del renderitzat òptic, cosa que li dóna controls intuïtius (profunditat de camp,
+obertura, focus) i una base matemàtica **mesurable**.
 
 ---
 
-### Transposant el Paradigma a l'Àudio
+## Dues versions
 
-El Rastreig Acústic de Raigs aplica la mateixa lògica a l'eix temporal d'un buffer d'àudio gravat:
+| Versió | Fitxer | Motor |
+|---|---|---|
+| **Clàssica** | [`rta.html`](rta.html) | JavaScript vanilla + Web Audio (inclou el *Convergence Lab*) |
+| **WASM** | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** (so més net, estèreo, octava) |
 
-| Ray Tracing Òptic | Rastreig Acústic de Raigs |
+---
+
+## La teoria
+
+En el renderitzat 3D, el ray tracing llança **N raigs estocàstics** des d'una càmera. El
+píxel final no s'emmagatzema: **emergeix** de la convergència de tots els raigs. Més raigs →
+menys soroll → render més net. *La imatge no existeix fins que la renderitzes.*
+
+| Ray tracing òptic | RayDrone |
 |---|---|
-| Geometria de l'escena 3D | Buffer d'àudio (forma d'ona en domini temporal) |
-| Punt focal de la càmera | Posició del capçal de reproducció (segons) |
+| Geometria de l'escena 3D | Buffer d'àudio (domini temporal) |
+| Punt focal de la càmera | Posició del capçal (segons) |
 | Obertura / profunditat de camp | Dispersió temporal (mil·lisegons) |
-| N raigs estocàstics | N grans d'àudio disparats a offsets aleatoris |
-| Convergència de luminància del píxel | Emergència del drone / textura sostinguda |
-| Sortida del renderitzat | Camp acústic |
-
-Cada **raig** és un fragment d'àudio curt extret d'una posició aleatòria dins del con de dispersió al voltant del punt focal. Tots els N raigs sonen simultàniament. Les seves amplituds es normalitzen per `1/√N` per evitar la saturació independentment del nombre de raigs.
-
-El **drone no existeix a la mostra.** Emergeix de la convergència estocàstica dels raigs, exactament com una imatge renderitzada emergeix de la convergència de raigs de llum.
+| N raigs estocàstics | N grans disparats a offsets aleatoris |
+| Convergència de luminància | Emergència del drone |
 
 ---
 
-## Per Què Això és Diferent de la Síntesi Granular
+## Per què és diferent de la síntesi granular
 
-| Síntesi Granular | Rastreig Acústic de Raigs |
-|---|---|
-| Tècnica de síntesi | Metodologia de renderitzat |
-| Els grans són blocs constructius | Els raigs són mostres de mesurament |
-| El resultat es construeix | El resultat convergeix |
-| Arrelada en la teoria temps-freqüència | Arrelada en la geometria estocàstica |
-| Controls: mida del gra, densitat, to | Controls: N (raigs), obertura, punt focal |
-| Model mental: partícules | Model mental: òptica / física de la llum |
-
-La distinció no és merament semàntica. El model mental determina com **composes** amb l'instrument. Un fotògraf que controla la profunditat de camp pensa diferent d'un programador de síntesi que controla la densitat granular — fins i tot si alguns resultats poden sonar similars en la superfície.
+> **Marc honest.** El motor és parent proper de la *síntesi granular asíncrona* (Xenakis,
+> Roads, Truax, Gabor). L'afirmació **no** és "un tipus nou de generació de so"; és que la
+> resíntesi granular es pot plantejar com a **estimació Monte Carlo d'una integral de
+> transport**, cosa que permet importar la *maquinària* de l'equació de renderitzat —
+> importance sampling, estratificació, Russian roulette, transport recursiu — com a paradigma
+> de control i qualitat. Això és el nou, i a diferència d'una metàfora, és **mesurable**.
 
 ---
 
-## Analogia Acústica: Profunditat de Camp
+## Fonament matemàtic
 
-Pensa en un objectiu fotogràfic:
+- **L'objectiu és una integral definida:** `target[n] = w[n] · ∫ p(τ)·s(τ+n) dτ` (un "blur"
+  determinista del sample), l'anàleg del píxel `L(x) = ∫ f(x,ω) dω` de Kajiya.
+- **Cada raig és un estimador insesgat:** `E[render_N] = target` i l'error cau com `1/√N`.
+  *Més raigs → menys soroll → render més net* és ara literalment cert.
+- **Reducció de variància:** *stratified*, *quasi-Monte Carlo* (golden ratio) i *importance*
+  baten l'`1/√N` de manual.
+- **Russian roulette** als rebots: la cua és la solució insesgada d'una sèrie de Neumann.
 
-- **Obertura estreta, distància focal curta** → enfocament nítid, poques plans superposats → resultat tonal coherent, gairebé afinat
-- **Obertura àmplia, distància focal llarga** → desenfocament profund, molts plans que col·lapsen → textura atmosfèrica densa, el "drone"
-- **Més raigs (N)** → menys soroll estocàstic, convergència més suau → renderitzat més net
-
-Exactament així es comporten els drones de metalls de Hans Zimmer o les textures vocals de Fred Again: una veu o instrument deixa de ser una mostra reconeixible i es converteix en un **camp acústic**.
+El **Convergence Lab** (versió clàssica) ho demostra en viu: dibuixa l'error RMS vs N en
+log-log amb la línia ideal `1/√N` i ofereix una A/B audible.
 
 ---
 
-## Renderitzat Visual
+## Analogia: profunditat de camp
 
-La interfície renderitza el procés de rastreig de raigs en temps real en dos canvas:
-
-### Canvas SOURCE (superior)
-- La forma d'ona original del fitxer d'àudio carregat
-- Una **línia focal** (vertical, amb resplendor) que mostra l'enfocament actual del capçal de reproducció
-- Una **zona de dispersió** (gradient semitransparent) que mostra el con d'obertura
-- **Raigs animats**: línies primes que apareixen a les seves posicions d'offset aleatòries i convergeixen cap al punt focal, esvaïnt-se mentre decauen
-- Marcadors de l'eix temporal (en segons)
-
-### Canvas RENDER OUTPUT (inferior)
-- La **forma d'ona emergent** en temps real, llegida directament de l'`AnalyserNode` de Web Audio
-- Mostra el resultat acústic de la convergència de raigs — el drone renderitzat
-
-### Metreig
-- Mesuradors RMS i Peak en temps real amb lectura en dB
-- Indicador **CLIP** en vermell si la sortida arriba a 0 dBFS
-- Panell compacte de **FFT Feedback** amb energia en viu de **Low / Mid / High** usada pel sistema de modulació recursiva
+- **Obertura estreta** → enfocament nítid, coherent, gairebé afinat.
+- **Obertura àmplia** → desenfocament profund, textura atmosfèrica densa: el drone.
+- **Més raigs (N)** → menys soroll, convergència més suau.
 
 ---
 
 ## Paràmetres
 
-### Nucli
-
 | Paràmetre | Descripció |
 |---|---|
-| **Volum Master** | Nivell de sortida global 0–100 % |
-| **N (Nombre de Raigs)** | Densitat del renderitzat. Més raigs → drone més ric i suau. Escala exponencial: `floor(slider^1.6)` |
-| **Obertura (Dispersió)** | Amplada del con temporal en mil·lisegons. Fins a 10 s. Estret = coherent/tonal. Ample = difús/textural. |
-| **Punt Focal (Posició)** | El punt en el temps al voltant del qual es llancen els raigs. Moure'l per la forma d'ona canvia completament el caràcter tímbric. |
-
-### Extensions Òptiques Avançades
-
-| Paràmetre | Analogia òptica | Efecte acústic |
-|---|---|---|
-| **Aberració Cromàtica** | Dispersió de la lent per longitud d'ona | Els greus obren més; els aguts obren menys. Núvols de baix profunds i aguts cristal·lins. |
-| **Autoevolució** | Bucle de feedback recursiu | Llegeix el frame FFT anterior i retorna l'energia espectral al motor perquè el render es moduli a si mateix amb el temps. |
-| **α Dispersió** | Guany espectral dels aguts | Més energia d'altes freqüències obre més l'obertura al cicle següent. |
-| **β Rebotes** | Densitat estructural dels mitjos | Més energia en mitjos incrementa la generació de rebots secundaris. |
-| **γ Rugositat** | Motor de difusió dels greus | Més energia de greus incrementa la rugositat BRDF i la nebulosa sonora. |
-| **Rugositat BRDF** | Microgeometria de la superfície | 100 % = drone difús Monte Carlo. 0 % = especular / harmònic. |
-| **Rebotes (Bounce)** | Generació de raigs secundaris | Cada raig pot generar raigs fills des del seu final, creant una cua geomètrica. |
-| **Coeficient de Reflexió** | Pèrdua d'energia per rebote | Controla el decaïment de cada rebot i la longitud de la cua. |
+| **Volum Master** | Nivell de sortida 0–100 % |
+| **N (Nombre de Raigs)** | Densitat del render |
+| **Obertura (Dispersió)** | Amplada del con temporal (ms). Estret = tonal, ample = textural |
+| **Punt Focal** | Punt en el temps al voltant del qual es llancen els raigs |
+| **Estratègia de Mostreig** | `Random` / `Stratified` / `Quasi-MC` / `Importance` |
+| **Aberració Cromàtica** | Els greus obren més, els aguts menys → núvols greus i aguts cristal·lins |
+| **Rugositat BRDF** | 100 % = drone difús; 0 % = especular / harmònic |
+| **Rebots + Reflexió** | Cua per Russian roulette (sèrie de Neumann) |
+| **Autoevolució (α/β/γ)** | L'energia FFT low/mid/high realimenta el cicle següent |
 
 ---
 
-## Implementació Tècnica
+## La millora WASM (Rust + WebAssembly)
 
-Construït íntegrament amb **JavaScript vanilla** i la **Web Audio API**. Sense llibreries, sense frameworks.
+La pàgina [`wasm/`](wasm/) reimplementa el motor en **Rust compilat a WebAssembly** dins
+d'un **AudioWorklet**, mesclant cada mostra. Soluciona per disseny els problemes de la versió
+JS i afegeix:
 
-```
-AudioBufferSourceNode (×burst)
-        ↓
-  GainNode (envoltant de fade per raig)
-        ↓
-  [Opcional] BiquadFilter de banda (low / mid / high)
-        ↓
-  mainGainNode (volum mestre)
-        ↓
-  AnalyserNode (FFT 2048, per a la sortida visual + metering)
-        ↓
-  Estat de feedback (energia suavitzada low / mid / high)
-        ↓
-  AudioContext.destination
-```
+- **Sense tope de veus ni pulsos**, **timing perfecte**, núvol continu i soft-clip integrat.
+- Mostreig **Random / Stratified / Quasi-MC**, **aberració cromàtica**, **rebots (Russian
+  roulette)** i **autoevolució recursiva**.
+- **Estèreo (Width)** amb paneo equal-power i **octava / shimmer**.
+- **Visual:** con de dispersió, **raigs acolorits per banda** i medidor de sortida.
+- **Compilació sense dependències** (només `rustc` + target `wasm32`, sense crates.io).
+  Instruccions a **[wasm/README.md](wasm/README.md)**.
 
-Cada cicle de renderitzat (`setTimeout` adaptatiu a l'interval de dispersió):
-1. Llegir el punt focal, l'obertura i tots els paràmetres òptics dels sliders
-2. Calcular `burstN = min(rawN, burstCap, headroom)`
-3. Assignar una banda de freqüència per raig (greus / migs / aguts)
-4. Aplicar **Aberració Cromàtica** escalant l'obertura per banda
-5. Aplicar **Rugositat BRDF** interpolant entre posició harmònica i aleatòria
-6. Crear `BufferSourceNode`s amb envoltant de fade
-7. Si **Bounce Count** és actiu, crear raigs fills des del final de cada raig
-8. Afegir raigs visuals a `visRays[]` i animar-los amb `requestAnimationFrame`
-9. Actualitzar metres RMS / Peak i l'indicador de clip en temps real
-10. Si **Autoevolució** està activa, suavitzar les energies FFT low / mid / high i aplicar-les al següent cicle del motor mitjançant `α`, `β` i `γ`
+---
+
+## Ús (clàssica)
+
+1. Obre `rta.html` en qualsevol navegador modern.
+2. Carrega un WAV o MP3.
+3. Arrenca en **Mode Simple**: tria un preset, mou el knob **Caràcter (Tonal → Drone)**,
+   ajusta el volum i dóna-li a play.
+4. Prem **⚙ Mode avançat** per als controls òptics complets, el selector de mostreig i el
+   **Convergence Lab**.
+5. Grava un WAV des de la mateixa interfície i arrossega'l al teu DAW.
 
 ---
 
 ## Inspiració
 
-- **Iannis Xenakis** — teoria de la música estocàstica
-- **James Kajiya** — The Rendering Equation (1986)
-- **Fred Again** — processament de textures vocals
-- **Hans Zimmer** — drones orquestrals sostinguts
-- **Curtis Roads** — microsound i teoria granular (com a referència de contrast)
-
----
-
-## Ús
-
-1. Obre `rta.html` a qualsevol navegador modern
-2. Carrega un fitxer WAV o MP3
-3. Ajusta el **Punt Focal** a una regió de la forma d'ona que et sembli interessant
-4. Estableix primer una **Obertura** estreta i una **N** baixa — escolta el resultat coherent
-5. Obre gradualment l'obertura i augmenta N — escolta com emergeix el drone
-6. Observa el canvas SOURCE: els raigs convergeixen visualment mentre convergeixen acústicament
-7. Activa **Autoevolució** i puja `α`, `β` o `γ` amb cura per passar d'un moviment lent a atractors més inestables
-
-### Presets per Caràcter
-
-| Objectiu Sonor | N | Obertura | Aberració | Rugositat | Rebotes |
-|---|---|---|---|---|---|
-| Tonal / Afinat | baix | estreta | 0 % | 0 % | 0 |
-| Drone Dens | alt | ampla | 0 % | 100 % | 0 |
-| Metalls Zimmer | alt | 2–5 s | 60 % | 80 % | 1–2 |
-| Vocal Fred Again | mig | 500 ms–2 s | 30 % | 100 % | 0 |
-| Brillantor Infinita | mig | ampla | 40 % | 60 % | 4 + reflexió alta |
-
----
+Iannis Xenakis (música estocàstica) · James Kajiya (The Rendering Equation, 1986) ·
+Fred Again (textures vocals) · Hans Zimmer (drones orquestrals) · Curtis Roads (microsound).
 
 ## Llicència
 
-MIT — lliure d'usar, adaptar i construir sobre seu. S'agraeix el crèdit.
+MIT — lliure d'usar, adaptar i construir-hi a sobre. S'agraeix el crèdit.
 
 ---
-
 ---
 
 # Castellano
 
 ## Qué es RayDrone
 
-RayDrone es una **metodología de renderizado sonoro**: en vez de sintetizar el audio desde bloques o partículas, toma un buffer grabado y lo trata como una escena temporal. Los rayos no “representan” el sonido; lo **convergen**.
+RayDrone es una **metodología de renderizado** sonoro: en vez de sintetizar el audio desde
+bloques o partículas, toma un buffer grabado y lo trata como una *escena temporal*. Cada
+**rayo** es un grano corto extraído de una posición aleatoria dentro del cono de dispersión
+alrededor de un punto focal. Todos los rayos suenan a la vez y su convergencia estadística
+**es** el drone — no existe en el sample, **emerge**.
 
-La idea no es reproducir el sample de forma fiel. La idea es **renderizarlo como un campo acústico** que puede convertirse en drone, textura, coro granular o nube armónica.
-
----
-
-## Extensiones Ópticas
-
-- **Aberración cromática**: los graves reciben una apertura más amplia; los agudos una apertura mucho más estrecha.
-- **Autoevolución**: un bucle recursivo lee el frame FFT anterior y lo usa para modular el siguiente estado del motor.
-- **α dispersión**: los agudos abren más la lente temporal en el siguiente ciclo.
-- **β rebotes**: los medios aumentan la densidad de rebotes secundarios.
-- **γ rugosidad**: los graves empujan el render hacia una difusión más nubosa.
-- **BRDF acústica / rugosidad**: controla si los rayos se distribuyen de forma difusa o más armónica.
-- **Bounce count**: cada rayo puede generar rebotes secundarios y construir una cola geométrica de resonancia.
-- **Barrido del sampler**: el foco puede recorrer todo el audio automáticamente en modo ping-pong o quedarse fijo.
+Mecánicamente es pariente cercano de la **síntesis granular asíncrona**, pero reinterpretada
+con la lente del renderizado óptico: eso le da controles intuitivos (profundidad de campo,
+apertura, foco) y una base matemática **medible**.
 
 ---
 
-## Interacción
+## Dos versiones
 
-- Puedes hacer click sobre la onda para saltar a un punto concreto.
-- Puedes arrastrar sobre la onda para seleccionar una ventana temporal.
-- Puedes oír el **original** sin parar el render y parar el **render** sin cortar el original.
-- Los medidores RMS y Peak están arriba, de forma sutil, para comprobar nivel y clipping.
-- El panel **FFT Feedback** muestra en vivo la energía **Low / Mid / High** que alimenta la autoevolución.
+| Versión | Archivo | Motor |
+|---|---|---|
+| **Clásica** | [`rta.html`](rta.html) | JavaScript vanilla + Web Audio (incluye el *Convergence Lab*) |
+| **WASM** | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** (sonido más limpio, estéreo, octava) |
 
----
-
-## Presets
-
-La interfaz incluye presets rápidos para empezar sin ajustar todo a mano:
-
-- **Tonal / Pitched**
-- **Dense Drone**
-- **Zimmer Brass**
-- **Fred Again Vocal**
-- **Infinite Shimmer**
+Ambas implementan la misma idea. La versión **Rust/WebAssembly** mezcla **cada muestra** en
+un bucle en el hilo de audio, lo que elimina por diseño los límites de la versión JS (sin
+tope de voces, sin jitter, sin pulsos) y añade **estéreo** y **octava/shimmer**. Cómo
+compilarla y usarla: **[wasm/README.md](wasm/README.md)**.
 
 ---
 
-## Uso
+## La teoría
 
-La interfaz arranca en **Modo Simple**: cargar audio, elegir un preset, un único
-knob **Carácter (Tonal → Drone)** que mueve densidad, apertura y rugosidad a la vez,
-volumen y play. El botón **⚙ Modo avanzado** despliega los 9 controles ópticos, el
-selector de muestreo y el Convergence Lab para quien quiera trastear a fondo.
+En el renderizado 3D, el ray tracing lanza **N rayos estocásticos** desde una cámara. El
+píxel final no se guarda: **emerge** de la convergencia de todos los rayos. Más rayos →
+menos ruido → render más limpio. *La imagen no existe hasta que la renderizas.*
+
+| Ray tracing óptico | RayDrone |
+|---|---|
+| Geometría de la escena 3D | Buffer de audio (dominio temporal) |
+| Punto focal de la cámara | Posición del cabezal (segundos) |
+| Apertura / profundidad de campo | Dispersión temporal (milisegundos) |
+| N rayos estocásticos | N granos disparados a offsets aleatorios |
+| Convergencia de luminancia | Emergencia del drone |
+
+---
+
+## Por qué es diferente de la síntesis granular
+
+> **Marco honesto.** El motor es pariente cercano de la *síntesis granular asíncrona*
+> (Xenakis, Roads, Truax, Gabor). La afirmación **no** es "un tipo nuevo de generación de
+> sonido"; es que la resíntesis granular se puede plantear como **estimación Monte Carlo de
+> una integral de transporte**, lo que permite importar la *maquinaria* de la ecuación de
+> renderizado — importance sampling, estratificación, Russian roulette, transporte recursivo
+> — como paradigma de control y calidad. Eso es lo nuevo, y a diferencia de una metáfora, es
+> **medible** (ver el Convergence Lab).
+
+---
+
+## Fundamento matemático
+
+- **El objetivo es una integral definida:** `target[n] = w[n] · ∫ p(τ)·s(τ+n) dτ` (un "blur"
+  determinista del sample), el análogo del píxel `L(x) = ∫ f(x,ω) dω` de Kajiya.
+- **Cada rayo es un estimador insesgado:** `E[render_N] = target` y el error cae como `1/√N`.
+  *Más rayos → menos ruido → render más limpio* es ahora literalmente cierto y falsable.
+- **Reducción de varianza:** *stratified*, *quasi-Monte Carlo* (golden ratio) e *importance*
+  baten el `1/√N` de manual.
+- **Russian roulette** en los rebotes: la cola es la solución insesgada de una serie de
+  Neumann (la forma recursiva de la ecuación de transporte).
+
+El **Convergence Lab** (versión clásica) lo demuestra en vivo: dibuja el error RMS vs N en
+log-log con la línea ideal `1/√N` y ofrece una A/B audible (objetivo vs N=4 vs N=256 al
+mismo nivel).
+
+---
+
+## Analogía: profundidad de campo
+
+- **Apertura estrecha** → enfoque nítido, coherente, casi afinado.
+- **Apertura amplia** → desenfoque profundo, textura atmosférica densa: el drone.
+- **Más rayos (N)** → menos ruido, convergencia más suave.
+
+---
+
+## Parámetros
+
+| Parámetro | Descripción |
+|---|---|
+| **Volumen Master** | Nivel de salida 0–100 % |
+| **N (Número de Rayos)** | Densidad del render |
+| **Apertura (Dispersión)** | Ancho del cono temporal (ms). Estrecho = tonal, ancho = textural |
+| **Punto Focal** | Punto en el tiempo alrededor del cual se lanzan los rayos |
+| **Estrategia de Muestreo** | `Random` / `Stratified` / `Quasi-MC` / `Importance` |
+| **Aberración Cromática** | Los graves abren más, los agudos menos → nubes graves y agudos cristalinos |
+| **Rugosidad BRDF** | 100 % = drone difuso; 0 % = especular / armónico |
+| **Rebotes + Reflexión** | Cola por Russian roulette (serie de Neumann) |
+| **Autoevolución (α/β/γ)** | La energía FFT low/mid/high realimenta el siguiente ciclo |
+
+---
+
+## La mejora WASM (Rust + WebAssembly)
+
+La página [`wasm/`](wasm/) reimplementa el motor en **Rust compilado a WebAssembly** dentro
+de un **AudioWorklet**, mezclando cada muestra en un bucle. Soluciona por diseño los
+problemas de la versión JS y añade:
+
+- **Sin tope de voces ni pulsos por inanición**, **timing perfecto** (sin `setTimeout`),
+  nube continua y **soft-clip** integrado.
+- Muestreo **Random / Stratified / Quasi-MC**, **aberración cromática** (apertura por banda
+  + filtro), **rebotes (Russian roulette)** y **autoevolución recursiva** (la envolvente de
+  la salida realimenta foco y apertura).
+- **Estéreo (Width)** con paneo equal-power y **octava / shimmer** (granos una octava arriba).
+- **Visual:** cono de dispersión, **rayos coloreados por banda** (grave/medio/agudo) y
+  medidor de salida en tiempo real.
+- **Compilación sin dependencias:** sin `wasm-bindgen` ni crates → no necesita crates.io,
+  solo `rustc` + el target `wasm32-unknown-unknown`. Instrucciones en
+  **[wasm/README.md](wasm/README.md)**.
+
+---
+
+## Uso (clásica)
+
+La interfaz arranca en **Modo Simple**: cargar audio, elegir un preset, un único knob
+**Carácter (Tonal → Drone)** que mueve densidad, apertura y rugosidad a la vez, volumen y
+play. El botón **⚙ Modo avanzado** despliega los controles ópticos completos, el selector de
+muestreo y el Convergence Lab.
 
 1. Carga un WAV o MP3.
 2. Elige un preset, o mueve el knob **Carácter** de tonal a drone.
-3. Pulsa **Renderizar Drone** para escuchar el motor.
-4. Pulsa **Oír Original** para comparar el sample sin parar el render.
-5. ¿Quieres más control? Activa **Modo avanzado** para usar foco, barrido, selección con ratón, aberración, rebotes y estrategias de muestreo.
-6. Activa **Autoevolución** y sube `α`, `β` y `γ` poco a poco para entrar en zonas de respiración, densificación o caos controlado.
-7. Si te gusta el resultado, graba WAV desde la propia interfaz y arrástralo a tu DAW.
+3. Pulsa **Play** para escuchar el motor; **Original (Dry)** para comparar con el sample.
+4. ¿Más control? **Modo avanzado**: foco, barrido, selección con ratón, aberración, rebotes,
+   estrategias de muestreo y autoevolución (α/β/γ).
+5. Si te gusta, graba un WAV desde la interfaz y arrástralo a tu DAW.
 
+---
+
+## Inspiración
+
+Iannis Xenakis (música estocástica) · James Kajiya (The Rendering Equation, 1986) ·
+Fred Again (texturas vocales) · Hans Zimmer (drones orquestales) · Curtis Roads (microsound).
+
+## Licencia
+
+MIT — libre de usar, adaptar y construir sobre ello. Se agradece el crédito.
