@@ -1270,17 +1270,17 @@
     }
 
     const presetMap = {
-        none:      { volume: 0,  ray: 6,   disp: 40,   pos: 22, sweep: 0,  aber: 0,  rough: 0,   bounces: 0, refl: 25, ae: 0, alpha: 0,  beta: 0,  gamma: 0 },
-        tonal:     { volume: 84, ray: 12,  disp: 28,   pos: 8,  sweep: 0,  aber: 0,  rough: 0,   bounces: 0, refl: 38, ae: 0, alpha: 0,  beta: 0,  gamma: 0 },
-        drone:     { volume: 82, ray: 246, disp: 10000,pos: 62, sweep: 0,  aber: 4,  rough: 100, bounces: 0, refl: 44, ae: 0, alpha: 0,  beta: 0,  gamma: 0 },
-        zimmer:    { volume: 86, ray: 172, disp: 3600, pos: 72, sweep: 0,  aber: 18, rough: 46,  bounces: 3, refl: 84, ae: 0, alpha: 0,  beta: 0,  gamma: 0 },
-        fred:      { volume: 76, ray: 44,  disp: 420,  pos: 34, sweep: 0,  aber: 72, rough: 92,  bounces: 0, refl: 48, ae: 0, alpha: 0,  beta: 0,  gamma: 0 },
-        shimmer:   { volume: 78, ray: 156, disp: 7600, pos: 18, sweep: 22, aber: 74, rough: 52,  bounces: 4, refl: 88, ae: 1, alpha: 72, beta: 24, gamma: 36 },
-        abyss:     { volume: 90, ray: 250, disp: 10000,pos: 84, sweep: 2,  aber: 0,  rough: 100, bounces: 4, refl: 90, ae: 1, alpha: 10, beta: 92, gamma: 96 },
-        nebula:    { volume: 72, ray: 96,  disp: 5200, pos: 10, sweep: 34, aber: 100,rough: 66,  bounces: 1, refl: 72, ae: 1, alpha: 92, beta: 20, gamma: 40 },
-        cathedral: { volume: 84, ray: 58,  disp: 4800, pos: 46, sweep: 0,  aber: 12, rough: 24,  bounces: 4, refl: 90, ae: 1, alpha: 8,  beta: 64, gamma: 28 },
-        arctic:    { volume: 66, ray: 28,  disp: 95,   pos: 6,  sweep: 14, aber: 100,rough: 4,   bounces: 0, refl: 56, ae: 1, alpha: 96, beta: 4,  gamma: 0 },
-        catacomb:  { volume: 88, ray: 214, disp: 6800, pos: 28, sweep: 11, aber: 46, rough: 98,  bounces: 4, refl: 84, ae: 1, alpha: 56, beta: 84, gamma: 90 },
+        none:      { volume: 80, ray: 5,  disp: 45,  pos: 25, sweep: 0, aber: 0,  rough: 15, bounces: 0, refl: 25, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        tonal:     { volume: 82, ray: 6,  disp: 70,  pos: 30, sweep: 0, aber: 0,  rough: 25, bounces: 0, refl: 30, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        drone:     { volume: 80, ray: 26, disp: 350, pos: 35, sweep: 0, aber: 0,  rough: 90, bounces: 0, refl: 40, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        zimmer:    { volume: 82, ray: 22, disp: 500, pos: 40, sweep: 0, aber: 20, rough: 70, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        fred:      { volume: 80, ray: 12, disp: 180, pos: 35, sweep: 0, aber: 18, rough: 85, bounces: 0, refl: 45, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        shimmer:   { volume: 78, ray: 20, disp: 450, pos: 30, sweep: 5, aber: 30, rough: 60, bounces: 2, refl: 65, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        abyss:     { volume: 80, ray: 30, disp: 700, pos: 45, sweep: 0, aber: 0,  rough: 95, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        nebula:    { volume: 76, ray: 16, disp: 300, pos: 30, sweep: 7, aber: 45, rough: 65, bounces: 0, refl: 50, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        cathedral: { volume: 80, ray: 18, disp: 600, pos: 40, sweep: 0, aber: 12, rough: 40, bounces: 2, refl: 65, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        arctic:    { volume: 74, ray: 10, disp: 120, pos: 25, sweep: 0, aber: 35, rough: 12, bounces: 0, refl: 45, ae: 0, alpha: 0, beta: 0, gamma: 0 },
+        catacomb:  { volume: 78, ray: 26, disp: 550, pos: 35, sweep: 3, aber: 28, rough: 90, bounces: 1, refl: 55, ae: 0, alpha: 0, beta: 0, gamma: 0 },
     };
 
     const presetCharacter = {
@@ -1304,7 +1304,7 @@
         volSlider.value = preset.volume;
         raySlider.value = Math.min(250, Math.max(2, Math.round(preset.ray)));
         dispSlider.value = preset.disp;
-        posSlider.value = preset.pos;
+        posSlider.value = audioBuffer ? (clamp(preset.pos, 0, 100) / 100) * audioBuffer.duration : preset.pos;
         sweepSlider.value = preset.sweep;
         aberSlider.value = preset.aber;
         feedbackEnableSlider.checked = !!preset.ae;
@@ -2050,8 +2050,10 @@
 
         const dispFeedbackSec = feedbackOn ? alpha * feedbackState.high * 6.0 : 0;
         const dispSec = clamp(baseDispSec + dispFeedbackSec, 0.005, 10);
-        const rayDuration = clamp(dispSec * 1.6, 0.06, 0.45);
-        const tickMs = clamp(parseFloat(dispSlider.value) * 0.8, 28, 180);
+        // Granos cortos (no reproducen el ritmo del sample) → drone suave y sostenido.
+        const rayDuration = clamp(0.06 + dispSec * 0.05, 0.08, 0.20);
+        // Tick pequeño con ~4× de solape: flujo continuo de granos, sin pulso audible.
+        const tickMs = clamp(rayDuration * 1000 / 4, 16, 45);
 
         const sweepRateCpm = parseFloat(sweepSlider.value);
         const sweepEnabled = sweepRateCpm > 0;
@@ -2196,7 +2198,9 @@
             }
             offset = clamp(offset, 0, audioBuffer.duration - 0.01);
 
-            spawnRay(offset, rayDuration, burstN, band, maxBounces, reflCoeff, false, null, when);
+            // Repartir el inicio de los granos a lo largo del ciclo → cloud continuo, sin pulso
+            const startT = when + (i / Math.max(burstN, 1)) * (tickMs / 1000);
+            spawnRay(offset, rayDuration, burstN, band, maxBounces, reflCoeff, false, null, startT);
         }
 
         updateStatus(activeSources.length, burstN, burstCapByDisp);
