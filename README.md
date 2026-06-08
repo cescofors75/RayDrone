@@ -1,5 +1,10 @@
 # RayDrone
 
+![license](https://img.shields.io/badge/license-MIT-ff355e)
+![engine](https://img.shields.io/badge/engine-Rust%20%2B%20WebAssembly-ff355e)
+![web audio](https://img.shields.io/badge/Web%20Audio-AudioWorklet-ff355e)
+![dependencies](https://img.shields.io/badge/dependencies-zero-ff355e)
+
 > **A new methodology for audio rendering: applying the stochastic ray tracing paradigm to the time domain of an audio buffer.**
 
 RayDrone turns any WAV/MP3 into evolving **drones, pads and textures** by treating the
@@ -201,8 +206,9 @@ points by design:
 - Sampling: **Random / Stratified / Quasi-MC**.
 - **Chromatic aberration** (per-band aperture + one-pole filter), **Russian-roulette
   bounces**, **recursive autoevolution** (output envelope feeds back into focus/aperture).
-- **Stereo width** (per-grain equal-power pan) and **octave / shimmer** (grains an octave up).
-- **Visuals:** dispersion cone, **rays colored by band** (low/mid/high) and a live output meter.
+- **Stereo width** (per-grain equal-power pan), **octave / shimmer** and **±12-semitone pitch**.
+- **Visuals:** dispersion cone, **rays colored by band** (low/mid/high), a live output meter
+  and level-reactive glow.
 - **Dependency-free build:** no `wasm-bindgen`, no crates → no crates.io needed, just `rustc`
   + the `wasm32-unknown-unknown` target. Build & run instructions in
   **[wasm/README.md](wasm/README.md)**.
@@ -376,8 +382,8 @@ JS i afegeix:
 - **Sense tope de veus ni pulsos**, **timing perfecte**, núvol continu i soft-clip integrat.
 - Mostreig **Random / Stratified / Quasi-MC**, **aberració cromàtica**, **rebots (Russian
   roulette)** i **autoevolució recursiva**.
-- **Estèreo (Width)** amb paneo equal-power i **octava / shimmer**.
-- **Visual:** con de dispersió, **raigs acolorits per banda** i medidor de sortida.
+- **Estèreo (Width)** amb paneo equal-power, **octava / shimmer** i **pitch ±12 semitons**.
+- **Visual:** con de dispersió, **raigs acolorits per banda**, medidor de sortida i glow reactiu.
 - **Compilació sense dependències** (només `rustc` + target `wasm32`, sense crates.io).
   Instruccions a **[wasm/README.md](wasm/README.md)**.
 
@@ -555,9 +561,9 @@ problemas de la versión JS y añade:
 - Muestreo **Random / Stratified / Quasi-MC**, **aberración cromática** (apertura por banda
   + filtro), **rebotes (Russian roulette)** y **autoevolución recursiva** (la envolvente de
   la salida realimenta foco y apertura).
-- **Estéreo (Width)** con paneo equal-power y **octava / shimmer** (granos una octava arriba).
-- **Visual:** cono de dispersión, **rayos coloreados por banda** (grave/medio/agudo) y
-  medidor de salida en tiempo real.
+- **Estéreo (Width)** con paneo equal-power, **octava / shimmer** y **pitch ±12 semitonos**.
+- **Visual:** cono de dispersión, **rayos coloreados por banda** (grave/medio/agudo),
+  medidor de salida y glow reactivo al nivel.
 - **Compilación sin dependencias:** sin `wasm-bindgen` ni crates → no necesita crates.io,
   solo `rustc` + el target `wasm32-unknown-unknown`. Instrucciones en
   **[wasm/README.md](wasm/README.md)**.
