@@ -79,6 +79,10 @@ Motor con paridad casi completa con la versión JS:
   nace un grano hijo (cola/transporte), con tope de profundidad.
 - ✅ **Autoevolución recursiva**: la envolvente de la salida realimenta foco y
   apertura → el drone se modula a sí mismo.
+- ✅ **Estéreo (Width)**: paneo equal-power por grano → nube ancha e inmersiva.
+- ✅ **Octava / Shimmer**: probabilidad de que cada grano suene una octava arriba.
+- ✅ **Visual**: cono de dispersión, rayos coloreados por banda (grave/medio/agudo)
+  y medidor de salida en tiempo real.
 
 Pendiente respecto a la versión JS: el *Convergence Lab* (la demostración medible
 1/√N) sigue solo en JS.
