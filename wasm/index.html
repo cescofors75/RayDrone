@@ -512,6 +512,7 @@
         { k: 'stratified', c: '#00ffcc', label: 'Stratified' },
         { k: 'qmc', c: '#7aa2ff', label: 'Quasi-MC' },
         { k: 'importance', c: '#ffe066', label: 'Importance' },
+        { k: 'reverse', c: '#c084fc', label: 'Reverse' },
     ];
     let labHann = null, labCurves = null, labTarget = null, labA = 0, labF0 = 0, labAudio = null;
 
@@ -548,18 +549,19 @@
     function labImpSearch(cum, r) { let lo = 0, hi = cum.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < r) lo = m + 1; else hi = m; } return lo; }
     function labBuildImp(f0, A) {
         const len = 2 * A + 1, stride = 8, taps = Math.ceil(LAB_GRAIN / stride);
-        const pm = new Float32Array(len), qm = new Float32Array(len), cum = new Float32Array(len), invA2 = 1 / (A * A);
-        let ps = 0, qs = 0;
+        const pm = new Float32Array(len), qm = new Float32Array(len), cum = new Float32Array(len), en = new Float32Array(len), invA2 = 1 / (A * A);
+        let ps = 0, qs = 0, emax = 1e-6;
         for (let idx = 0; idx < len; idx++) {
             const k = idx - A, p = (A - Math.abs(k)) * invA2;
             let s = 0; const b = f0 + k;
             for (let n = 0; n < LAB_GRAIN; n += stride) { const v = labS(b + n); s += v * v; }
             const e = Math.sqrt(s / taps) + 1e-6;
+            en[idx] = e; if (e > emax) emax = e;
             pm[idx] = p; qm[idx] = p * e; ps += p; qs += p * e;
         }
         let acc = 0;
         for (let idx = 0; idx < len; idx++) { pm[idx] /= ps; qm[idx] = qs > 0 ? qm[idx] / qs : 1 / len; acc += qm[idx]; cum[idx] = acc; }
-        return { pm, qm, cum };
+        return { pm, qm, cum, en, emax };
     }
     function labEstimate(f0, A, N, method, imp) {
         const D = LAB_GRAIN, w = labGetHann(), out = new Float32Array(D), rot = Math.random();
@@ -571,6 +573,25 @@
                 for (let n = 0; n < D; n++) out[n] += wi * labS(b + n);
             }
             const inv = ws > 0 ? 1 / ws : 0;
+            for (let n = 0; n < D; n++) out[n] *= inv * w[n];
+            return out;
+        }
+        if (method === 'reverse' && imp) {
+            // Igual que el motor en vivo: rejection ∝ energía SIN reponderar → SESGADO.
+            const en = imp.en, emax = imp.emax, len = en.length;
+            for (let i = 0; i < N; i++) {
+                let k = Math.round(labTri(Math.random()) * A);
+                let tries = 0;
+                while (tries < 6) {
+                    let idx = k + A; if (idx < 0) idx = 0; else if (idx >= len) idx = len - 1;
+                    if (en[idx] >= emax * Math.random()) break;
+                    k = Math.round(labTri(Math.random()) * A);
+                    tries++;
+                }
+                const b = f0 + k;
+                for (let n = 0; n < D; n++) out[n] += labS(b + n);
+            }
+            const inv = 1 / N;
             for (let n = 0; n < D; n++) out[n] *= inv * w[n];
             return out;
         }
@@ -623,7 +644,7 @@
             const sl = labFitSlope(Ns, labCurves[s.k]);
             html += `<span style="color:${s.c}">${s.label.padEnd(12)} ${sl.toFixed(3).padStart(7)}   ${f(labCurves[s.k][last])}</span>\n`;
         }
-        html += `<span style="color:#8a99ad">(ideal random ≈ −0.50; los demás bajan más)</span></pre>`;
+        html += `<span style="color:#8a99ad">(ideal random ≈ −0.50; los demás bajan más; Reverse se aplana = sesgo)</span></pre>`;
         labReadout.innerHTML = html;
     }
 
