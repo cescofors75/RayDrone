@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add wasm target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Build wasm engine
+        run: bash wasm/build.sh
+
+      - name: Check JS syntax
+        run: |
+          node --check wasm/processor.js
+          node -e "
+            const fs = require('fs'), vm = require('vm');
+            for (const f of ['wasm/index.html', 'rta.html']) {
+              const h = fs.readFileSync(f, 'utf8');
+              let n = 0;
+              for (const m of h.matchAll(/<script>([\s\S]*?)<\/script>/g)) { vm.compileFunction(m[1]); n++; }
+              console.log(f, 'OK —', n, 'script block(s)');
+            }
+          "
+
+      - name: Upload wasm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: raydrone-wasm
+          path: wasm/raydrone.wasm
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add wasm target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Build wasm engine
+        run: bash wasm/build.sh
+
+      - name: Create release with compiled wasm
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wasm/raydrone.wasm
+          generate_release_notes: true

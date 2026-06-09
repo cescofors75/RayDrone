@@ -70,11 +70,17 @@ static mut PITCH_STEP: f32 = 1.0; // multiplicador de velocidad de lectura (tran
 // ── Reverb (Freeverb-lite): 4 combs + 2 allpass por canal, estéreo ──────────
 const NC: usize = 4;
 const NA: usize = 2;
-const CMAX: usize = 1700;
-const AMAX: usize = 600;
-const CLEN_L: [usize; NC] = [1557, 1617, 1491, 1422];
+// Capacidad para hasta 96 kHz (las longitudes base están en muestras @44.1k).
+const CMAX: usize = 3600;
+const AMAX: usize = 1280;
+const CLEN_L: [usize; NC] = [1557, 1617, 1491, 1422]; // @44100
 const CLEN_R: [usize; NC] = [1580, 1640, 1514, 1445]; // +stereo spread
 const ALEN: [usize; NA] = [556, 441];
+// Longitudes efectivas escaladas al SR real (update_coeffs) → mismo tiempo de
+// reverb a 44.1k, 48k o 96k.
+static mut CLEN_L_RT: [usize; NC] = [1557, 1617, 1491, 1422];
+static mut CLEN_R_RT: [usize; NC] = [1580, 1640, 1514, 1445];
+static mut ALEN_RT: [usize; NA] = [556, 441];
 const REV_ROOM: f32 = 0.84; // tamaño/feedback fijo
 const REV_DAMP: f32 = 0.5;  // amortiguación de agudos
 static mut COMBL: [[f32; CMAX]; NC] = [[0.0; CMAX]; NC];
@@ -89,7 +95,9 @@ static mut APL_I: [usize; NA] = [0; NA];
 static mut APR_I: [usize; NA] = [0; NA];
 static mut REV_WET: f32 = 0.0; // mezcla de reverb (0 = seco)
 
-// DC blocker a la salida (one-pole highpass ~3 Hz) — quita offset/retumbe acumulado.
+// DC blocker a la salida (one-pole highpass ~10 Hz) — quita offset/retumbe acumulado.
+// El coeficiente se recalcula con el SR real en update_coeffs().
+static mut DC_R: f32 = 0.998_575;
 static mut DC_XL: f32 = 0.0;
 static mut DC_YL: f32 = 0.0;
 static mut DC_XR: f32 = 0.0;
@@ -141,6 +149,28 @@ static mut VOICES: [Voice; MAX_VOICES] = [Voice {
     panl: 0.707,
     panr: 0.707,
 }; MAX_VOICES];
+
+// Lista compacta de voces activas + pila de slots libres: el bucle caliente
+// recorre solo las voces que suenan (O(activas)), no las 512.
+static mut ACTIVE: [u16; MAX_VOICES] = [0; MAX_VOICES];
+static mut NACTIVE: usize = 0;
+static mut FREE: [u16; MAX_VOICES] = [0; MAX_VOICES];
+static mut NFREE: usize = 0;
+static mut VINIT: bool = false;
+
+#[inline]
+fn ensure_voice_init() {
+    unsafe {
+        if !VINIT {
+            for i in 0..MAX_VOICES {
+                FREE[i] = (MAX_VOICES - 1 - i) as u16;
+            }
+            NFREE = MAX_VOICES;
+            NACTIVE = 0;
+            VINIT = true;
+        }
+    }
+}
 
 #[inline]
 fn rng01() -> f32 {
@@ -212,6 +242,33 @@ fn update_coeffs() {
         let tp = 6.283_185_5f32;
         A_LOW = clampf(tp * 500.0 / SR, 0.0, 0.99);
         A_HIGH = clampf(tp * 2500.0 / SR, 0.0, 0.99);
+        // DC blocker ~10 Hz al SR real
+        DC_R = clampf(1.0 - tp * 10.0 / SR, 0.9, 0.99999);
+        // Reverb: longitudes en muestras escaladas para mantener el mismo
+        // tiempo de cola a cualquier SR (las bases están en @44.1k).
+        let k = SR / 44100.0;
+        for c in 0..NC {
+            let l = ((CLEN_L[c] as f32) * k) as usize;
+            let r = ((CLEN_R[c] as f32) * k) as usize;
+            CLEN_L_RT[c] = if l < 4 { 4 } else if l > CMAX { CMAX } else { l };
+            CLEN_R_RT[c] = if r < 4 { 4 } else if r > CMAX { CMAX } else { r };
+            if COMBL_I[c] >= CLEN_L_RT[c] {
+                COMBL_I[c] = 0;
+            }
+            if COMBR_I[c] >= CLEN_R_RT[c] {
+                COMBR_I[c] = 0;
+            }
+        }
+        for a in 0..NA {
+            let l = ((ALEN[a] as f32) * k) as usize;
+            ALEN_RT[a] = if l < 4 { 4 } else if l > AMAX { AMAX } else { l };
+            if APL_I[a] >= ALEN_RT[a] {
+                APL_I[a] = 0;
+            }
+            if APR_I[a] >= ALEN_RT[a] {
+                APR_I[a] = 0;
+            }
+        }
     }
 }
 
@@ -270,15 +327,7 @@ pub extern "C" fn out_level() -> f32 {
 // Diagnóstico: nº de voces (rayos) activas mezcladas por bloque.
 #[no_mangle]
 pub extern "C" fn active_voices() -> u32 {
-    unsafe {
-        let mut c = 0u32;
-        for i in 0..MAX_VOICES {
-            if VOICES[i].active {
-                c += 1;
-            }
-        }
-        c
-    }
+    unsafe { NACTIVE as u32 }
 }
 #[no_mangle]
 pub extern "C" fn spawn_count() -> u32 {
@@ -378,7 +427,7 @@ fn reverb(inl: f32, inr: f32) -> (f32, f32) {
             COMBL_S[c] = yl * (1.0 - REV_DAMP) + COMBL_S[c] * REV_DAMP;
             COMBL[c][il] = il_in + COMBL_S[c] * fb;
             COMBL_I[c] = il + 1;
-            if COMBL_I[c] >= CLEN_L[c] {
+            if COMBL_I[c] >= CLEN_L_RT[c] {
                 COMBL_I[c] = 0;
             }
             ol += yl;
@@ -387,7 +436,7 @@ fn reverb(inl: f32, inr: f32) -> (f32, f32) {
             COMBR_S[c] = yr * (1.0 - REV_DAMP) + COMBR_S[c] * REV_DAMP;
             COMBR[c][ir] = ir_in + COMBR_S[c] * fb;
             COMBR_I[c] = ir + 1;
-            if COMBR_I[c] >= CLEN_R[c] {
+            if COMBR_I[c] >= CLEN_R_RT[c] {
                 COMBR_I[c] = 0;
             }
             orr += yr;
@@ -398,7 +447,7 @@ fn reverb(inl: f32, inr: f32) -> (f32, f32) {
             let yl = -ol + bl;
             APL[a][il] = ol + bl * 0.5;
             APL_I[a] = il + 1;
-            if APL_I[a] >= ALEN[a] {
+            if APL_I[a] >= ALEN_RT[a] {
                 APL_I[a] = 0;
             }
             ol = yl;
@@ -407,7 +456,7 @@ fn reverb(inl: f32, inr: f32) -> (f32, f32) {
             let yr = -orr + br;
             APR[a][ir] = orr + br * 0.5;
             APR_I[a] = ir + 1;
-            if APR_I[a] >= ALEN[a] {
+            if APR_I[a] >= ALEN_RT[a] {
                 APR_I[a] = 0;
             }
             orr = yr;
@@ -538,18 +587,27 @@ fn log_push(off_sec: f32, band: u8) {
 
 fn alloc_voice() -> usize {
     unsafe {
-        let mut oldest = -1.0f32;
-        let mut oldest_i = 0usize;
-        for i in 0..MAX_VOICES {
-            if !VOICES[i].active {
-                return i;
-            }
-            if VOICES[i].age > oldest {
-                oldest = VOICES[i].age;
-                oldest_i = i;
+        ensure_voice_init();
+        if NFREE > 0 {
+            NFREE -= 1;
+            let slot = FREE[NFREE] as usize;
+            ACTIVE[NACTIVE] = slot as u16;
+            NACTIVE += 1;
+            return slot;
+        }
+        // Sin slots libres: robar la voz más APAGADA (fase más avanzada → la cola
+        // de la Hann está cerca de 0) en vez de la más vieja → robo sin click.
+        let mut best = 0usize;
+        let mut best_ph = -1.0f32;
+        for k in 0..NACTIVE {
+            let v = ACTIVE[k] as usize;
+            let ph = VOICES[v].age * VOICES[v].inv_dur;
+            if ph > best_ph {
+                best_ph = ph;
+                best = k;
             }
         }
-        oldest_i
+        ACTIVE[best] as usize // ya está en la lista activa; se reutiliza en sitio
     }
 }
 
@@ -647,22 +705,26 @@ pub extern "C" fn process(frames: usize) {
             }
             let mut accl = 0.0f32;
             let mut accr = 0.0f32;
-            for i in 0..MAX_VOICES {
-                if !VOICES[i].active {
-                    continue;
-                }
+            let mut k = 0usize;
+            while k < NACTIVE {
+                let i = ACTIVE[k] as usize;
                 let ph = VOICES[i].age * VOICES[i].inv_dur;
                 if ph >= 1.0 {
                     let dep = VOICES[i].depth;
                     let bnd = VOICES[i].band;
                     let endpos = VOICES[i].pos;
                     VOICES[i].active = false;
+                    // swap-remove de la lista activa + devolver el slot al pool
+                    NACTIVE -= 1;
+                    ACTIVE[k] = ACTIVE[NACTIVE];
+                    FREE[NFREE] = i as u16;
+                    NFREE += 1;
                     if dep > 0 && rng01() < REFL {
                         let jitter = (rng01() - 0.5) * 0.1 * SR;
                         let cpos = clampf(endpos + jitter, 0.0, maxp);
                         place(cpos, bnd, dep - 1);
                     }
-                    continue;
+                    continue; // ACTIVE[k] ahora es otra voz: no avanzar k
                 }
                 let raw = sample_at(VOICES[i].pos);
                 let s = band_filter(i, raw) * win_at(ph) * VOICES[i].gain;
@@ -670,13 +732,14 @@ pub extern "C" fn process(frames: usize) {
                 accr += s * VOICES[i].panr;
                 VOICES[i].pos += VOICES[i].step;
                 VOICES[i].age += 1.0;
+                k += 1;
             }
             let (rl, rr) = reverb(accl * MASTER, accr * MASTER);
             // DC blocker (one-pole highpass): y = x - x1 + R·y1
-            let yl = rl - DC_XL + 0.9985 * DC_YL;
+            let yl = rl - DC_XL + DC_R * DC_YL;
             DC_XL = rl;
             DC_YL = yl;
-            let yr = rr - DC_XR + 0.9985 * DC_YR;
+            let yr = rr - DC_XR + DC_R * DC_YR;
             DC_XR = rr;
             DC_YR = yr;
             OUTL[f] = soft(yl);
