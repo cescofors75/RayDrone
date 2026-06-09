@@ -57,9 +57,9 @@
         <div id="meter"><div id="meter-fill"></div></div>
 
         <div class="presets">
-            <button class="preset" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0" data-width="0" data-oct="0">Original (Dry)</button>
-            <button class="preset active" data-mode="drone" data-t="0.35" data-aber="0" data-tail="0" data-evo="0" data-width="35" data-oct="0">Drone</button>
-            <button class="preset" data-mode="shimmer" data-t="0.6" data-aber="18" data-tail="0" data-evo="12" data-width="60" data-oct="50">Shimmer</button>
+            <button class="preset" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0" data-width="0" data-oct="0" data-reverb="0">Original (Dry)</button>
+            <button class="preset active" data-mode="drone" data-t="0.35" data-aber="0" data-tail="0" data-evo="0" data-width="35" data-oct="0" data-reverb="15">Drone</button>
+            <button class="preset" data-mode="shimmer" data-t="0.6" data-aber="18" data-tail="0" data-evo="12" data-width="60" data-oct="50" data-reverb="45">Shimmer</button>
         </div>
 
         <div class="ctl">
@@ -102,13 +102,37 @@
             <input type="range" id="pitch" min="-12" max="12" value="0" step="1">
         </div>
 
+        <div class="ctl">
+            <label>Reverb (espacio) <span class="v" id="reverb-v">0 %</span></label>
+            <input type="range" id="reverb" min="0" max="100" value="0">
+        </div>
+
         <div class="ctl" style="display:flex; justify-content:space-between; align-items:center;">
             <label style="margin:0;">Muestreo suave (QMC) <span class="v" id="smooth-v">ON</span></label>
             <input type="checkbox" id="smooth" checked style="width:20px; height:20px; accent-color:#ff355e; cursor:pointer;">
         </div>
 
+        <div class="ctl" style="display:flex; justify-content:space-between; align-items:center;">
+            <label style="margin:0;">Rayos inteligentes (trazado inverso) <span class="v" id="smart-v">OFF</span></label>
+            <input type="checkbox" id="smart" style="width:20px; height:20px; accent-color:#ff355e; cursor:pointer;">
+        </div>
+
         <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
         <div class="status" id="status">Carga un WAV o MP3 para empezar.</div>
+
+        <div id="lab" style="margin-top:20px; border-top:1px solid rgba(255,53,94,0.15); padding-top:16px;">
+            <div style="font-family:monospace; font-size:0.72rem; letter-spacing:2px; text-transform:uppercase; color:var(--accent-dim); margin-bottom:4px;">⚗ Convergence Lab</div>
+            <div class="sub" style="margin:0 0 10px; text-align:left;">Prueba empírica: el render converge al objetivo con error ~ 1/√N</div>
+            <canvas id="lab-canvas" width="700" height="240" style="height:240px; cursor:default;"></canvas>
+            <button class="btn btn-play" id="lab-run" style="margin-top:8px;">▶ Correr test de convergencia</button>
+            <div id="lab-readout" class="status" style="text-align:left; line-height:1.5;">Carga un audio y corre el test.</div>
+            <div class="presets" style="grid-template-columns:repeat(4,1fr); margin-top:10px;">
+                <button class="preset" id="lab-target" disabled>Objetivo</button>
+                <button class="preset" id="lab-noisy" disabled>N=4</button>
+                <button class="preset" id="lab-clean" disabled>N=256</button>
+                <button class="preset" id="lab-stop" disabled>■ Stop</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -122,6 +146,8 @@
     const widthSlider = $('width'), widthV = $('width-v');
     const octSlider = $('oct'), octV = $('oct-v');
     const pitchSlider = $('pitch'), pitchV = $('pitch-v');
+    const reverbSlider = $('reverb'), reverbV = $('reverb-v');
+    const smartChk = $('smart'), smartV = $('smart-v');
     const meterFill = $('meter-fill');
     const presets = Array.from(document.querySelectorAll('.preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
@@ -178,6 +204,16 @@
         node.port.postMessage({ type: 'pitch', mult: Math.pow(2, semis / 12) });
     }
 
+    function sendReverb() {
+        if (!node) return;
+        node.port.postMessage({ type: 'reverb', wet: parseFloat(reverbSlider.value) / 100 });
+    }
+
+    function sendSmart() {
+        if (!node) return;
+        node.port.postMessage({ type: 'smart', on: smartChk.checked ? 1 : 0 });
+    }
+
     function charWord() {
         const t = parseFloat(charSlider.value) / 100;
         return t < 0.34 ? 'Tonal' : t < 0.67 ? 'Textura' : 'Drone';
@@ -216,6 +252,8 @@
             sendFx();
             sendSpace();
             sendPitch();
+            sendReverb();
+            sendSmart();
         }
         if (sampleData) {
             node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
@@ -293,9 +331,11 @@
                 evoSlider.value = btn.dataset.evo;   evoV.innerText = `${btn.dataset.evo} %`;
                 widthSlider.value = btn.dataset.width; widthV.innerText = `${btn.dataset.width} %`;
                 octSlider.value = btn.dataset.oct;     octV.innerText = `${btn.dataset.oct} %`;
+                reverbSlider.value = btn.dataset.reverb; reverbV.innerText = `${btn.dataset.reverb} %`;
             }
             sendFx();
             sendSpace();
+            sendReverb();
             if (isPlaying) {            // aplicar el cambio al vuelo
                 stopAll();
                 if (mode === 'dry') startDry(); else sendParams(true);
@@ -345,6 +385,16 @@
         const s = parseInt(pitchSlider.value, 10);
         pitchV.innerText = `${s > 0 ? '+' : ''}${s} st`;
         sendPitch();
+    });
+
+    reverbSlider.addEventListener('input', () => {
+        reverbV.innerText = `${reverbSlider.value} %`;
+        sendReverb();
+    });
+
+    smartChk.addEventListener('change', () => {
+        smartV.innerText = smartChk.checked ? 'ON' : 'OFF';
+        sendSmart();
     });
 
     let meterTarget = 0;
@@ -447,6 +497,207 @@
         focusSec = clamp((e.clientX - rect.left) / rect.width * duration, 0, duration);
         if (isPlaying) { if (mode === 'dry') startDry(); else sendParams(true); }
     });
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  CONVERGENCE LAB (experimento Monte Carlo sobre el sample, indep. del motor)
+    // ════════════════════════════════════════════════════════════════════════
+    const LAB_GRAIN = 4096;
+    const LAB_MAX_A = 6600;                 // apertura máx. para el target exacto (rápido)
+    const LAB_NS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
+    const LAB_TRIALS = 4;
+    const LAB_GOLDEN = 0.6180339887498949;
+    const labFract = (x) => x - Math.floor(x);
+    const LAB_SERIES = [
+        { k: 'random', c: '#ff6b6b', label: 'Random' },
+        { k: 'stratified', c: '#00ffcc', label: 'Stratified' },
+        { k: 'qmc', c: '#7aa2ff', label: 'Quasi-MC' },
+        { k: 'importance', c: '#ffe066', label: 'Importance' },
+    ];
+    let labHann = null, labCurves = null, labTarget = null, labA = 0, labF0 = 0, labAudio = null;
+
+    const labCanvas = $('lab-canvas'), labCtx = labCanvas.getContext('2d');
+    const labRun = $('lab-run'), labReadout = $('lab-readout');
+    const labTargetBtn = $('lab-target'), labNoisyBtn = $('lab-noisy'), labCleanBtn = $('lab-clean'), labStopBtn = $('lab-stop');
+
+    function labGetHann() {
+        if (labHann) return labHann;
+        labHann = new Float32Array(LAB_GRAIN);
+        for (let n = 0; n < LAB_GRAIN; n++) labHann[n] = 0.5 * (1 - Math.cos(2 * Math.PI * n / (LAB_GRAIN - 1)));
+        return labHann;
+    }
+    const labS = (i) => (sampleData && i >= 0 && i < sampleData.length) ? sampleData[i] : 0;
+    const labTri = (u) => u < 0.5 ? -1 + Math.sqrt(2 * u) : 1 - Math.sqrt(2 * (1 - u));
+    function labU(method, i, N, rot) {
+        if (method === 'stratified') return (i + Math.random()) / N;
+        if (method === 'qmc') return labFract(rot + i * LAB_GOLDEN);
+        return Math.random();
+    }
+
+    // Objetivo determinista: target[n] = w[n] · Σ p(k)·s(f0+k+n)
+    function labComputeTarget(f0, A) {
+        const D = LAB_GRAIN, w = labGetHann(), out = new Float32Array(D), invA2 = 1 / (A * A);
+        for (let k = -A; k <= A; k++) {
+            const pk = (A - Math.abs(k)) * invA2;
+            if (pk <= 0) continue;
+            const b = f0 + k;
+            for (let n = 0; n < D; n++) out[n] += pk * labS(b + n);
+        }
+        for (let n = 0; n < D; n++) out[n] *= w[n];
+        return out;
+    }
+    function labImpSearch(cum, r) { let lo = 0, hi = cum.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < r) lo = m + 1; else hi = m; } return lo; }
+    function labBuildImp(f0, A) {
+        const len = 2 * A + 1, stride = 8, taps = Math.ceil(LAB_GRAIN / stride);
+        const pm = new Float32Array(len), qm = new Float32Array(len), cum = new Float32Array(len), invA2 = 1 / (A * A);
+        let ps = 0, qs = 0;
+        for (let idx = 0; idx < len; idx++) {
+            const k = idx - A, p = (A - Math.abs(k)) * invA2;
+            let s = 0; const b = f0 + k;
+            for (let n = 0; n < LAB_GRAIN; n += stride) { const v = labS(b + n); s += v * v; }
+            const e = Math.sqrt(s / taps) + 1e-6;
+            pm[idx] = p; qm[idx] = p * e; ps += p; qs += p * e;
+        }
+        let acc = 0;
+        for (let idx = 0; idx < len; idx++) { pm[idx] /= ps; qm[idx] = qs > 0 ? qm[idx] / qs : 1 / len; acc += qm[idx]; cum[idx] = acc; }
+        return { pm, qm, cum };
+    }
+    function labEstimate(f0, A, N, method, imp) {
+        const D = LAB_GRAIN, w = labGetHann(), out = new Float32Array(D), rot = Math.random();
+        if (method === 'importance' && imp) {
+            let ws = 0;
+            for (let i = 0; i < N; i++) {
+                const u = (i + Math.random()) / N, idx = labImpSearch(imp.cum, u), k = idx - A, wi = imp.pm[idx] / imp.qm[idx];
+                ws += wi; const b = f0 + k;
+                for (let n = 0; n < D; n++) out[n] += wi * labS(b + n);
+            }
+            const inv = ws > 0 ? 1 / ws : 0;
+            for (let n = 0; n < D; n++) out[n] *= inv * w[n];
+            return out;
+        }
+        for (let i = 0; i < N; i++) {
+            const u = labU(method, i, N, rot), k = Math.round(labTri(u) * A), b = f0 + k;
+            for (let n = 0; n < D; n++) out[n] += labS(b + n);
+        }
+        const inv = 1 / N;
+        for (let n = 0; n < D; n++) out[n] *= inv * w[n];
+        return out;
+    }
+    function labRms(a, t) { let s = 0; for (let n = 0; n < LAB_GRAIN; n++) { const d = a[n] - t[n]; s += d * d; } return Math.sqrt(s / LAB_GRAIN); }
+    function labFitSlope(Ns, ys) {
+        let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (let i = 0; i < Ns.length; i++) { if (ys[i] <= 0) continue; const x = Math.log10(Ns[i]), y = Math.log10(ys[i]); n++; sx += x; sy += y; sxx += x * x; sxy += x * y; }
+        return n < 2 ? NaN : (n * sxy - sx * sy) / (n * sxx - sx * sx);
+    }
+
+    function labRunTest() {
+        if (!sampleData) { labReadout.innerText = 'Carga un audio primero.'; return; }
+        labRun.disabled = true; labReadout.innerText = 'Calculando convergencia…';
+        setTimeout(() => {
+            const t = clamp(parseFloat(charSlider.value) / 100, 0, 1);
+            const apSec = 0.02 + t * t * 0.6;
+            const A = Math.max(1, Math.min(LAB_MAX_A, Math.round(apSec * sampleRate)));
+            const f0 = Math.round(clamp(focusSec, 0, duration) * sampleRate);
+            const target = labComputeTarget(f0, A);
+            const imp = labBuildImp(f0, A);
+            const curves = {};
+            for (const s of LAB_SERIES) {
+                curves[s.k] = LAB_NS.map((N) => {
+                    let acc = 0;
+                    for (let tr = 0; tr < LAB_TRIALS; tr++) acc += labRms(labEstimate(f0, A, N, s.k, imp), target);
+                    return acc / LAB_TRIALS;
+                });
+            }
+            labTarget = target; labA = A; labF0 = f0; labCurves = { Ns: LAB_NS, ...curves };
+            labDrawPlot(); labUpdateReadout();
+            labRun.disabled = false;
+            [labTargetBtn, labNoisyBtn, labCleanBtn, labStopBtn].forEach((b) => b.disabled = false);
+        }, 20);
+    }
+
+    function labUpdateReadout() {
+        const Ns = labCurves.Ns, last = Ns.length - 1, f = (v) => v.toExponential(2);
+        let html = `<pre style="margin:0;white-space:pre-wrap;font-size:0.72rem;color:#c6d2e5;">`;
+        html += `apertura ${(labA / sampleRate * 1000).toFixed(0)} ms · grano ${LAB_GRAIN} · N→${Ns[last]} · ${LAB_TRIALS} tiradas\n`;
+        html += `método        exponente   RMS@${Ns[last]}\n`;
+        for (const s of LAB_SERIES) {
+            const sl = labFitSlope(Ns, labCurves[s.k]);
+            html += `<span style="color:${s.c}">${s.label.padEnd(12)} ${sl.toFixed(3).padStart(7)}   ${f(labCurves[s.k][last])}</span>\n`;
+        }
+        html += `<span style="color:#8a99ad">(ideal random ≈ −0.50; los demás bajan más)</span></pre>`;
+        labReadout.innerHTML = html;
+    }
+
+    function labDrawPlot() {
+        const W = labCanvas.width, H = labCanvas.height, padL = 52, padR = 10, padT = 12, padB = 26;
+        labCtx.clearRect(0, 0, W, H);
+        labCtx.fillStyle = '#07080e'; labCtx.fillRect(0, 0, W, H);
+        if (!labCurves) {
+            labCtx.fillStyle = 'rgba(255,255,255,0.3)'; labCtx.font = '12px monospace';
+            labCtx.fillText('Corre el test para ver la curva de convergencia', padL, H / 2);
+            return;
+        }
+        const Ns = labCurves.Ns;
+        let ymin = Infinity, ymax = -Infinity;
+        for (const s of LAB_SERIES) for (const v of labCurves[s.k]) if (v > 0) { const ly = Math.log10(v); if (ly < ymin) ymin = ly; if (ly > ymax) ymax = ly; }
+        if (!isFinite(ymin)) { ymin = -4; ymax = 0; }
+        ymin = Math.floor(ymin - 0.2); ymax = Math.ceil(ymax + 0.2);
+        const xmax = Math.log2(Ns[Ns.length - 1]);
+        const X = (N) => padL + Math.log2(N) / xmax * (W - padL - padR);
+        const Y = (e) => padT + (ymax - Math.log10(e)) / (ymax - ymin) * (H - padT - padB);
+        labCtx.font = '10px monospace';
+        for (let d = ymin; d <= ymax; d++) {
+            const y = Y(Math.pow(10, d));
+            labCtx.strokeStyle = 'rgba(255,255,255,0.07)'; labCtx.beginPath(); labCtx.moveTo(padL, y); labCtx.lineTo(W - padR, y); labCtx.stroke();
+            labCtx.fillStyle = 'rgba(255,255,255,0.45)'; labCtx.fillText(`1e${d}`, 6, y + 3);
+        }
+        for (const N of Ns) { const x = X(N); labCtx.fillStyle = 'rgba(255,255,255,0.4)'; labCtx.fillText(String(N), x - 6, H - padB + 14); }
+        // ideal 1/√N
+        const anchor = labCurves.random[0];
+        if (anchor > 0) {
+            labCtx.strokeStyle = 'rgba(255,255,255,0.35)'; labCtx.setLineDash([5, 4]); labCtx.beginPath();
+            for (let i = 0; i < Ns.length; i++) { const e = anchor / Math.sqrt(Ns[i] / Ns[0]); const px = X(Ns[i]), py = Y(e); i === 0 ? labCtx.moveTo(px, py) : labCtx.lineTo(px, py); }
+            labCtx.stroke(); labCtx.setLineDash([]);
+        }
+        for (const s of LAB_SERIES) {
+            const data = labCurves[s.k]; labCtx.strokeStyle = s.c; labCtx.lineWidth = 1.8; labCtx.beginPath();
+            let started = false;
+            for (let i = 0; i < Ns.length; i++) { if (data[i] <= 0) continue; const px = X(Ns[i]), py = Y(data[i]); started ? labCtx.lineTo(px, py) : (labCtx.moveTo(px, py), started = true); }
+            labCtx.stroke();
+            labCtx.fillStyle = s.c;
+            for (let i = 0; i < Ns.length; i++) { if (data[i] <= 0) continue; labCtx.beginPath(); labCtx.arc(X(Ns[i]), Y(data[i]), 2, 0, Math.PI * 2); labCtx.fill(); }
+        }
+        labCtx.lineWidth = 1;
+        let lx = padL + 6; const ly = padT + 8;
+        for (const s of LAB_SERIES) { labCtx.fillStyle = s.c; labCtx.fillRect(lx, ly - 7, 10, 3); labCtx.fillStyle = 'rgba(255,255,255,0.7)'; labCtx.fillText(s.label, lx + 13, ly); lx += 13 + labCtx.measureText(s.label).width + 14; }
+    }
+
+    function labStop() { if (labAudio) { try { labAudio.stop(); } catch (e) {} try { labAudio.disconnect(); } catch (e) {} labAudio = null; } }
+    async function labPlay(kind) {
+        if (!labTarget) return;
+        await ensureEngine();
+        if (ctx.state === 'suspended') await ctx.resume();
+        labStop();
+        let g;
+        if (kind === 'target') g = labTarget;
+        else if (kind === 'noisy') g = labEstimate(labF0, labA, 4, 'random', null);
+        else g = labEstimate(labF0, labA, 256, 'random', null);
+        let peak = 1e-6;
+        for (let n = 0; n < labTarget.length; n++) peak = Math.max(peak, Math.abs(labTarget[n]));
+        const norm = 0.7 / peak;
+        const buf = ctx.createBuffer(1, g.length, sampleRate);
+        const ch = buf.getChannelData(0);
+        for (let n = 0; n < g.length; n++) ch[n] = g[n] * norm;
+        const s = ctx.createBufferSource();
+        s.buffer = buf; s.loop = true; s.connect(jsGain); s.start();
+        labAudio = s;
+    }
+
+    labRun.addEventListener('click', labRunTest);
+    labTargetBtn.addEventListener('click', () => labPlay('target'));
+    labNoisyBtn.addEventListener('click', () => labPlay('noisy'));
+    labCleanBtn.addEventListener('click', () => labPlay('clean'));
+    labStopBtn.addEventListener('click', labStop);
+    labDrawPlot();
 
     charV.innerText = charWord();
     requestAnimationFrame(frame);
