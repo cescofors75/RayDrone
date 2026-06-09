@@ -89,6 +89,15 @@ static mut APL_I: [usize; NA] = [0; NA];
 static mut APR_I: [usize; NA] = [0; NA];
 static mut REV_WET: f32 = 0.0; // mezcla de reverb (0 = seco)
 
+// DC blocker a la salida (one-pole highpass ~3 Hz) — quita offset/retumbe acumulado.
+static mut DC_XL: f32 = 0.0;
+static mut DC_YL: f32 = 0.0;
+static mut DC_XR: f32 = 0.0;
+static mut DC_YR: f32 = 0.0;
+
+// Micro-detune por grano (±0.25% ≈ ±4 cents): batidos entre granos → drone lush, no estático.
+const DETUNE: f32 = 0.005;
+
 // ── Trazado inverso: envolvente de energía del sample para lanzar los rayos
 // hacia donde hay señal (importance desde la estructura de la fuente).
 const EBINS: usize = 1024;
@@ -357,14 +366,17 @@ fn reverb(inl: f32, inr: f32) -> (f32, f32) {
             return (inl, inr);
         }
         let fb = 0.7 + REV_ROOM * 0.28;
-        let input = (inl + inr) * 0.5 * 0.015;
+        // Alimentar cada canal por separado (con un poco de cross-feed) preserva el
+        // ancho estéreo en la cola, en vez de colapsar la reverb a mono.
+        let il_in = (inl * 0.85 + inr * 0.15) * 0.015;
+        let ir_in = (inr * 0.85 + inl * 0.15) * 0.015;
         let mut ol = 0.0f32;
         let mut orr = 0.0f32;
         for c in 0..NC {
             let il = COMBL_I[c];
             let yl = COMBL[c][il];
             COMBL_S[c] = yl * (1.0 - REV_DAMP) + COMBL_S[c] * REV_DAMP;
-            COMBL[c][il] = input + COMBL_S[c] * fb;
+            COMBL[c][il] = il_in + COMBL_S[c] * fb;
             COMBL_I[c] = il + 1;
             if COMBL_I[c] >= CLEN_L[c] {
                 COMBL_I[c] = 0;
@@ -373,7 +385,7 @@ fn reverb(inl: f32, inr: f32) -> (f32, f32) {
             let ir = COMBR_I[c];
             let yr = COMBR[c][ir];
             COMBR_S[c] = yr * (1.0 - REV_DAMP) + COMBR_S[c] * REV_DAMP;
-            COMBR[c][ir] = input + COMBR_S[c] * fb;
+            COMBR[c][ir] = ir_in + COMBR_S[c] * fb;
             COMBR_I[c] = ir + 1;
             if COMBR_I[c] >= CLEN_R[c] {
                 COMBR_I[c] = 0;
@@ -461,15 +473,24 @@ pub extern "C" fn seed(s: u32) {
 #[inline]
 fn sample_at(pos: f32) -> f32 {
     unsafe {
-        if SAMPLE_LEN < 2 {
+        if SAMPLE_LEN < 4 {
             return 0.0;
         }
         let i = pos as usize;
-        if i + 1 >= SAMPLE_LEN {
+        if i + 2 >= SAMPLE_LEN {
             return 0.0;
         }
         let frac = pos - (i as f32);
-        SAMPLE[i] * (1.0 - frac) + SAMPLE[i + 1] * frac
+        // Interpolación cúbica Catmull-Rom (4 puntos): menos aliasing y más
+        // brillo que la lineal, sobre todo al leer a velocidad != 1 (octava/pitch).
+        let s0 = if i >= 1 { SAMPLE[i - 1] } else { SAMPLE[i] };
+        let s1 = SAMPLE[i];
+        let s2 = SAMPLE[i + 1];
+        let s3 = SAMPLE[i + 2];
+        let a = -0.5 * s0 + 1.5 * s1 - 1.5 * s2 + 0.5 * s3;
+        let b = s0 - 2.5 * s1 + 2.0 * s2 - 0.5 * s3;
+        let c = -0.5 * s0 + 0.5 * s2;
+        ((a * frac + b) * frac + c) * frac + s1
     }
 }
 
@@ -539,7 +560,8 @@ fn place(pos: f32, band: u8, depth: u32) {
         if dur_samp < 1.0 {
             return;
         }
-        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP; // octava (shimmer) × transposición
+        let detune = 1.0 + (rng01() - 0.5) * DETUNE; // micro-detune lush (batidos entre granos)
+        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * detune; // octava × transposición × detune
         let pan = (rng01() * 2.0 - 1.0) * WIDTH; // paneo aleatorio según el ancho
         let panl = sqrtf((1.0 - pan) * 0.5); // equal-power
         let panr = sqrtf((1.0 + pan) * 0.5);
@@ -585,8 +607,10 @@ fn spawn() {
             }
         };
         let span = (SAMPLE_LEN as f32) / SR;
-        let eff_focus = clampf(FOCUS + (EVO - 0.5) * FEEDBACK * span, 0.0, span);
-        let eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 1.5);
+        // Autoevolución acotada: el barrido del foco y la apertura crecen con FEEDBACK
+        // pero con techos suaves, para que valores altos modulen sin volverse caóticos.
+        let eff_focus = clampf(FOCUS + (EVO - 0.5) * FEEDBACK * span * 0.45, 0.0, span);
+        let eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 0.8);
         let mut off_sec = eff_focus + tri_inv(next_u()) * eff_ap * scale;
         // Trazado inverso: rejection ∝ energía → los rayos caen donde hay señal.
         if SMART == 1 {
@@ -648,8 +672,15 @@ pub extern "C" fn process(frames: usize) {
                 VOICES[i].age += 1.0;
             }
             let (rl, rr) = reverb(accl * MASTER, accr * MASTER);
-            OUTL[f] = soft(rl);
-            OUTR[f] = soft(rr);
+            // DC blocker (one-pole highpass): y = x - x1 + R·y1
+            let yl = rl - DC_XL + 0.9985 * DC_YL;
+            DC_XL = rl;
+            DC_YL = yl;
+            let yr = rr - DC_XR + 0.9985 * DC_YR;
+            DC_XR = rr;
+            DC_YR = yr;
+            OUTL[f] = soft(yl);
+            OUTR[f] = soft(yr);
         }
 
         // Envolvente (para el medidor) + autoevolución recursiva.
@@ -662,7 +693,8 @@ pub extern "C" fn process(frames: usize) {
         let blk = s / (n as f32);
         ENV = ENV * 0.9 + blk * 0.1;
         if FEEDBACK > 0.0 {
-            let step = FEEDBACK * (0.0006 + ENV * 0.004);
+            // Barrido más lento y menos dependiente del nivel → evoluciona en vez de saltar.
+            let step = FEEDBACK * (0.0004 + ENV * 0.0018);
             EVO += EVO_DIR * step;
             if EVO >= 1.0 {
                 EVO = 1.0;
