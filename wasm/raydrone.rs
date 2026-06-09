@@ -101,6 +101,9 @@ static mut SLOG: [f32; SLOG_CAP] = [0.0; SLOG_CAP];
 static mut SLOG_B: [f32; SLOG_CAP] = [0.0; SLOG_CAP];
 static mut SLOG_W: u32 = 0;
 
+// Diagnóstico de rendimiento
+static mut SPAWN_COUNT: u32 = 0; // total de granos disparados (para granos/seg)
+
 #[derive(Clone, Copy)]
 struct Voice {
     active: bool,
@@ -254,6 +257,23 @@ pub extern "C" fn slog_cap() -> usize {
 #[no_mangle]
 pub extern "C" fn out_level() -> f32 {
     unsafe { ENV }
+}
+// Diagnóstico: nº de voces (rayos) activas mezcladas por bloque.
+#[no_mangle]
+pub extern "C" fn active_voices() -> u32 {
+    unsafe {
+        let mut c = 0u32;
+        for i in 0..MAX_VOICES {
+            if VOICES[i].active {
+                c += 1;
+            }
+        }
+        c
+    }
+}
+#[no_mangle]
+pub extern "C" fn spawn_count() -> u32 {
+    unsafe { SPAWN_COUNT }
 }
 
 // ── Setters ────────────────────────────────────────────────────────────────
@@ -538,6 +558,7 @@ fn place(pos: f32, band: u8, depth: u32) {
             panr,
         };
         log_push(pos / SR, band);
+        SPAWN_COUNT = SPAWN_COUNT.wrapping_add(1);
     }
 }
 
