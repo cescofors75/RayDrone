@@ -67,6 +67,35 @@ static mut WIDTH: f32 = 0.0;
 static mut OCT: f32 = 0.0;
 static mut PITCH_STEP: f32 = 1.0; // multiplicador de velocidad de lectura (transposición)
 
+// ── Reverb (Freeverb-lite): 4 combs + 2 allpass por canal, estéreo ──────────
+const NC: usize = 4;
+const NA: usize = 2;
+const CMAX: usize = 1700;
+const AMAX: usize = 600;
+const CLEN_L: [usize; NC] = [1557, 1617, 1491, 1422];
+const CLEN_R: [usize; NC] = [1580, 1640, 1514, 1445]; // +stereo spread
+const ALEN: [usize; NA] = [556, 441];
+const REV_ROOM: f32 = 0.84; // tamaño/feedback fijo
+const REV_DAMP: f32 = 0.5;  // amortiguación de agudos
+static mut COMBL: [[f32; CMAX]; NC] = [[0.0; CMAX]; NC];
+static mut COMBR: [[f32; CMAX]; NC] = [[0.0; CMAX]; NC];
+static mut COMBL_I: [usize; NC] = [0; NC];
+static mut COMBR_I: [usize; NC] = [0; NC];
+static mut COMBL_S: [f32; NC] = [0.0; NC];
+static mut COMBR_S: [f32; NC] = [0.0; NC];
+static mut APL: [[f32; AMAX]; NA] = [[0.0; AMAX]; NA];
+static mut APR: [[f32; AMAX]; NA] = [[0.0; AMAX]; NA];
+static mut APL_I: [usize; NA] = [0; NA];
+static mut APR_I: [usize; NA] = [0; NA];
+static mut REV_WET: f32 = 0.0; // mezcla de reverb (0 = seco)
+
+// ── Trazado inverso: envolvente de energía del sample para lanzar los rayos
+// hacia donde hay señal (importance desde la estructura de la fuente).
+const EBINS: usize = 1024;
+static mut ENERGY: [f32; EBINS] = [0.0; EBINS];
+static mut EMAX: f32 = 0.000001;
+static mut SMART: u32 = 0; // 1 = rayos inteligentes (trazado inverso)
+
 // Registro de rayos para la visualización (offset en seg + banda)
 static mut SLOG: [f32; SLOG_CAP] = [0.0; SLOG_CAP];
 static mut SLOG_B: [f32; SLOG_CAP] = [0.0; SLOG_CAP];
@@ -235,6 +264,125 @@ pub extern "C" fn set_sample(len: usize, sr: f32) {
         SR = if sr > 1.0 { sr } else { 44100.0 };
     }
     update_coeffs();
+    build_energy();
+}
+
+// Envolvente de energía (RMS por bin) de todo el sample, para el trazado inverso.
+fn build_energy() {
+    unsafe {
+        EMAX = 0.000001;
+        if SAMPLE_LEN < 2 {
+            let mut b = 0;
+            while b < EBINS {
+                ENERGY[b] = 0.0;
+                b += 1;
+            }
+            return;
+        }
+        for b in 0..EBINS {
+            let start = b * SAMPLE_LEN / EBINS;
+            let end = ((b + 1) * SAMPLE_LEN / EBINS).min(SAMPLE_LEN);
+            let mut s = 0.0f32;
+            let mut cnt = 0u32;
+            let mut i = start;
+            while i < end {
+                let v = SAMPLE[i];
+                s += v * v;
+                cnt += 1;
+                i += 4; // stride para abaratar
+            }
+            let e = if cnt > 0 { sqrtf(s / (cnt as f32)) } else { 0.0 };
+            ENERGY[b] = e;
+            if e > EMAX {
+                EMAX = e;
+            }
+        }
+    }
+}
+
+#[inline]
+fn energy_at(sec: f32) -> f32 {
+    unsafe {
+        let span = (SAMPLE_LEN as f32) / SR;
+        if span <= 0.0 {
+            return 0.0;
+        }
+        let mut b = (sec / span * (EBINS as f32)) as usize;
+        if b >= EBINS {
+            b = EBINS - 1;
+        }
+        ENERGY[b]
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn set_smart(on: u32) {
+    unsafe {
+        SMART = on;
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn set_reverb(wet: f32) {
+    unsafe {
+        REV_WET = clampf(wet, 0.0, 1.0);
+    }
+}
+
+// Reverb estéreo Freeverb-lite (4 combs + 2 allpass por canal).
+#[inline]
+fn reverb(inl: f32, inr: f32) -> (f32, f32) {
+    unsafe {
+        if REV_WET <= 0.0 {
+            return (inl, inr);
+        }
+        let fb = 0.7 + REV_ROOM * 0.28;
+        let input = (inl + inr) * 0.5 * 0.015;
+        let mut ol = 0.0f32;
+        let mut orr = 0.0f32;
+        for c in 0..NC {
+            let il = COMBL_I[c];
+            let yl = COMBL[c][il];
+            COMBL_S[c] = yl * (1.0 - REV_DAMP) + COMBL_S[c] * REV_DAMP;
+            COMBL[c][il] = input + COMBL_S[c] * fb;
+            COMBL_I[c] = il + 1;
+            if COMBL_I[c] >= CLEN_L[c] {
+                COMBL_I[c] = 0;
+            }
+            ol += yl;
+            let ir = COMBR_I[c];
+            let yr = COMBR[c][ir];
+            COMBR_S[c] = yr * (1.0 - REV_DAMP) + COMBR_S[c] * REV_DAMP;
+            COMBR[c][ir] = input + COMBR_S[c] * fb;
+            COMBR_I[c] = ir + 1;
+            if COMBR_I[c] >= CLEN_R[c] {
+                COMBR_I[c] = 0;
+            }
+            orr += yr;
+        }
+        for a in 0..NA {
+            let il = APL_I[a];
+            let bl = APL[a][il];
+            let yl = -ol + bl;
+            APL[a][il] = ol + bl * 0.5;
+            APL_I[a] = il + 1;
+            if APL_I[a] >= ALEN[a] {
+                APL_I[a] = 0;
+            }
+            ol = yl;
+            let ir = APR_I[a];
+            let br = APR[a][ir];
+            let yr = -orr + br;
+            APR[a][ir] = orr + br * 0.5;
+            APR_I[a] = ir + 1;
+            if APR_I[a] >= ALEN[a] {
+                APR_I[a] = 0;
+            }
+            orr = yr;
+        }
+        let w = REV_WET;
+        (inl * (1.0 - w * 0.5) + ol * w * 3.0, inr * (1.0 - w * 0.5) + orr * w * 3.0)
+    }
 }
 
 #[no_mangle]
@@ -418,7 +566,18 @@ fn spawn() {
         let span = (SAMPLE_LEN as f32) / SR;
         let eff_focus = clampf(FOCUS + (EVO - 0.5) * FEEDBACK * span, 0.0, span);
         let eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 1.5);
-        let off_sec = eff_focus + tri_inv(next_u()) * eff_ap * scale;
+        let mut off_sec = eff_focus + tri_inv(next_u()) * eff_ap * scale;
+        // Trazado inverso: rejection ∝ energía → los rayos caen donde hay señal.
+        if SMART == 1 {
+            let mut tries = 0;
+            while tries < 6 {
+                if energy_at(off_sec) >= EMAX * rng01() {
+                    break;
+                }
+                off_sec = eff_focus + tri_inv(next_u()) * eff_ap * scale;
+                tries += 1;
+            }
+        }
         let maxp = (SAMPLE_LEN - 2) as f32;
         let pos = clampf(off_sec * SR, 0.0, maxp);
         place(pos, band, BOUNCES);
@@ -467,8 +626,9 @@ pub extern "C" fn process(frames: usize) {
                 VOICES[i].pos += VOICES[i].step;
                 VOICES[i].age += 1.0;
             }
-            OUTL[f] = soft(accl * MASTER);
-            OUTR[f] = soft(accr * MASTER);
+            let (rl, rr) = reverb(accl * MASTER, accr * MASTER);
+            OUTL[f] = soft(rl);
+            OUTR[f] = soft(rr);
         }
 
         // Envolvente (para el medidor) + autoevolución recursiva.
