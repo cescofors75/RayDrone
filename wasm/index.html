@@ -477,9 +477,10 @@
     function pushRays(offsets, bands) {
         const inv = 1 / Math.max(duration, 0.001);
         for (let k = 0; k < offsets.length; k++) {
-            visRays.push({ x: offsets[k] * inv, band: bands ? (bands[k] | 0) : 1, life: 1.0 });
+            // seed estable por rayo: define su altura de salida y la curva del arco
+            visRays.push({ x: offsets[k] * inv, band: bands ? (bands[k] | 0) : 1, life: 1.0, seed: Math.random() });
         }
-        if (visRays.length > 800) visRays.splice(0, visRays.length - 800);
+        if (visRays.length > 450) visRays.splice(0, visRays.length - 450);
     }
 
     // Color por banda: grave=naranja, medio=rojo, agudo=rosa claro (se ve la aberración)
@@ -518,28 +519,55 @@
             wctx.stroke();
         }
 
-        // Rayos: cada grano nace en su offset y converge al foco mientras se desvanece
-        wctx.lineWidth = 0.8;
+        // Rayos: cada grano sale de su offset (spread vertical) y converge al foco
+        // por un arco mientras se desvanece. Mezcla aditiva → glow real al solaparse.
+        wctx.globalCompositeOperation = 'lighter';
+        const spread = H * 0.42;
         for (let i = visRays.length - 1; i >= 0; i--) {
             const r = visRays[i];
-            r.life -= 0.03;
+            r.life -= 0.022;
             if (r.life <= 0) { visRays.splice(i, 1); continue; }
-            const jit = (Math.random() - 0.5) * H * 0.55 * (1 - r.life);
+            const p = 1 - r.life;                       // 0 al nacer → 1 al morir
+            const ease = p * p * (3 - 2 * p);           // smoothstep: acelera hacia el foco
+            const bx = r.x * W;
+            const arc = (r.seed * 2 - 1) * spread;      // altura de salida (determinista)
+            const hx = bx + (focusX - bx) * ease;
+            const hy = mid + arc * (1 - ease);
+            // cola (un pelín por detrás) para dar sensación de trazo
+            const pe = p > 0.1 ? p - 0.1 : 0;
+            const easeT = pe * pe * (3 - 2 * pe);
+            const tx = bx + (focusX - bx) * easeT;
+            const ty = mid + arc * (1 - easeT);
             const c = BAND_RGB[r.band] || BAND_RGB[1];
-            wctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${r.life * 0.5 * glow})`;
-            wctx.beginPath();
-            wctx.moveTo(r.x * W, mid + jit);
-            wctx.lineTo(focusX, mid);
-            wctx.stroke();
+            const a = r.life * glow;
+            // estela
+            wctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.28})`;
+            wctx.lineWidth = 1;
+            wctx.beginPath(); wctx.moveTo(tx, ty); wctx.lineTo(hx, hy); wctx.stroke();
+            // cabeza luminosa (halo + núcleo; el solape aditivo crea el bloom)
+            wctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.18})`;
+            wctx.beginPath(); wctx.arc(hx, hy, 3.2, 0, 6.283); wctx.fill();
+            wctx.fillStyle = `rgba(255,235,240,${a * 0.5})`;
+            wctx.beginPath(); wctx.arc(hx, hy, 1.1, 0, 6.283); wctx.fill();
         }
-        wctx.lineWidth = 1;
 
-        // Línea de foco (glow que pulsa con el nivel de salida)
+        // Bloom en el foco (pulsa con el nivel): radial aditivo + núcleo brillante
+        const bloomR = 10 + glow * 46;
+        const bg = wctx.createRadialGradient(focusX, mid, 0, focusX, mid, bloomR);
+        bg.addColorStop(0, `rgba(255,120,150,${0.5 * glow})`);
+        bg.addColorStop(0.4, `rgba(255,53,94,${0.22 * glow})`);
+        bg.addColorStop(1, 'rgba(255,53,94,0)');
+        wctx.fillStyle = bg;
+        wctx.beginPath(); wctx.arc(focusX, mid, bloomR, 0, 6.283); wctx.fill();
+        wctx.globalCompositeOperation = 'source-over';
+
+        // Eje de foco (línea fina con glow que pulsa con el nivel)
         wctx.save();
         wctx.shadowColor = '#ff355e'; wctx.shadowBlur = 6 + glow * 16;
-        wctx.strokeStyle = 'rgba(255,53,94,0.95)'; wctx.lineWidth = 2;
+        wctx.strokeStyle = `rgba(255,53,94,${0.55 + glow * 0.4})`; wctx.lineWidth = 1.5;
         wctx.beginPath(); wctx.moveTo(focusX, 0); wctx.lineTo(focusX, H); wctx.stroke();
         wctx.restore();
+        wctx.lineWidth = 1;
 
         // Medidor de salida (suavizado)
         meterShown += (meterTarget - meterShown) * 0.25;
