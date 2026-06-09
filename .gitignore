@@ -1,0 +1,10 @@
+# Generated paper figures — reproducible from paper/make_figures.py (don't version binaries)
+paper/figures/
+
+# Compiled wasm — built locally via wasm/build.sh or attached to a tagged Release
+wasm/raydrone.wasm
+
+# Python / tooling cruft
+__pycache__/
+*.pyc
+.DS_Store
