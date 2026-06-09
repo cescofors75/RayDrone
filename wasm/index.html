@@ -7,131 +7,174 @@
     <style>
         :root { --bg:#0c0809; --panel:#170f12; --accent:#ff355e; --accent-dim:#b3132f; --text:#f0e2e6; }
         * { box-sizing: border-box; }
-        body { background:var(--bg); color:var(--text); font-family:'Segoe UI',Tahoma,sans-serif;
-               display:flex; justify-content:center; padding:28px 16px; margin:0; min-height:100vh; }
-        .container { background:var(--panel); padding:28px; border-radius:18px; width:min(560px,100%);
-                     border:1px solid rgba(255,53,94,0.12); box-shadow:0 20px 50px rgba(255,53,94,0.05); }
-        h1 { font-size:1.5rem; text-align:center; margin:0; letter-spacing:2px; text-transform:uppercase;
-             color:var(--accent); text-shadow:0 0 10px rgba(255,53,94,0.3); }
-        .sub { text-align:center; color:#8a99ad; font-size:0.82rem; margin:6px 0 22px; }
+        body { background:radial-gradient(1200px 600px at 50% -10%, #1a0e13, var(--bg)); color:var(--text);
+               font-family:'Segoe UI',Tahoma,sans-serif; display:flex; justify-content:center;
+               padding:24px 16px; margin:0; min-height:100vh; }
+        .container { background:var(--panel); padding:24px; border-radius:18px; width:min(1180px,100%);
+                     border:1px solid rgba(255,53,94,0.12); box-shadow:0 20px 60px rgba(255,53,94,0.06); }
+        h1 { font-size:1.6rem; text-align:center; margin:0; letter-spacing:3px; text-transform:uppercase;
+             color:var(--accent); text-shadow:0 0 12px rgba(255,53,94,0.35); }
+        .sub { text-align:center; color:#8a99ad; font-size:0.82rem; margin:6px 0 4px; }
         .badge { display:block; text-align:center; font-family:monospace; font-size:0.66rem; letter-spacing:2px;
                  color:var(--accent-dim); text-transform:uppercase; margin-bottom:18px; }
+
+        /* ── Deck: rejilla de módulos (responsive) ── */
+        .deck { display:grid; gap:16px; grid-template-columns:1fr; }
+        @media (min-width:1000px) {
+            .deck { grid-template-columns:1.5fr 1fr 1fr; align-items:start; }
+            .scene  { grid-column:1; grid-row:1 / span 2; }
+            .p-shape  { grid-column:2; grid-row:1; }
+            .p-optics { grid-column:2; grid-row:2; }
+            .p-space  { grid-column:3; grid-row:1; }
+            .p-engine { grid-column:3; grid-row:2; }
+            .lab    { grid-column:1 / -1; grid-row:3; }
+        }
+        .panel { background:linear-gradient(180deg, rgba(40,18,24,0.55), rgba(16,9,12,0.92));
+                 border:1px solid rgba(255,53,94,0.14); border-radius:14px; padding:16px;
+                 box-shadow:inset 0 1px 0 rgba(255,255,255,0.04); }
+        .panel-title { font-family:monospace; font-size:0.66rem; letter-spacing:2px; text-transform:uppercase;
+                       color:var(--accent-dim); margin-bottom:12px; padding-bottom:8px;
+                       border-bottom:1px solid rgba(255,53,94,0.12); display:flex; justify-content:space-between; }
+
         .file-label { display:block; text-align:center; background:rgba(255,53,94,0.1); border:1px dashed var(--accent);
                       padding:12px; border-radius:8px; cursor:pointer; color:var(--accent); font-weight:600; }
         input[type="file"] { display:none; }
-        canvas { display:block; width:100%; height:90px; background:#07080e; border-radius:8px;
-                 border:1px solid rgba(255,53,94,0.12); margin:16px 0; cursor:crosshair; }
-        .presets { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:18px; }
+        canvas { display:block; width:100%; height:120px; background:#07080e; border-radius:8px;
+                 border:1px solid rgba(255,53,94,0.12); margin:14px 0; cursor:crosshair; }
+        .presets { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:6px; }
         .preset { padding:11px 8px; border:1px solid rgba(255,53,94,0.18); border-radius:8px; background:#0f1320;
                   color:#cfe; font-family:monospace; font-size:0.8rem; cursor:pointer; transition:all .2s; }
         .preset:hover { background:rgba(255,53,94,0.14); }
         .preset.active { background:rgba(255,53,94,0.22); border-color:var(--accent); color:var(--accent); }
         .ctl { margin-bottom:16px; }
-        .ctl label { display:flex; justify-content:space-between; font-size:0.8rem; text-transform:uppercase;
+        .ctl:last-child { margin-bottom:0; }
+        .ctl label { display:flex; justify-content:space-between; font-size:0.78rem; text-transform:uppercase;
                      letter-spacing:1px; color:#8a99ad; margin-bottom:8px; }
         .ctl label .v { color:var(--accent); font-family:monospace; }
+        .ctl.row { display:flex; justify-content:space-between; align-items:center; }
         input[type="range"] { -webkit-appearance:none; appearance:none; width:100%; height:6px; background:#23273a;
                               border-radius:3px; outline:none; }
         input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
                               background:var(--accent); cursor:pointer; box-shadow:0 0 10px var(--accent); }
-        .btn { width:100%; border:none; padding:15px; border-radius:10px; font-size:1rem; font-weight:bold;
+        input[type="checkbox"] { width:20px; height:20px; accent-color:var(--accent); cursor:pointer; }
+        .btn { width:100%; border:none; padding:14px; border-radius:10px; font-size:1rem; font-weight:bold;
                text-transform:uppercase; letter-spacing:1px; cursor:pointer; transition:all .25s; }
-        .btn-play { background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; margin-top:6px; }
+        .btn-play { background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; margin-top:8px; }
         .btn-play:disabled { background:#23273a; color:#555c77; cursor:not-allowed; }
-        .status { text-align:center; font-family:monospace; font-size:0.76rem; color:#c6d2e5; margin-top:16px; min-height:1em; }
+        .status { text-align:center; font-family:monospace; font-size:0.74rem; color:#c6d2e5; margin-top:12px; min-height:1em; }
         #meter { height:6px; background:#23273a; border-radius:3px; overflow:hidden; margin:-6px 0 14px; }
         #meter-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--accent-dim),var(--accent),#ffb3c1);
                       transition:width .08s linear; }
+        .lab canvas { height:240px; cursor:default; }
+        .lab-ab { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>RayDrone</h1>
         <p class="sub">Drones y texturas a partir de tus samples</p>
-        <span class="badge">Rust · WebAssembly · AudioWorklet</span>
+        <span class="badge">Rust · WebAssembly · AudioWorklet · Control Deck</span>
 
-        <label class="file-label" id="file-label" for="file">📁 Cargar WAV / MP3</label>
-        <input type="file" id="file" accept="audio/*">
+        <div class="deck">
+            <!-- ── SCENE / TRANSPORT ── -->
+            <section class="panel scene">
+                <div class="panel-title"><span>Scene</span><span>Source · Rays · Output</span></div>
 
-        <canvas id="wave" width="700" height="90"></canvas>
-        <div id="meter"><div id="meter-fill"></div></div>
+                <label class="file-label" id="file-label" for="file">📁 Cargar WAV / MP3</label>
+                <input type="file" id="file" accept="audio/*">
 
-        <div class="presets">
-            <button class="preset" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0" data-width="0" data-oct="0" data-reverb="0">Original (Dry)</button>
-            <button class="preset active" data-mode="drone" data-t="0.35" data-aber="0" data-tail="0" data-evo="0" data-width="35" data-oct="0" data-reverb="15">Drone</button>
-            <button class="preset" data-mode="shimmer" data-t="0.6" data-aber="18" data-tail="0" data-evo="12" data-width="60" data-oct="50" data-reverb="45">Shimmer</button>
-        </div>
+                <canvas id="wave" width="700" height="120"></canvas>
+                <div id="meter"><div id="meter-fill"></div></div>
 
-        <div class="ctl">
-            <label>Carácter (Tonal → Drone) <span class="v" id="char-v">—</span></label>
-            <input type="range" id="char" min="0" max="100" value="35">
-        </div>
+                <div class="presets" id="scene-presets">
+                    <button class="preset" data-mode="dry" data-t="0.3" data-aber="0" data-tail="0" data-evo="0" data-width="0" data-oct="0" data-reverb="0">Original (Dry)</button>
+                    <button class="preset active" data-mode="drone" data-t="0.35" data-aber="0" data-tail="0" data-evo="0" data-width="35" data-oct="0" data-reverb="15">Drone</button>
+                    <button class="preset" data-mode="shimmer" data-t="0.6" data-aber="18" data-tail="0" data-evo="12" data-width="60" data-oct="50" data-reverb="45">Shimmer</button>
+                </div>
 
-        <div class="ctl">
-            <label>Volumen <span class="v" id="vol-v">80 %</span></label>
-            <input type="range" id="vol" min="0" max="100" value="80">
-        </div>
+                <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
+                <div class="status" id="status">Carga un WAV o MP3 para empezar.</div>
+            </section>
 
-        <div class="ctl">
-            <label>Aberración (graves anchos / agudos finos) <span class="v" id="aber-v">0 %</span></label>
-            <input type="range" id="aber" min="0" max="100" value="0">
-        </div>
+            <!-- ── SHAPE ── -->
+            <section class="panel p-shape">
+                <div class="panel-title"><span>Shape</span></div>
+                <div class="ctl">
+                    <label>Carácter (Tonal → Drone) <span class="v" id="char-v">—</span></label>
+                    <input type="range" id="char" min="0" max="100" value="35">
+                </div>
+                <div class="ctl">
+                    <label>Volumen <span class="v" id="vol-v">80 %</span></label>
+                    <input type="range" id="vol" min="0" max="100" value="80">
+                </div>
+            </section>
 
-        <div class="ctl">
-            <label>Cola / Rebotes <span class="v" id="tail-v">0 %</span></label>
-            <input type="range" id="tail" min="0" max="100" value="0">
-        </div>
+            <!-- ── OPTICS ── -->
+            <section class="panel p-optics">
+                <div class="panel-title"><span>Optics</span></div>
+                <div class="ctl">
+                    <label>Aberración (graves anchos / agudos finos) <span class="v" id="aber-v">0 %</span></label>
+                    <input type="range" id="aber" min="0" max="100" value="0">
+                </div>
+                <div class="ctl">
+                    <label>Cola / Rebotes <span class="v" id="tail-v">0 %</span></label>
+                    <input type="range" id="tail" min="0" max="100" value="0">
+                </div>
+                <div class="ctl">
+                    <label>Pitch (transposición) <span class="v" id="pitch-v">0 st</span></label>
+                    <input type="range" id="pitch" min="-12" max="12" value="0" step="1">
+                </div>
+            </section>
 
-        <div class="ctl">
-            <label>Autoevolución (recursiva) <span class="v" id="evo-v">0 %</span></label>
-            <input type="range" id="evo" min="0" max="100" value="0">
-        </div>
+            <!-- ── SPACE ── -->
+            <section class="panel p-space">
+                <div class="panel-title"><span>Space</span></div>
+                <div class="ctl">
+                    <label>Estéreo (Width) <span class="v" id="width-v">0 %</span></label>
+                    <input type="range" id="width" min="0" max="100" value="0">
+                </div>
+                <div class="ctl">
+                    <label>Octava / Shimmer <span class="v" id="oct-v">0 %</span></label>
+                    <input type="range" id="oct" min="0" max="100" value="0">
+                </div>
+                <div class="ctl">
+                    <label>Reverb (espacio) <span class="v" id="reverb-v">0 %</span></label>
+                    <input type="range" id="reverb" min="0" max="100" value="0">
+                </div>
+            </section>
 
-        <div class="ctl">
-            <label>Estéreo (Width) <span class="v" id="width-v">0 %</span></label>
-            <input type="range" id="width" min="0" max="100" value="0">
-        </div>
+            <!-- ── ENGINE ── -->
+            <section class="panel p-engine">
+                <div class="panel-title"><span>Engine</span></div>
+                <div class="ctl">
+                    <label>Autoevolución (recursiva) <span class="v" id="evo-v">0 %</span></label>
+                    <input type="range" id="evo" min="0" max="100" value="0">
+                </div>
+                <div class="ctl row">
+                    <label style="margin:0;">Muestreo suave (QMC) <span class="v" id="smooth-v">ON</span></label>
+                    <input type="checkbox" id="smooth" checked>
+                </div>
+                <div class="ctl row">
+                    <label style="margin:0;">Rayos inteligentes (trazado inverso) <span class="v" id="smart-v">OFF</span></label>
+                    <input type="checkbox" id="smart">
+                </div>
+                <div id="perf" class="status" style="text-align:left; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,53,94,0.12); line-height:1.6;">CPU audio — · rayos/bloque — · granos/s —<br>latencia: base — · salida —</div>
+            </section>
 
-        <div class="ctl">
-            <label>Octava / Shimmer <span class="v" id="oct-v">0 %</span></label>
-            <input type="range" id="oct" min="0" max="100" value="0">
-        </div>
-
-        <div class="ctl">
-            <label>Pitch (transposición) <span class="v" id="pitch-v">0 st</span></label>
-            <input type="range" id="pitch" min="-12" max="12" value="0" step="1">
-        </div>
-
-        <div class="ctl">
-            <label>Reverb (espacio) <span class="v" id="reverb-v">0 %</span></label>
-            <input type="range" id="reverb" min="0" max="100" value="0">
-        </div>
-
-        <div class="ctl" style="display:flex; justify-content:space-between; align-items:center;">
-            <label style="margin:0;">Muestreo suave (QMC) <span class="v" id="smooth-v">ON</span></label>
-            <input type="checkbox" id="smooth" checked style="width:20px; height:20px; accent-color:#ff355e; cursor:pointer;">
-        </div>
-
-        <div class="ctl" style="display:flex; justify-content:space-between; align-items:center;">
-            <label style="margin:0;">Rayos inteligentes (trazado inverso) <span class="v" id="smart-v">OFF</span></label>
-            <input type="checkbox" id="smart" style="width:20px; height:20px; accent-color:#ff355e; cursor:pointer;">
-        </div>
-
-        <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
-        <div class="status" id="status">Carga un WAV o MP3 para empezar.</div>
-
-        <div id="lab" style="margin-top:20px; border-top:1px solid rgba(255,53,94,0.15); padding-top:16px;">
-            <div style="font-family:monospace; font-size:0.72rem; letter-spacing:2px; text-transform:uppercase; color:var(--accent-dim); margin-bottom:4px;">⚗ Convergence Lab</div>
-            <div class="sub" style="margin:0 0 10px; text-align:left;">Prueba empírica: el render converge al objetivo con error ~ 1/√N</div>
-            <canvas id="lab-canvas" width="700" height="240" style="height:240px; cursor:default;"></canvas>
-            <button class="btn btn-play" id="lab-run" style="margin-top:8px;">▶ Correr test de convergencia</button>
-            <div id="lab-readout" class="status" style="text-align:left; line-height:1.5;">Carga un audio y corre el test.</div>
-            <div class="presets" style="grid-template-columns:repeat(4,1fr); margin-top:10px;">
-                <button class="preset" id="lab-target" disabled>Objetivo</button>
-                <button class="preset" id="lab-noisy" disabled>N=4</button>
-                <button class="preset" id="lab-clean" disabled>N=256</button>
-                <button class="preset" id="lab-stop" disabled>■ Stop</button>
-            </div>
+            <!-- ── ANALYSIS / CONVERGENCE LAB ── -->
+            <section class="panel lab">
+                <div class="panel-title"><span>⚗ Convergence Lab</span><span>error RMS vs N · 1/√N</span></div>
+                <div class="sub" style="margin:0 0 10px; text-align:left;">Prueba empírica: el render converge al objetivo con error ~ 1/√N (independiente del motor).</div>
+                <canvas id="lab-canvas" width="700" height="240"></canvas>
+                <button class="btn btn-play" id="lab-run">▶ Correr test de convergencia</button>
+                <div id="lab-readout" class="status" style="text-align:left; line-height:1.5;">Carga un audio y corre el test.</div>
+                <div class="lab-ab">
+                    <button class="preset" id="lab-target" disabled>Objetivo</button>
+                    <button class="preset" id="lab-noisy" disabled>N=4</button>
+                    <button class="preset" id="lab-clean" disabled>N=256</button>
+                    <button class="preset" id="lab-stop" disabled>■ Stop</button>
+                </div>
+            </section>
         </div>
     </div>
 
@@ -149,7 +192,8 @@
     const reverbSlider = $('reverb'), reverbV = $('reverb-v');
     const smartChk = $('smart'), smartV = $('smart-v');
     const meterFill = $('meter-fill');
-    const presets = Array.from(document.querySelectorAll('.preset'));
+    const perfEl = $('perf');
+    const presets = Array.from(document.querySelectorAll('#scene-presets .preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
 
     let ctx = null, jsGain = null, node = null, wasmModule = null;
@@ -239,10 +283,11 @@
                 processorOptions: { module: wasmModule },
             });
             node.connect(jsGain);
-            node.port.onmessage = (e) => {       // rayos + nivel desde el worklet
+            node.port.onmessage = (e) => {       // rayos + nivel + perf desde el worklet
                 const d = e.data;
                 if (d.type === 'rays') { pushRays(d.offsets, d.bands); setMeter(d.level); }
                 else if (d.type === 'level') setMeter(d.level);
+                if (d.perf) updatePerf(d.perf);
             };
             // LUT de ventana Hann (JS sí tiene Math.cos)
             const win = new Float32Array(2048);
@@ -401,6 +446,18 @@
     function setMeter(level) {
         // level ~ envolvente media; mapear a % con un poco de ganancia visual
         meterTarget = Math.min(100, level * 180);
+    }
+
+    // Diagnóstico: CPU del hilo de audio, rayos/bloque (voces activas), granos/s y latencia real.
+    function updatePerf(p) {
+        const cpu = p.cpu < 0 ? 'n/d' : `${p.cpu.toFixed(0)} %`;
+        const base = ctx ? `${((ctx.baseLatency || 0) * 1000).toFixed(1)} ms` : '—';
+        const outL = (ctx && ctx.outputLatency) ? `${(ctx.outputLatency * 1000).toFixed(0)} ms` : '—';
+        perfEl.innerHTML =
+            `CPU audio: <b style="color:var(--accent)">${cpu}</b> · ` +
+            `rayos/bloque: <b style="color:var(--accent)">${p.voices}</b> · ` +
+            `granos/s: <b style="color:var(--accent)">${Math.round(p.spawnsPerSec)}</b><br>` +
+            `latencia: base <b>${base}</b> · salida <b>${outL}</b>`;
     }
 
     // ── Visualización: onda + rayos (granos reales) + foco ──────────────────
