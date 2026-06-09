@@ -66,7 +66,7 @@
         #meter-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--accent-dim),var(--accent),#ffb3c1);
                       transition:width .08s linear; }
         .lab canvas { height:240px; cursor:default; }
-        .lab-ab { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
+        .lab-ab { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:10px; }
     </style>
 </head>
 <body>
@@ -93,6 +93,7 @@
                 </div>
 
                 <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
+                <button class="btn" id="rec" disabled style="margin-top:8px; background:#1d0c10; color:#ff7d98; border:1px solid rgba(255,53,94,0.35);">● Grabar WAV</button>
                 <div class="status" id="status">Carga un WAV o MP3 para empezar.</div>
             </section>
 
@@ -173,6 +174,7 @@
                     <button class="preset" id="lab-noisy" disabled>N=4</button>
                     <button class="preset" id="lab-clean" disabled>N=256</button>
                     <button class="preset" id="lab-stop" disabled>■ Stop</button>
+                    <button class="preset" id="lab-csv" disabled>⬇ CSV</button>
                 </div>
             </section>
         </div>
@@ -193,6 +195,7 @@
     const smartChk = $('smart'), smartV = $('smart-v');
     const meterFill = $('meter-fill');
     const perfEl = $('perf');
+    const recBtn = $('rec');
     const presets = Array.from(document.querySelectorAll('#scene-presets .preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
 
@@ -283,10 +286,14 @@
                 processorOptions: { module: wasmModule },
             });
             node.connect(jsGain);
-            node.port.onmessage = (e) => {       // rayos + nivel + perf desde el worklet
+            node.port.onmessage = (e) => {       // rayos + nivel + perf + grabación desde el worklet
                 const d = e.data;
                 if (d.type === 'rays') { pushRays(d.offsets, d.bands); setMeter(d.level); }
                 else if (d.type === 'level') setMeter(d.level);
+                else if (d.type === 'recdata') saveRecording(d);
+                else if (d.type === 'sampleinfo' && d.truncated) {
+                    statusEl.innerText = `⚠ Sample truncado a ${(d.used / sampleRate).toFixed(0)} s (capacidad del motor). Usa un archivo más corto para tenerlo entero.`;
+                }
                 if (d.perf) updatePerf(d.perf);
             };
             // LUT de ventana Hann (JS sí tiene Math.cos)
@@ -305,7 +312,7 @@
         }
     }
 
-    // ── Carga de audio ──────────────────────────────────────────────────────
+    // ── Carga de audio ──────────────────────────────────────────────────
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -314,7 +321,16 @@
         try {
             await ensureEngine();
             const buf = await ctx.decodeAudioData(await file.arrayBuffer());
-            sampleData = buf.getChannelData(0).slice(); // copia del canal 0
+            // Downmix a mono promediando TODOS los canales (antes se tiraba el canal R)
+            sampleData = new Float32Array(buf.length);
+            for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+                const d = buf.getChannelData(ch);
+                for (let i = 0; i < d.length; i++) sampleData[i] += d[i];
+            }
+            if (buf.numberOfChannels > 1) {
+                const inv = 1 / buf.numberOfChannels;
+                for (let i = 0; i < sampleData.length; i++) sampleData[i] *= inv;
+            }
             sampleRate = buf.sampleRate;
             duration = buf.duration;
             focusSec = duration * 0.3;
@@ -323,6 +339,7 @@
             computePeaks();
             playBtn.disabled = false;
             playBtn.innerText = '▶ Play';
+            recBtn.disabled = false;
             statusEl.innerText = `Audio listo · ${duration.toFixed(2)} s · click en la onda para mover el foco`;
         } catch (err) {
             statusEl.innerText = 'Error al decodificar el audio.';
@@ -330,7 +347,7 @@
         }
     });
 
-    // ── Transporte ──────────────────────────────────────────────────────────
+    // ── Transporte ──────────────────────────────────────────────────────
     function stopDry() {
         if (drySource) { try { drySource.stop(); } catch (_) {} drySource = null; }
     }
@@ -460,6 +477,54 @@
             `latencia: base <b>${base}</b> · salida <b>${outL}</b>`;
     }
 
+    // ── Grabación → WAV ──────────────────────────────────────────────────
+    // Graba la salida del motor (pre-Volumen). El modo Original (Dry) suena por
+    // otro camino y no entra en la grabación.
+    let isRecording = false;
+    recBtn.addEventListener('click', () => {
+        if (!node) return;
+        isRecording = !isRecording;
+        node.port.postMessage({ type: 'record', on: isRecording ? 1 : 0 });
+        recBtn.innerText = isRecording ? '■ Detener y descargar' : '● Grabar WAV';
+        recBtn.style.background = isRecording ? 'rgba(255,53,94,0.3)' : '#1d0c10';
+        if (isRecording && !isPlaying) statusEl.innerText = 'Grabando… (dale a Play para que suene el motor)';
+    });
+
+    function saveRecording(d) {
+        isRecording = false;
+        recBtn.innerText = '● Grabar WAV';
+        recBtn.style.background = '#1d0c10';
+        if (!d.l.length) { statusEl.innerText = 'Grabación vacía.'; return; }
+        downloadBlob(encodeWav(d.l, d.r, d.sr), `raydrone-${Date.now()}.wav`);
+        statusEl.innerText = `WAV exportado · ${(d.l.length / d.sr).toFixed(1)} s estéreo`;
+    }
+
+    // WAV PCM 16-bit estéreo, sin dependencias.
+    function encodeWav(l, r, sr) {
+        const n = l.length;
+        const buf = new ArrayBuffer(44 + n * 4);
+        const dv = new DataView(buf);
+        const wstr = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+        wstr(0, 'RIFF'); dv.setUint32(4, 36 + n * 4, true); wstr(8, 'WAVE');
+        wstr(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true);
+        dv.setUint32(24, sr, true); dv.setUint32(28, sr * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 16, true);
+        wstr(36, 'data'); dv.setUint32(40, n * 4, true);
+        let o = 44;
+        for (let i = 0; i < n; i++) {
+            dv.setInt16(o, Math.max(-1, Math.min(1, l[i])) * 32767, true); o += 2;
+            dv.setInt16(o, Math.max(-1, Math.min(1, r[i])) * 32767, true); o += 2;
+        }
+        return new Blob([buf], { type: 'audio/wav' });
+    }
+
+    function downloadBlob(blob, name) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
+
     // ── Visualización: onda + rayos (granos reales) + foco ──────────────────
     function computePeaks() {
         const W = waveCanvas.width;
@@ -583,9 +648,9 @@
         if (isPlaying) { if (mode === 'dry') startDry(); else sendParams(true); }
     });
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════════════
     //  CONVERGENCE LAB (experimento Monte Carlo sobre el sample, indep. del motor)
-    // ════════════════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════════════
     const LAB_GRAIN = 4096;
     const LAB_MAX_A = 6600;                 // apertura máx. para el target exacto (rápido)
     const LAB_NS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
@@ -604,6 +669,7 @@
     const labCanvas = $('lab-canvas'), labCtx = labCanvas.getContext('2d');
     const labRun = $('lab-run'), labReadout = $('lab-readout');
     const labTargetBtn = $('lab-target'), labNoisyBtn = $('lab-noisy'), labCleanBtn = $('lab-clean'), labStopBtn = $('lab-stop');
+    const labCsvBtn = $('lab-csv');
 
     function labGetHann() {
         if (labHann) return labHann;
@@ -716,8 +782,22 @@
             labTarget = target; labA = A; labF0 = f0; labCurves = { Ns: LAB_NS, ...curves };
             labDrawPlot(); labUpdateReadout();
             labRun.disabled = false;
-            [labTargetBtn, labNoisyBtn, labCleanBtn, labStopBtn].forEach((b) => b.disabled = false);
+            [labTargetBtn, labNoisyBtn, labCleanBtn, labStopBtn, labCsvBtn].forEach((b) => b.disabled = false);
         }, 20);
+    }
+
+    // Export CSV de las curvas del Lab (para las figuras del paper, reproducible).
+    function labExportCsv() {
+        if (!labCurves) return;
+        const Ns = labCurves.Ns;
+        let csv = `# RayDrone Convergence Lab\n`;
+        csv += `# aperture_ms=${(labA / sampleRate * 1000).toFixed(1)}, grain=${LAB_GRAIN}, trials=${LAB_TRIALS}, focus_s=${(labF0 / sampleRate).toFixed(3)}, sr=${sampleRate}\n`;
+        csv += `# slopes: ${LAB_SERIES.map((s) => `${s.k}=${labFitSlope(Ns, labCurves[s.k]).toFixed(4)}`).join(', ')}\n`;
+        csv += 'N,' + LAB_SERIES.map((s) => s.k).join(',') + '\n';
+        for (let i = 0; i < Ns.length; i++) {
+            csv += Ns[i] + ',' + LAB_SERIES.map((s) => labCurves[s.k][i].toExponential(6)).join(',') + '\n';
+        }
+        downloadBlob(new Blob([csv], { type: 'text/csv' }), `raydrone-convergence-${Date.now()}.csv`);
     }
 
     function labUpdateReadout() {
@@ -803,6 +883,7 @@
     labNoisyBtn.addEventListener('click', () => labPlay('noisy'));
     labCleanBtn.addEventListener('click', () => labPlay('clean'));
     labStopBtn.addEventListener('click', labStop);
+    labCsvBtn.addEventListener('click', labExportCsv);
     labDrawPlot();
 
     charV.innerText = charWord();
