@@ -82,11 +82,17 @@ Motor con paridad casi completa con la versión JS:
 - ✅ **Estéreo (Width)**: paneo equal-power por grano → nube ancha e inmersiva.
 - ✅ **Octava / Shimmer**: probabilidad de que cada grano suene una octava arriba.
 - ✅ **Pitch (transposición)**: ±12 semitonos (multiplicador de velocidad de lectura).
-- ✅ **Visual**: cono de dispersión, rayos coloreados por banda (grave/medio/agudo)
-  y medidor de salida en tiempo real.
+- ✅ **Reverb (espacio)**: reverb estéreo Freeverb-lite (4 combs + 2 allpass por canal).
+- ✅ **Trazado inverso (opcional)**: precalcula la energía del sample y lanza los rayos
+  hacia donde hay señal (importance desde la fuente) → menos rayos malgastados, más
+  lleno y limpio. Brilla con material disperso; con notas sostenidas la mejora es leve.
+- ✅ **Visual**: cono de dispersión, rayos coloreados por banda (grave/medio/agudo),
+  medidor de salida y glow reactivo al nivel.
+- ✅ **Convergence Lab**: experimento Monte Carlo sobre el sample (N = 1…4096, las 4
+  estrategias), gráfica error RMS vs N en log-log con la línea ideal 1/√N, exponentes
+  ajustados y A/B audible (objetivo / N=4 / N=256).
 
-Pendiente respecto a la versión JS: el *Convergence Lab* (la demostración medible
-1/√N) sigue solo en JS.
+Paridad completa con la versión JS.
 
 > ⚠️ Este `.wasm` se compila en tu máquina (el entorno donde se escribió el código
 > no podía compilar a wasm). Si `rustc` se queja de algo al compilar, es un ajuste
