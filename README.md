@@ -24,15 +24,16 @@ exactly as a rendered image emerges from the convergence of light rays.
 
 ## 📦 Two versions
 
-| Version | File | Engine | Best for |
+| Version | File | Engine | Status |
 |---|---|---|---|
-| **Classic** | [`rta.html`](rta.html) | Vanilla JS + Web Audio API | Full UI, the **Convergence Lab** (the measurable 1/√N proof) |
-| **WASM** | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** | Cleanest sound: per-sample engine, stereo, octave/shimmer |
+| **WASM** (current) | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** | ✅ **Actively developed** — per-sample engine, stereo, reverb, Convergence Lab, WAV export |
+| **Classic** (legacy) | [`rta.html`](rta.html) | Vanilla JS + Web Audio API | 🧊 **Frozen** — kept as a no-build demo; no new features |
 
-Both implement the same idea. The **Rust/WebAssembly** build mixes **every sample** in a
-tight loop on the audio thread, which removes the JS engine's limits by design (no voice
-cap, no `setTimeout` jitter, no pulsing) and adds **stereo** and **octave shimmer**.
-See **[wasm/README.md](wasm/README.md)** for how to build and run it.
+Both implement the same idea, but **all development happens in the WASM version**: it
+mixes **every sample** in a tight loop on the audio thread, which removes the JS engine's
+limits by design (no voice cap, no `setTimeout` jitter, no pulsing). The Classic build
+remains useful as a zero-toolchain demo (open the file, it runs).
+See **[wasm/README.md](wasm/README.md)** for how to build and run the current version.
 
 ---
 ---
@@ -209,6 +210,9 @@ points by design:
 - **Stereo width** (per-grain equal-power pan), **octave / shimmer** and **±12-semitone pitch**.
 - **Visuals:** dispersion cone, **rays colored by band** (low/mid/high), a live output meter
   and level-reactive glow.
+- **Record & export:** capture the engine's stereo output and download it as a 16-bit WAV.
+- **Convergence Lab with CSV export** — reproducible convergence data (curves + fitted
+  slopes) straight from the browser.
 - **Dependency-free build:** no `wasm-bindgen`, no crates → no crates.io needed, just `rustc`
   + the `wasm32-unknown-unknown` target. Build & run instructions in
   **[wasm/README.md](wasm/README.md)**.
@@ -262,10 +266,10 @@ obertura, focus) i una base matemàtica **mesurable**.
 
 ## Dues versions
 
-| Versió | Fitxer | Motor |
-|---|---|---|
-| **Clàssica** | [`rta.html`](rta.html) | JavaScript vanilla + Web Audio (inclou el *Convergence Lab*) |
-| **WASM** | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** (so més net, estèreo, octava) |
+| Versió | Fitxer | Motor | Estat |
+|---|---|---|---|
+| **WASM** (actual) | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** | ✅ **En desenvolupament actiu** |
+| **Clàssica** (legacy) | [`rta.html`](rta.html) | JavaScript vanilla + Web Audio | 🧊 **Congelada** — demo sense compilació, sense funcions noves |
 
 ---
 
@@ -344,8 +348,8 @@ menys soroll → render més net. *La imatge no existeix fins que la renderitzes
   baten l'`1/√N` de manual.
 - **Russian roulette** als rebots: la cua és la solució insesgada d'una sèrie de Neumann.
 
-El **Convergence Lab** (versió clàssica) ho demostra en viu: dibuixa l'error RMS vs N en
-log-log amb la línia ideal `1/√N` i ofereix una A/B audible.
+El **Convergence Lab** (ara també a la versió WASM, amb **export CSV**) ho demostra en viu:
+dibuixa l'error RMS vs N en log-log amb la línia ideal `1/√N` i ofereix una A/B audible.
 
 ---
 
@@ -383,6 +387,8 @@ JS i afegeix:
 - Mostreig **Random / Stratified / Quasi-MC**, **aberració cromàtica**, **rebots (Russian
   roulette)** i **autoevolució recursiva**.
 - **Estèreo (Width)** amb paneo equal-power, **octava / shimmer** i **pitch ±12 semitons**.
+- **Gravació i export WAV** de la sortida del motor.
+- **Convergence Lab amb export CSV** (dades reproduïbles).
 - **Visual:** con de dispersió, **raigs acolorits per banda**, medidor de sortida i glow reactiu.
 - **Compilació sense dependències** (només `rustc` + target `wasm32`, sense crates.io).
   Instruccions a **[wasm/README.md](wasm/README.md)**.
@@ -431,10 +437,10 @@ apertura, foco) y una base matemática **medible**.
 
 ## Dos versiones
 
-| Versión | Archivo | Motor |
-|---|---|---|
-| **Clásica** | [`rta.html`](rta.html) | JavaScript vanilla + Web Audio (incluye el *Convergence Lab*) |
-| **WASM** | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** (sonido más limpio, estéreo, octava) |
+| Versión | Archivo | Motor | Estado |
+|---|---|---|---|
+| **WASM** (actual) | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** | ✅ **En desarrollo activo** |
+| **Clásica** (legacy) | [`rta.html`](rta.html) | JavaScript vanilla + Web Audio | 🧊 **Congelada** — demo sin compilación, sin funciones nuevas |
 
 Ambas implementan la misma idea. La versión **Rust/WebAssembly** mezcla **cada muestra** en
 un bucle en el hilo de audio, lo que elimina por diseño los límites de la versión JS (sin
@@ -520,9 +526,9 @@ menos ruido → render más limpio. *La imagen no existe hasta que la renderizas
 - **Russian roulette** en los rebotes: la cola es la solución insesgada de una serie de
   Neumann (la forma recursiva de la ecuación de transporte).
 
-El **Convergence Lab** (versión clásica) lo demuestra en vivo: dibuja el error RMS vs N en
-log-log con la línea ideal `1/√N` y ofrece una A/B audible (objetivo vs N=4 vs N=256 al
-mismo nivel).
+El **Convergence Lab** (ahora también en la versión WASM, con **export CSV**) lo demuestra
+en vivo: dibuja el error RMS vs N en log-log con la línea ideal `1/√N` y ofrece una A/B
+audible (objetivo vs N=4 vs N=256 al mismo nivel).
 
 ---
 
@@ -562,6 +568,8 @@ problemas de la versión JS y añade:
   + filtro), **rebotes (Russian roulette)** y **autoevolución recursiva** (la envolvente de
   la salida realimenta foco y apertura).
 - **Estéreo (Width)** con paneo equal-power, **octava / shimmer** y **pitch ±12 semitonos**.
+- **Grabación y export WAV** de la salida del motor (16-bit estéreo, directo al DAW).
+- **Convergence Lab con export CSV** — datos de convergencia reproducibles desde el navegador.
 - **Visual:** cono de dispersión, **rayos coloreados por banda** (grave/medio/agudo),
   medidor de salida y glow reactivo al nivel.
 - **Compilación sin dependencias:** sin `wasm-bindgen` ni crates → no necesita crates.io,
