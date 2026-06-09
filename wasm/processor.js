@@ -38,6 +38,10 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             ex.set_space(d.width, d.oct);
         } else if (d.type === 'pitch') {
             ex.set_pitch(d.mult);
+        } else if (d.type === 'reverb') {
+            ex.set_reverb(d.wet);
+        } else if (d.type === 'smart') {
+            ex.set_smart(d.on >>> 0);
         }
     }
 
