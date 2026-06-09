@@ -1,4 +1,5 @@
 // AudioWorkletProcessor que ejecuta el motor RayDrone (Rust→wasm). Estéreo.
+// Incluye diagnóstico: CPU del hilo de audio, voces (rayos) activas y granos/seg.
 
 class RayDroneProcessor extends AudioWorkletProcessor {
     constructor(options) {
@@ -15,6 +16,11 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.rayOff = [];
         this.rayBand = [];
         this.blockCount = 0;
+        // Diagnóstico de rendimiento
+        this.now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : null;
+        this.cpuAcc = 0;
+        this.cpuBlocks = 0;
+        this.lastSpawn = 0;
         this.port.onmessage = (e) => this.onMsg(e.data);
     }
 
@@ -49,11 +55,15 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         const out = outputs[0];
         const frames = out[0].length;
         if (this.ready) {
+            // Cronometrar el render del motor (carga real del hilo de audio).
+            const t0 = this.now ? this.now() : 0;
             this.ex.process(frames);
+            if (this.now) { this.cpuAcc += this.now() - t0; this.cpuBlocks++; }
+
             out[0].set(new Float32Array(this.mem.buffer, this.outL, frames));
             if (out[1]) out[1].set(new Float32Array(this.mem.buffer, this.outR, frames));
 
-            // Recoger rayos (offset + banda) y nivel, y enviarlos throttle (~21 fps).
+            // Recoger rayos (offset + banda) para la visualización.
             const w = this.ex.slog_w() >>> 0;
             if (w !== this.lastW) {
                 const cap = this.ex.slog_cap();
@@ -68,15 +78,28 @@ class RayDroneProcessor extends AudioWorkletProcessor {
                 }
                 this.lastW = w;
             }
+
             if (++this.blockCount >= 16) {
+                const blocks = this.blockCount;
                 this.blockCount = 0;
                 const level = this.ex.out_level();
+                // ── Diagnóstico ──
+                const blockMs = frames / sampleRate * 1000;
+                const cpu = (this.now && this.cpuBlocks > 0) ? (this.cpuAcc / this.cpuBlocks) / blockMs * 100 : -1;
+                const voices = this.ex.active_voices();
+                const sc = this.ex.spawn_count() >>> 0;
+                const spawnsDelta = (sc - this.lastSpawn) >>> 0;
+                this.lastSpawn = sc;
+                const spawnsPerSec = spawnsDelta / (blocks * frames / sampleRate);
+                this.cpuAcc = 0; this.cpuBlocks = 0;
+                const perf = { cpu, voices, spawnsPerSec };
+
                 if (this.rayOff.length) {
-                    this.port.postMessage({ type: 'rays', offsets: this.rayOff, bands: this.rayBand, level });
+                    this.port.postMessage({ type: 'rays', offsets: this.rayOff, bands: this.rayBand, level, perf });
                     this.rayOff = [];
                     this.rayBand = [];
                 } else {
-                    this.port.postMessage({ type: 'level', level });
+                    this.port.postMessage({ type: 'level', level, perf });
                 }
             }
         } else {
