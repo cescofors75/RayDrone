@@ -274,7 +274,16 @@
             jsGain.gain.value = parseFloat(volSlider.value) / 100;
             jsGain.connect(ctx.destination);
         }
-        if (ctx.state === 'suspended') await ctx.resume();
+        // OJO iOS: resume() fuera de un gesto directo del usuario (p.ej. el
+        // 'change' del selector de archivos) deja la promesa pendiente para
+        // siempre y la UI se queda en "Decodificando…". No bloquear aquí;
+        // play() y labPlay() reintentan dentro de su click, que sí es gesto.
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        if (!ctx.audioWorklet) {
+            // Sin HTTPS (o localhost) los navegadores no exponen AudioWorklet.
+            // Típico al abrir desde el móvil por IP de la red local en HTTP.
+            throw new Error(`AudioWorklet no disponible en ${location.origin}: hace falta HTTPS o localhost.`);
+        }
         if (!wasmBytes) {
             // No compilamos aquí: Safari no puede clonar un WebAssembly.Module
             // hacia el worklet (DataCloneError); le pasamos los bytes y compila él.
@@ -325,7 +334,7 @@
         try {
             await ensureEngine();
         } catch (err) {
-            statusEl.innerText = 'Error al iniciar el motor de audio (wasm/worklet). Mira la consola.';
+            statusEl.innerText = `Error al iniciar el motor: ${(err && err.message) || err}`;
             console.error(err);
             return;
         }
@@ -382,6 +391,8 @@
 
     async function play() {
         await ensureEngine();
+        // Aquí sí estamos dentro de un click: iOS permite arrancar el audio.
+        if (ctx.state !== 'running') { try { await ctx.resume(); } catch (_) {} }
         isPlaying = true;
         playBtn.innerText = '⏸ Pause';
         if (mode === 'dry') startDry();
