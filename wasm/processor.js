@@ -4,7 +4,9 @@
 class RayDroneProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
-        const mod = options.processorOptions.module;
+        // Compilar aquí dentro: Safari no permite clonar un WebAssembly.Module
+        // del hilo principal al worklet, así que llegan los bytes crudos.
+        const mod = new WebAssembly.Module(options.processorOptions.wasmBytes);
         this.inst = new WebAssembly.Instance(mod, {});
         this.ex = this.inst.exports;
         this.mem = this.ex.memory;

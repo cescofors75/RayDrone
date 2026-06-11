@@ -199,7 +199,7 @@
     const presets = Array.from(document.querySelectorAll('#scene-presets .preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
 
-    let ctx = null, jsGain = null, node = null, wasmModule = null;
+    let ctx = null, jsGain = null, node = null, wasmBytes = null;
     let sampleData = null, sampleRate = 44100, duration = 0;
     let focusSec = 0, mode = 'drone', isPlaying = false, drySource = null;
     let wavePeaks = null;   // pico por pixel (precalculado al cargar)
@@ -275,16 +275,20 @@
             jsGain.connect(ctx.destination);
         }
         if (ctx.state === 'suspended') await ctx.resume();
-        if (!wasmModule) {
-            const bytes = await fetch('raydrone.wasm').then(r => r.arrayBuffer());
-            wasmModule = await WebAssembly.compile(bytes);
+        if (!wasmBytes) {
+            // No compilamos aquí: Safari no puede clonar un WebAssembly.Module
+            // hacia el worklet (DataCloneError); le pasamos los bytes y compila él.
+            wasmBytes = await fetch('raydrone.wasm').then(r => r.arrayBuffer());
             await ctx.audioWorklet.addModule('processor.js');
         }
         if (!node) {
             node = new AudioWorkletNode(ctx, 'raydrone', {
                 numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
-                processorOptions: { module: wasmModule },
+                processorOptions: { wasmBytes },
             });
+            node.onprocessorerror = () => {
+                statusEl.innerText = 'Error en el motor de audio (worklet). Mira la consola.';
+            };
             node.connect(jsGain);
             node.port.onmessage = (e) => {       // rayos + nivel + perf + grabación desde el worklet
                 const d = e.data;
@@ -320,7 +324,16 @@
         statusEl.innerText = 'Decodificando…';
         try {
             await ensureEngine();
-            const buf = await ctx.decodeAudioData(await file.arrayBuffer());
+        } catch (err) {
+            statusEl.innerText = 'Error al iniciar el motor de audio (wasm/worklet). Mira la consola.';
+            console.error(err);
+            return;
+        }
+        try {
+            // Forma con callbacks: las versiones de Safari sin la forma promesa
+            // de decodeAudioData también funcionan así.
+            const raw = await file.arrayBuffer();
+            const buf = await new Promise((res, rej) => ctx.decodeAudioData(raw, res, rej));
             // Downmix a mono promediando TODOS los canales (antes se tiraba el canal R)
             sampleData = new Float32Array(buf.length);
             for (let ch = 0; ch < buf.numberOfChannels; ch++) {
@@ -342,7 +355,11 @@
             recBtn.disabled = false;
             statusEl.innerText = `Audio listo · ${duration.toFixed(2)} s · click en la onda para mover el foco`;
         } catch (err) {
-            statusEl.innerText = 'Error al decodificar el audio.';
+            const ext = (file.name.split('.').pop() || '').toLowerCase();
+            const safariNoCodec = ['ogg', 'oga', 'opus', 'webm'].includes(ext);
+            statusEl.innerText = safariNoCodec
+                ? `Safari no decodifica .${ext}. Prueba con WAV, MP3, AAC/M4A o FLAC.`
+                : 'Error al decodificar el audio. Prueba con WAV, MP3 o AAC/M4A.';
             console.error(err);
         }
     });
