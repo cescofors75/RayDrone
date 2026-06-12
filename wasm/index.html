@@ -27,7 +27,9 @@
             .p-optics { grid-column:2; grid-row:2; }
             .p-space  { grid-column:3; grid-row:1; }
             .p-engine { grid-column:3; grid-row:2; }
-            .lab    { grid-column:1 / -1; grid-row:3; }
+            .p-micro { grid-column:1 / -1; grid-row:3; }
+            .lab    { grid-column:1 / -1; grid-row:4; }
+            .micro-grid { grid-template-columns:300px 1fr; }
         }
         .panel { background:linear-gradient(180deg, rgba(40,18,24,0.55), rgba(16,9,12,0.92));
                  border:1px solid rgba(255,53,94,0.14); border-radius:14px; padding:16px;
@@ -61,7 +63,8 @@
                  border-radius:8px; padding:9px 8px; font-family:monospace; font-size:0.8rem; cursor:pointer; }
         select:focus { outline:none; border-color:var(--accent); }
         #wave { height:150px; touch-action:pan-y; }
-        #lattice { height:130px; cursor:default; margin:0; }
+        .micro-grid { display:grid; gap:16px; grid-template-columns:1fr; align-items:start; }
+        #lattice { height:180px; cursor:default; margin:0; }
         .btn { width:100%; border:none; padding:14px; border-radius:10px; font-size:1rem; font-weight:bold;
                text-transform:uppercase; letter-spacing:1px; cursor:pointer; transition:all .25s; }
         .btn-play { background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; margin-top:8px; }
@@ -134,33 +137,6 @@
                     <label>Pitch (transposición) <span class="v" id="pitch-v">0 st</span></label>
                     <input type="range" id="pitch" min="-12" max="12" value="0" step="1">
                 </div>
-                <div class="ctl">
-                    <label>Escala (textura microtonal) <span class="v" id="scale-v">Libre</span></label>
-                    <select id="scale">
-                        <option value="off" selected>Libre (pitch continuo)</option>
-                        <option value="12edo">12-EDO · cromática</option>
-                        <option value="24edo">24-EDO · cuartos de tono</option>
-                        <option value="22edo">22-EDO · shruti</option>
-                        <option value="19edo">19-EDO</option>
-                        <option value="ji7">Justa entonación · 7 grados</option>
-                        <option value="bp">Bohlen–Pierce · 13 ÷ tritava</option>
-                    </select>
-                </div>
-                <div class="ctl">
-                    <label>Acorde (grados activos) <span class="v" id="chord-v">—</span></label>
-                    <select id="chord">
-                        <option value="cluster" selected>Cluster · todos los grados</option>
-                        <option value="tonic">Tónica (drone)</option>
-                        <option value="fifth">Tónica + quinta</option>
-                        <option value="triad">Tríada · 4:5:6</option>
-                        <option value="tetrad">Tétrada armónica · 4:5:6:7</option>
-                        <option value="penta">Pentatónica · 5 grados</option>
-                    </select>
-                </div>
-                <div class="ctl">
-                    <label>División tonal (cada rayo en su grado)</label>
-                    <canvas id="lattice" width="380" height="130"></canvas>
-                </div>
             </section>
 
             <!-- ── SPACE ── -->
@@ -196,6 +172,40 @@
                     <input type="checkbox" id="smart">
                 </div>
                 <div id="perf" class="status" style="text-align:left; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,53,94,0.12); line-height:1.6;">CPU audio — · rayos/bloque — · granos/s —<br>latencia: base — · salida —</div>
+            </section>
+
+            <!-- ── MICROTONAL ── -->
+            <section class="panel p-micro">
+                <div class="panel-title"><span>♪ Microtonal</span><span>retícula en cents · cada rayo en su grado</span></div>
+                <div class="micro-grid">
+                    <div>
+                        <div class="ctl">
+                            <label>Escala (textura microtonal) <span class="v" id="scale-v">Libre</span></label>
+                            <select id="scale">
+                                <option value="off" selected>Libre (pitch continuo)</option>
+                                <option value="12edo">12-EDO · cromática</option>
+                                <option value="24edo">24-EDO · cuartos de tono</option>
+                                <option value="22edo">22-EDO · shruti</option>
+                                <option value="19edo">19-EDO</option>
+                                <option value="ji7">Justa entonación · 7 grados</option>
+                                <option value="bp">Bohlen–Pierce · 13 ÷ tritava</option>
+                            </select>
+                        </div>
+                        <div class="ctl">
+                            <label>Acorde (grados activos) <span class="v" id="chord-v">—</span></label>
+                            <select id="chord">
+                                <option value="cluster" selected>Cluster · todos los grados</option>
+                                <option value="tonic">Tónica (drone)</option>
+                                <option value="fifth">Tónica + quinta</option>
+                                <option value="triad">Tríada · 4:5:6</option>
+                                <option value="tetrad">Tétrada armónica · 4:5:6:7</option>
+                                <option value="penta">Pentatónica · 5 grados</option>
+                            </select>
+                        </div>
+                        <div class="sub" style="text-align:left; margin:0;">Con acorde, cada temperamento afina los mismos intervalos a su manera (tercera: 400¢ en 12-EDO, 379¢ en 19-EDO, 386¢ justa). Granos largos = retícula más nítida.</div>
+                    </div>
+                    <canvas id="lattice" width="800" height="180"></canvas>
+                </div>
             </section>
 
             <!-- ── ANALYSIS / CONVERGENCE LAB ── -->
