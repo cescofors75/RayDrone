@@ -25,6 +25,7 @@ necesita acceso a crates.io**. Solo `rustc` + el target `wasm32-unknown-unknown`
 |---|---|
 | `raydrone.rs` | Motor granular en Rust (`no_std`, sin deps). Exporta `set_sample`, `set_params`, `process`, punteros de memoria. |
 | `processor.js` | `AudioWorkletProcessor` que instancia el wasm y rellena la salida cada bloque. |
+| `lab-worker.js` | Web Worker del Convergence Lab: otra instancia del mismo wasm para medir convergencia sin congelar la UI. |
 | `index.html` | La página (UI sencilla: Original/Drone/Shimmer + Carácter + Volumen). |
 | `build.sh` | Compila `raydrone.rs` → `raydrone.wasm`. |
 
@@ -102,15 +103,20 @@ Motor con paridad casi completa con la versión JS:
   lleno y limpio. Brilla con material disperso; con notas sostenidas la mejora es leve.
 - ✅ **Visual**: cono de dispersión, rayos coloreados por banda (grave/medio/agudo),
   medidor de salida y glow reactivo al nivel.
-- ✅ **Onda · Zoom**: vista ampliada alrededor del foco (rueda, pellizco en móvil o
-  slider, ×1–×64) con sus rayos; click en ella fija el foco con precisión fina.
-  El botón Grabar WAV vive debajo.
+- ✅ **Zoom integrado en la onda principal**: un solo canvas. Rueda, pellizco
+  (móvil) o slider (×1–×64); con zoom aparece una tira-minimapa arriba con el
+  archivo entero y la ventana visible marcada (click en ella = salto global;
+  click en la onda = foco fino). Los rayos se dibujan dentro de la ventana.
 - ✅ **División tonal**: visor junto a los selectores de escala/acorde — la retícula
   de grados en cents (activos resaltados) y cada rayo viajando sobre la línea del
   grado que le tocó (el motor registra el ratio por rayo).
-- ✅ **Convergence Lab**: experimento Monte Carlo sobre el sample (N = 1…4096, las 4
-  estrategias), gráfica error RMS vs N en log-log con la línea ideal 1/√N, exponentes
-  ajustados y A/B audible (objetivo / N=4 / N=256).
+- ✅ **Convergence Lab en wasm**: las curvas las calcula el MISMO motor Rust
+  (`lab_target` / `lab_estimate` / `lab_rms` en `raydrone.rs`) corriendo en una
+  instancia aparte dentro de un Web Worker (`lab-worker.js`) — la UI no se congela
+  y se mide el código que suena, no una simulación JS. Semilla fija → CSV
+  reproducible bit a bit. N = 1…8192, 12 tiradas, 5 estrategias; acumuladores f64.
+  Pendientes medidas: random −0.50 (teoría −0.5), stratified/QMC ≈ −0.58.
+  El estimador JS se conserva solo para el A/B audible.
 
 Paridad completa con la versión JS.
 

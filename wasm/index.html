@@ -27,8 +27,7 @@
             .p-optics { grid-column:2; grid-row:2; }
             .p-space  { grid-column:3; grid-row:1; }
             .p-engine { grid-column:3; grid-row:2; }
-            .p-zoom { grid-column:1 / -1; grid-row:3; }
-            .lab    { grid-column:1 / -1; grid-row:4; }
+            .lab    { grid-column:1 / -1; grid-row:3; }
         }
         .panel { background:linear-gradient(180deg, rgba(40,18,24,0.55), rgba(16,9,12,0.92));
                  border:1px solid rgba(255,53,94,0.14); border-radius:14px; padding:16px;
@@ -61,7 +60,7 @@
         select { width:100%; background:#0f1320; color:#cfe; border:1px solid rgba(255,53,94,0.18);
                  border-radius:8px; padding:9px 8px; font-family:monospace; font-size:0.8rem; cursor:pointer; }
         select:focus { outline:none; border-color:var(--accent); }
-        #zoomwave { height:150px; touch-action:none; margin:0 0 12px; }
+        #wave { height:150px; touch-action:pan-y; }
         #lattice { height:130px; cursor:default; margin:0; }
         .btn { width:100%; border:none; padding:14px; border-radius:10px; font-size:1rem; font-weight:bold;
                text-transform:uppercase; letter-spacing:1px; cursor:pointer; transition:all .25s; }
@@ -89,7 +88,11 @@
                 <label class="file-label" id="file-label" for="file">📁 Cargar WAV / MP3</label>
                 <input type="file" id="file" accept="audio/*">
 
-                <canvas id="wave" width="700" height="120"></canvas>
+                <canvas id="wave" width="700" height="150"></canvas>
+                <div class="ctl" style="margin:0 0 10px;">
+                    <label>Zoom (rueda / pellizco · ampliado: click fino, minimapa salta) <span class="v" id="zoom-v">×1</span></label>
+                    <input type="range" id="zoom" min="1" max="64" value="1" step="0.1">
+                </div>
                 <div id="meter"><div id="meter-fill"></div></div>
 
                 <div class="presets" id="scene-presets">
@@ -99,6 +102,7 @@
                 </div>
 
                 <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
+                <button class="btn" id="rec" disabled style="margin-top:8px; background:#1d0c10; color:#ff7d98; border:1px solid rgba(255,53,94,0.35);">● Grabar WAV</button>
                 <div class="status" id="status">Carga un WAV o MP3 para empezar.</div>
             </section>
 
@@ -194,21 +198,10 @@
                 <div id="perf" class="status" style="text-align:left; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,53,94,0.12); line-height:1.6;">CPU audio — · rayos/bloque — · granos/s —<br>latencia: base — · salida —</div>
             </section>
 
-            <!-- ── ZOOM + GRABACIÓN ── -->
-            <section class="panel p-zoom">
-                <div class="panel-title"><span>🔍 Onda · Zoom</span><span id="zoom-info">—</span></div>
-                <canvas id="zoomwave" width="1100" height="150"></canvas>
-                <div class="ctl">
-                    <label>Zoom (rueda / pellizco / slider · click fija el foco fino) <span class="v" id="zoom-v">×8</span></label>
-                    <input type="range" id="zoom" min="1" max="64" value="8" step="0.1">
-                </div>
-                <button class="btn" id="rec" disabled style="background:#1d0c10; color:#ff7d98; border:1px solid rgba(255,53,94,0.35);">● Grabar WAV</button>
-            </section>
-
             <!-- ── ANALYSIS / CONVERGENCE LAB ── -->
             <section class="panel lab">
-                <div class="panel-title"><span>⚗ Convergence Lab</span><span>error RMS vs N · 1/√N</span></div>
-                <div class="sub" style="margin:0 0 10px; text-align:left;">Prueba empírica: el render converge al objetivo con error ~ 1/√N (independiente del motor).</div>
+                <div class="panel-title"><span>⚗ Convergence Lab</span><span>error RMS vs N · 1/√N · wasm</span></div>
+                <div class="sub" style="margin:0 0 10px; text-align:left;">Prueba empírica con el motor real (Rust→wasm en un Worker, semilla fija → reproducible): el render converge al objetivo con error ~ 1/√N.</div>
                 <canvas id="lab-canvas" width="700" height="240"></canvas>
                 <button class="btn btn-play" id="lab-run">▶ Correr test de convergencia</button>
                 <div id="lab-readout" class="status" style="text-align:left; line-height:1.5;">Carga un audio y corre el test.</div>
@@ -243,8 +236,7 @@
     const recBtn = $('rec');
     const presets = Array.from(document.querySelectorAll('#scene-presets .preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
-    const zoomCanvas = $('zoomwave'), zctx = zoomCanvas.getContext('2d');
-    const zoomSlider = $('zoom'), zoomV = $('zoom-v'), zoomInfo = $('zoom-info');
+    const zoomSlider = $('zoom'), zoomV = $('zoom-v');
     const latCanvas = $('lattice'), lctx = latCanvas.getContext('2d');
 
     let ctx = null, jsGain = null, node = null, wasmBytes = null;
@@ -692,33 +684,61 @@
     const BAND_RGB = [[255, 138, 61], [255, 53, 94], [255, 190, 215]];
 
     let meterShown = 0;
+    let zoomPeaks = null, zoomKey = '';
+    const MM_H = 18; // alto de la tira-minimapa (solo visible con zoom)
+
     function frame() {
-        const W = waveCanvas.width, H = waveCanvas.height, mid = H / 2;
+        const W = waveCanvas.width, H = waveCanvas.height;
         wctx.clearRect(0, 0, W, H);
         wctx.fillStyle = '#07080e'; wctx.fillRect(0, 0, W, H);
 
         const dur = Math.max(duration, 0.001);
-        const focusX = (focusSec / dur) * W;
+        const { t0, winDur, z } = zoomWindow();
+        const zoomed = z > 1.001 && !!sampleData;
+        const top = zoomed ? MM_H : 0;       // con zoom, la onda vive bajo el minimapa
+        const mid = top + (H - top) / 2;
+        const t1 = t0 + winDur;
+        const focusX = (focusSec - t0) / winDur * W;
         const glow = 0.4 + Math.min(1, meterShown / 70) * 0.6; // los visuales pulsan con el nivel
 
-        // Cono de dispersión (apertura): zona alrededor del foco de la que salen los rayos
+        // Picos de la ventana visible (cache: solo recalcula al mover foco/zoom/sample).
+        // A ×1 la ventana es el archivo entero → la vista global de siempre.
+        if (sampleData) {
+            const key = `${t0.toFixed(5)}|${z.toFixed(2)}|${sampleData.length}`;
+            if (key !== zoomKey) {
+                zoomKey = key;
+                zoomPeaks = new Float32Array(W);
+                const i0 = Math.floor(t0 / dur * sampleData.length);
+                const span = Math.max(1, Math.floor(winDur / dur * sampleData.length));
+                for (let x = 0; x < W; x++) {
+                    const a = i0 + Math.floor(x / W * span);
+                    const b = Math.min(i0 + Math.floor((x + 1) / W * span), sampleData.length);
+                    let pk = 0;
+                    for (let i = a; i < b; i++) { const v = Math.abs(sampleData[i]); if (v > pk) pk = v; }
+                    zoomPeaks[x] = pk;
+                }
+                zoomV.innerText = zoomed ? `×${z.toFixed(z < 10 ? 1 : 0)} · ${(winDur * 1000).toFixed(0)} ms` : '×1';
+            }
+        }
+
+        // Cono de dispersión (apertura) en la escala de la ventana
         if (sampleData) {
             const t = clamp(parseFloat(charSlider.value) / 100, 0, 1);
             const apSec = 0.02 + t * t * 0.6;
-            const apX = (apSec / dur) * W;
+            const apX = (apSec / winDur) * W;
             const grad = wctx.createLinearGradient(focusX - apX, 0, focusX + apX, 0);
             grad.addColorStop(0, 'rgba(255,53,94,0)');
             grad.addColorStop(0.5, 'rgba(255,53,94,0.10)');
             grad.addColorStop(1, 'rgba(255,53,94,0)');
             wctx.fillStyle = grad;
-            wctx.fillRect(focusX - apX, 0, apX * 2, H);
+            wctx.fillRect(focusX - apX, top, apX * 2, H - top);
         }
 
-        // Onda original
-        if (wavePeaks) {
+        // Onda (de la ventana visible)
+        if (zoomPeaks) {
             wctx.strokeStyle = 'rgba(255,53,94,0.26)'; wctx.beginPath();
             for (let x = 0; x < W; x++) {
-                const a = wavePeaks[x] * (H * 0.45);
+                const a = zoomPeaks[x] * ((H - top) * 0.45);
                 wctx.moveTo(x, mid - a); wctx.lineTo(x, mid + a);
             }
             wctx.stroke();
@@ -726,15 +746,18 @@
 
         // Rayos: cada grano sale de su offset (spread vertical) y converge al foco
         // por un arco mientras se desvanece. Mezcla aditiva → glow real al solaparse.
+        // La vida decae siempre; solo se dibujan los que caen dentro de la ventana.
         wctx.globalCompositeOperation = 'lighter';
-        const spread = H * 0.42;
+        const spread = (H - top) * 0.42;
         for (let i = visRays.length - 1; i >= 0; i--) {
             const r = visRays[i];
             r.life -= 0.022;
             if (r.life <= 0) { visRays.splice(i, 1); continue; }
+            const tsec = r.x * dur;
+            if (tsec < t0 || tsec > t1) continue;
             const p = 1 - r.life;                       // 0 al nacer → 1 al morir
             const ease = p * p * (3 - 2 * p);           // smoothstep: acelera hacia el foco
-            const bx = r.x * W;
+            const bx = (tsec - t0) / winDur * W;
             const arc = (r.seed * 2 - 1) * spread;      // altura de salida (determinista)
             const hx = bx + (focusX - bx) * ease;
             const hy = mid + arc * (1 - ease);
@@ -770,15 +793,33 @@
         wctx.save();
         wctx.shadowColor = '#ff355e'; wctx.shadowBlur = 6 + glow * 16;
         wctx.strokeStyle = `rgba(255,53,94,${0.55 + glow * 0.4})`; wctx.lineWidth = 1.5;
-        wctx.beginPath(); wctx.moveTo(focusX, 0); wctx.lineTo(focusX, H); wctx.stroke();
+        wctx.beginPath(); wctx.moveTo(focusX, top); wctx.lineTo(focusX, H); wctx.stroke();
         wctx.restore();
         wctx.lineWidth = 1;
+
+        // Minimapa (solo con zoom): archivo entero + ventana visible marcada
+        if (zoomed && wavePeaks) {
+            wctx.fillStyle = 'rgba(13,16,28,0.92)'; wctx.fillRect(0, 0, W, MM_H);
+            const mmid = MM_H / 2;
+            wctx.strokeStyle = 'rgba(255,53,94,0.30)'; wctx.beginPath();
+            for (let x = 0; x < W; x += 2) {
+                const a = wavePeaks[x] * (MM_H * 0.42);
+                wctx.moveTo(x, mmid - a); wctx.lineTo(x, mmid + a);
+            }
+            wctx.stroke();
+            const wx0 = t0 / dur * W, wx1 = t1 / dur * W;
+            wctx.fillStyle = 'rgba(255,53,94,0.18)';
+            wctx.fillRect(wx0, 0, Math.max(2, wx1 - wx0), MM_H);
+            wctx.strokeStyle = 'rgba(255,125,152,0.8)';
+            wctx.strokeRect(wx0 + 0.5, 0.5, Math.max(2, wx1 - wx0) - 1, MM_H - 1);
+            wctx.strokeStyle = 'rgba(255,53,94,0.25)';
+            wctx.beginPath(); wctx.moveTo(0, MM_H + 0.5); wctx.lineTo(W, MM_H + 0.5); wctx.stroke();
+        }
 
         // Medidor de salida (suavizado)
         meterShown += (meterTarget - meterShown) * 0.25;
         meterFill.style.width = `${meterShown}%`;
 
-        drawZoom(glow);
         drawLattice(glow);
         requestAnimationFrame(frame);
     }
@@ -789,84 +830,6 @@
         const winDur = Math.max(duration, 0.001) / z;
         const t0 = clamp(focusSec - winDur / 2, 0, Math.max(0, duration - winDur));
         return { t0, winDur, z };
-    }
-
-    let zoomPeaks = null, zoomKey = '';
-    function drawZoom(glow) {
-        const W = zoomCanvas.width, H = zoomCanvas.height, mid = H / 2;
-        zctx.clearRect(0, 0, W, H);
-        zctx.fillStyle = '#07080e'; zctx.fillRect(0, 0, W, H);
-        if (!sampleData) return;
-        const { t0, winDur, z } = zoomWindow();
-        const t1 = t0 + winDur;
-
-        // Picos de la ventana visible (cacheados: solo se recalculan al mover foco/zoom)
-        const key = `${t0.toFixed(5)}|${z.toFixed(2)}|${sampleData.length}`;
-        if (key !== zoomKey) {
-            zoomKey = key;
-            zoomPeaks = new Float32Array(W);
-            const i0 = Math.floor(t0 / duration * sampleData.length);
-            const span = Math.max(1, Math.floor(winDur / duration * sampleData.length));
-            for (let x = 0; x < W; x++) {
-                const a = i0 + Math.floor(x / W * span);
-                const b = Math.min(i0 + Math.floor((x + 1) / W * span), sampleData.length);
-                let pk = 0;
-                for (let i = a; i < b; i++) { const v = Math.abs(sampleData[i]); if (v > pk) pk = v; }
-                zoomPeaks[x] = pk;
-            }
-            zoomInfo.innerText = `×${z.toFixed(z < 10 ? 1 : 0)} · ${(winDur * 1000).toFixed(0)} ms visibles`;
-        }
-
-        const focusX = (focusSec - t0) / winDur * W;
-
-        // Cono de apertura (en la escala de la ventana)
-        const tchar = clamp(parseFloat(charSlider.value) / 100, 0, 1);
-        const apX = (0.02 + tchar * tchar * 0.6) / winDur * W;
-        const grad = zctx.createLinearGradient(focusX - apX, 0, focusX + apX, 0);
-        grad.addColorStop(0, 'rgba(255,53,94,0)');
-        grad.addColorStop(0.5, 'rgba(255,53,94,0.10)');
-        grad.addColorStop(1, 'rgba(255,53,94,0)');
-        zctx.fillStyle = grad;
-        zctx.fillRect(focusX - apX, 0, apX * 2, H);
-
-        // Onda ampliada
-        zctx.strokeStyle = 'rgba(255,53,94,0.30)'; zctx.beginPath();
-        for (let x = 0; x < W; x++) {
-            const a = zoomPeaks[x] * (H * 0.46);
-            zctx.moveTo(x, mid - a); zctx.lineTo(x, mid + a);
-        }
-        zctx.stroke();
-
-        // Rayos dentro de la ventana: mismo arco hacia el foco que en la vista global
-        zctx.globalCompositeOperation = 'lighter';
-        const spread = H * 0.42;
-        for (const r of visRays) {
-            const t = r.x * duration;
-            if (t < t0 || t > t1) continue;
-            const p = 1 - r.life;
-            const ease = p * p * (3 - 2 * p);
-            const bx = (t - t0) / winDur * W;
-            const arc = (r.seed * 2 - 1) * spread;
-            const hx = bx + (focusX - bx) * ease;
-            const hy = mid + arc * (1 - ease);
-            const c = BAND_RGB[r.band] || BAND_RGB[1];
-            const a = r.life * glow;
-            zctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.30})`;
-            zctx.beginPath(); zctx.moveTo(bx, mid + arc); zctx.lineTo(hx, hy); zctx.stroke();
-            zctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.20})`;
-            zctx.beginPath(); zctx.arc(hx, hy, 3.4, 0, 6.283); zctx.fill();
-            zctx.fillStyle = `rgba(255,235,240,${a * 0.55})`;
-            zctx.beginPath(); zctx.arc(hx, hy, 1.2, 0, 6.283); zctx.fill();
-        }
-        zctx.globalCompositeOperation = 'source-over';
-
-        // Eje de foco
-        zctx.save();
-        zctx.shadowColor = '#ff355e'; zctx.shadowBlur = 6 + glow * 14;
-        zctx.strokeStyle = `rgba(255,53,94,${0.55 + glow * 0.4})`; zctx.lineWidth = 1.5;
-        zctx.beginPath(); zctx.moveTo(focusX, 0); zctx.lineTo(focusX, H); zctx.stroke();
-        zctx.restore();
-        zctx.lineWidth = 1;
     }
 
     // ── División tonal: retícula de grados (cents) + cada rayo sobre su línea ──
@@ -915,44 +878,41 @@
         lctx.globalCompositeOperation = 'source-over';
     }
 
+    // Click en la onda: con zoom, la tira-minimapa salta global y el resto fija
+    // el foco fino dentro de la ventana; a ×1 es el click global de siempre.
     waveCanvas.addEventListener('click', (e) => {
         if (!sampleData) return;
         const rect = waveCanvas.getBoundingClientRect();
-        focusSec = clamp((e.clientX - rect.left) / rect.width * duration, 0, duration);
+        const fx = (e.clientX - rect.left) / rect.width;
+        const cy = (e.clientY - rect.top) / rect.height * waveCanvas.height;
+        const { t0, winDur, z } = zoomWindow();
+        if (z > 1.001 && cy <= MM_H) focusSec = clamp(fx * duration, 0, duration);
+        else focusSec = clamp(t0 + fx * winDur, 0, duration);
         if (isPlaying) { if (mode === 'dry') startDry(); else sendParams(true); }
     });
 
     // ── Controles del zoom ──────────────────────────────────────────────────
     function setZoom(z) {
         zoomSlider.value = clamp(z, 1, 64);
-        zoomV.innerText = `×${parseFloat(zoomSlider.value).toFixed(parseFloat(zoomSlider.value) < 10 ? 1 : 0)}`;
+        zoomKey = ''; // fuerza recálculo de picos y de la etiqueta en el próximo frame
     }
     zoomSlider.addEventListener('input', () => setZoom(parseFloat(zoomSlider.value)));
-    setZoom(8);
 
-    zoomCanvas.addEventListener('click', (e) => {
-        if (!sampleData) return;
-        const rect = zoomCanvas.getBoundingClientRect();
-        const { t0, winDur } = zoomWindow();
-        focusSec = clamp(t0 + (e.clientX - rect.left) / rect.width * winDur, 0, duration);
-        if (isPlaying) { if (mode === 'dry') startDry(); else sendParams(true); }
-    });
-
-    zoomCanvas.addEventListener('wheel', (e) => {
+    waveCanvas.addEventListener('wheel', (e) => {
         e.preventDefault();
         setZoom(parseFloat(zoomSlider.value) * Math.pow(1.25, -e.deltaY / 100));
     }, { passive: false });
 
-    // Pellizco (móvil): dos dedos sobre la onda ampliada
+    // Pellizco (móvil): dos dedos sobre la onda
     let pinchD = 0, pinchZ = 1;
-    zoomCanvas.addEventListener('touchstart', (e) => {
+    waveCanvas.addEventListener('touchstart', (e) => {
         if (e.touches.length === 2) {
             pinchD = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
                                 e.touches[0].clientY - e.touches[1].clientY);
             pinchZ = parseFloat(zoomSlider.value);
         }
     }, { passive: true });
-    zoomCanvas.addEventListener('touchmove', (e) => {
+    waveCanvas.addEventListener('touchmove', (e) => {
         if (e.touches.length === 2 && pinchD > 0) {
             e.preventDefault();
             const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
@@ -962,21 +922,25 @@
     }, { passive: false });
 
     // ════════════════════════════════════════════════════════════════════
-    //  CONVERGENCE LAB (experimento Monte Carlo sobre el sample, indep. del motor)
+    //  CONVERGENCE LAB — las curvas las calcula el MISMO motor Rust (raydrone.wasm)
+    //  en un Web Worker, con semilla fija → reproducible y sin congelar la UI.
+    //  (El estimador JS de abajo se conserva solo para el A/B audible.)
     // ════════════════════════════════════════════════════════════════════
     const LAB_GRAIN = 4096;
     const LAB_MAX_A = 6600;                 // apertura máx. para el target exacto (rápido)
-    const LAB_NS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
-    const LAB_TRIALS = 4;
+    const LAB_NS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192];
+    const LAB_TRIALS = 12;
+    const LAB_SEED = 0x9e3779b9;
     const LAB_GOLDEN = 0.6180339887498949;
     const labFract = (x) => x - Math.floor(x);
     const LAB_SERIES = [
-        { k: 'random', c: '#ff6b6b', label: 'Random' },
-        { k: 'stratified', c: '#00ffcc', label: 'Stratified' },
-        { k: 'qmc', c: '#7aa2ff', label: 'Quasi-MC' },
-        { k: 'importance', c: '#ffe066', label: 'Importance' },
-        { k: 'reverse', c: '#c084fc', label: 'Reverse' },
+        { k: 'random', id: 0, c: '#ff6b6b', label: 'Random' },
+        { k: 'stratified', id: 1, c: '#00ffcc', label: 'Stratified' },
+        { k: 'qmc', id: 2, c: '#7aa2ff', label: 'Quasi-MC' },
+        { k: 'importance', id: 3, c: '#ffe066', label: 'Importance' },
+        { k: 'reverse', id: 4, c: '#c084fc', label: 'Reverse' },
     ];
+    let labWorker = null;
     let labHann = null, labCurves = null, labTarget = null, labA = 0, labF0 = 0, labAudio = null;
 
     const labCanvas = $('lab-canvas'), labCtx = labCanvas.getContext('2d');
@@ -1076,27 +1040,41 @@
 
     function labRunTest() {
         if (!sampleData) { labReadout.innerText = 'Carga un audio primero.'; return; }
-        labRun.disabled = true; labReadout.innerText = 'Calculando convergencia…';
-        setTimeout(() => {
-            const t = clamp(parseFloat(charSlider.value) / 100, 0, 1);
-            const apSec = 0.02 + t * t * 0.6;
-            const A = Math.max(1, Math.min(LAB_MAX_A, Math.round(apSec * sampleRate)));
-            const f0 = Math.round(clamp(focusSec, 0, duration) * sampleRate);
-            const target = labComputeTarget(f0, A);
-            const imp = labBuildImp(f0, A);
-            const curves = {};
-            for (const s of LAB_SERIES) {
-                curves[s.k] = LAB_NS.map((N) => {
-                    let acc = 0;
-                    for (let tr = 0; tr < LAB_TRIALS; tr++) acc += labRms(labEstimate(f0, A, N, s.k, imp), target);
-                    return acc / LAB_TRIALS;
-                });
-            }
-            labTarget = target; labA = A; labF0 = f0; labCurves = { Ns: LAB_NS, ...curves };
-            labDrawPlot(); labUpdateReadout();
+        if (!wasmBytes) { labReadout.innerText = 'Motor no iniciado: recarga el audio.'; return; }
+        labRun.disabled = true;
+        labReadout.innerText = 'Convergencia en wasm (motor real, semilla fija)…';
+        const t = clamp(parseFloat(charSlider.value) / 100, 0, 1);
+        const apSec = 0.02 + t * t * 0.6;
+        const A = Math.max(1, Math.min(LAB_MAX_A, Math.round(apSec * sampleRate)));
+        const f0 = Math.round(clamp(focusSec, 0, duration) * sampleRate);
+        if (labWorker) labWorker.terminate();
+        labWorker = new Worker('lab-worker.js');
+        labWorker.onerror = (err) => {
+            labReadout.innerText = `Error en el worker del Lab: ${err.message || err}`;
             labRun.disabled = false;
-            [labTargetBtn, labNoisyBtn, labCleanBtn, labStopBtn, labCsvBtn].forEach((b) => b.disabled = false);
-        }, 20);
+        };
+        labWorker.onmessage = (e) => {
+            const d = e.data;
+            if (d.type === 'progress') {
+                labReadout.innerText = `Convergencia (wasm)… ${d.done}/${d.total}`;
+            } else if (d.type === 'error') {
+                labReadout.innerText = `Error en el Lab (wasm): ${d.message}`;
+                labRun.disabled = false;
+            } else if (d.type === 'done') {
+                labTarget = d.target; labA = A; labF0 = f0;
+                labCurves = { Ns: LAB_NS, ...d.curves };
+                labDrawPlot(); labUpdateReadout();
+                labRun.disabled = false;
+                [labTargetBtn, labNoisyBtn, labCleanBtn, labStopBtn, labCsvBtn].forEach((b) => b.disabled = false);
+                labWorker.terminate(); labWorker = null;
+            }
+        };
+        labWorker.postMessage({
+            type: 'run',
+            wasmBytes, sample: sampleData, sampleRate,
+            f0, A, Ns: LAB_NS, trials: LAB_TRIALS, seed: LAB_SEED,
+            methods: LAB_SERIES.map((s) => ({ k: s.k, id: s.id })),
+        });
     }
 
     // Export CSV de las curvas del Lab (para las figuras del paper, reproducible).
@@ -1104,7 +1082,7 @@
         if (!labCurves) return;
         const Ns = labCurves.Ns;
         let csv = `# RayDrone Convergence Lab\n`;
-        csv += `# aperture_ms=${(labA / sampleRate * 1000).toFixed(1)}, grain=${LAB_GRAIN}, trials=${LAB_TRIALS}, focus_s=${(labF0 / sampleRate).toFixed(3)}, sr=${sampleRate}\n`;
+        csv += `# aperture_ms=${(labA / sampleRate * 1000).toFixed(1)}, grain=${LAB_GRAIN}, trials=${LAB_TRIALS}, focus_s=${(labF0 / sampleRate).toFixed(3)}, sr=${sampleRate}, impl=wasm-engine, seed=0x${LAB_SEED.toString(16)}\n`;
         csv += `# slopes: ${LAB_SERIES.map((s) => `${s.k}=${labFitSlope(Ns, labCurves[s.k]).toFixed(4)}`).join(', ')}\n`;
         csv += 'N,' + LAB_SERIES.map((s) => s.k).join(',') + '\n';
         for (let i = 0; i < Ns.length; i++) {

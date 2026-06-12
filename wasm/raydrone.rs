@@ -135,6 +135,24 @@ static mut SLOG_W: u32 = 0;
 // Diagnóstico de rendimiento
 static mut SPAWN_COUNT: u32 = 0; // total de granos disparados (para granos/seg)
 
+// ── Convergence Lab: el MISMO estimador del motor, medible offline.
+// Corre en una instancia aparte de este módulo dentro de un Web Worker (no toca
+// el hilo de audio). Acumuladores en f64 para que el suelo de error medido sea
+// del estimador, no de la precisión de la suma. RNG sembrable → reproducible.
+const LAB_D: usize = 4096;
+const LAB_AMAX: usize = 6600;
+const LAB_LEN: usize = 2 * LAB_AMAX + 1;
+const LAB_GOLDEN64: f64 = 0.618_033_988_749_894_9;
+static mut LAB_WIN: [f32; LAB_D] = [0.0; LAB_D];
+static mut LAB_TGT: [f64; LAB_D] = [0.0; LAB_D];
+static mut LAB_EST: [f64; LAB_D] = [0.0; LAB_D];
+static mut LAB_T32: [f32; LAB_D] = [0.0; LAB_D];
+static mut LAB_PM: [f32; LAB_LEN] = [0.0; LAB_LEN];
+static mut LAB_QM: [f32; LAB_LEN] = [0.0; LAB_LEN];
+static mut LAB_CUM: [f32; LAB_LEN] = [0.0; LAB_LEN];
+static mut LAB_EN: [f32; LAB_LEN] = [0.0; LAB_LEN];
+static mut LAB_EMAX: f32 = 0.000_001;
+
 #[derive(Clone, Copy)]
 struct Voice {
     active: bool,
@@ -580,6 +598,241 @@ fn scale_ratio() -> f32 {
 pub extern "C" fn seed(s: u32) {
     unsafe {
         RNG = if s == 0 { 1 } else { s };
+    }
+}
+
+// ── Convergence Lab ─────────────────────────────────────────────────────────
+#[inline]
+fn lab_s(i: i64) -> f64 {
+    unsafe {
+        if i >= 0 && (i as usize) < SAMPLE_LEN {
+            SAMPLE[i as usize] as f64
+        } else {
+            0.0
+        }
+    }
+}
+
+#[inline]
+fn fract64(x: f64) -> f64 {
+    x - (x as i64 as f64) // válido para x >= 0 (aquí siempre)
+}
+
+#[inline]
+fn roundi(x: f32) -> i64 {
+    if x >= 0.0 {
+        (x + 0.5) as i64
+    } else {
+        -(((-x) + 0.5) as i64)
+    }
+}
+
+#[inline]
+fn lab_clamp_a(a: i32) -> i32 {
+    if a < 1 {
+        1
+    } else if a as usize > LAB_AMAX {
+        LAB_AMAX as i32
+    } else {
+        a
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn lab_win_ptr() -> *mut f32 {
+    unsafe { LAB_WIN.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn lab_target_ptr() -> *mut f32 {
+    unsafe { LAB_T32.as_mut_ptr() } // copia f32 del objetivo (para el A/B audible)
+}
+#[no_mangle]
+pub extern "C" fn lab_grain() -> usize {
+    LAB_D
+}
+#[no_mangle]
+pub extern "C" fn lab_max_a() -> usize {
+    LAB_AMAX
+}
+
+// Objetivo determinista: tgt[n] = win[n] · Σₖ p(k)·s(f0+k+n), p triangular.
+#[no_mangle]
+pub extern "C" fn lab_target(f0: i32, a: i32) {
+    unsafe {
+        let a = lab_clamp_a(a);
+        let inv_a2 = 1.0f64 / ((a as f64) * (a as f64));
+        for n in 0..LAB_D {
+            LAB_TGT[n] = 0.0;
+        }
+        let mut k = -a;
+        while k <= a {
+            let pk = ((a - if k < 0 { -k } else { k }) as f64) * inv_a2;
+            if pk > 0.0 {
+                let b = f0 as i64 + k as i64;
+                for n in 0..LAB_D {
+                    LAB_TGT[n] += pk * lab_s(b + n as i64);
+                }
+            }
+            k += 1;
+        }
+        for n in 0..LAB_D {
+            LAB_TGT[n] *= LAB_WIN[n] as f64;
+            LAB_T32[n] = LAB_TGT[n] as f32;
+        }
+    }
+}
+
+// Distribuciones para importance/reverse: p (triangular), q ∝ p·energía, CDF y energía.
+#[no_mangle]
+pub extern "C" fn lab_imp_build(f0: i32, a: i32) {
+    unsafe {
+        let a = lab_clamp_a(a);
+        let len = (2 * a + 1) as usize;
+        let stride = 8usize;
+        let taps = (LAB_D + stride - 1) / stride;
+        let inv_a2 = 1.0f32 / ((a * a) as f32);
+        let mut ps = 0.0f32;
+        let mut qs = 0.0f32;
+        LAB_EMAX = 0.000_001;
+        for idx in 0..len {
+            let k = idx as i32 - a;
+            let p = ((a - k.abs()) as f32) * inv_a2;
+            let b = f0 as i64 + k as i64;
+            let mut s = 0.0f32;
+            let mut n = 0usize;
+            while n < LAB_D {
+                let v = lab_s(b + n as i64) as f32;
+                s += v * v;
+                n += stride;
+            }
+            let e = sqrtf(s / (taps as f32)) + 0.000_001;
+            LAB_EN[idx] = e;
+            if e > LAB_EMAX {
+                LAB_EMAX = e;
+            }
+            LAB_PM[idx] = p;
+            LAB_QM[idx] = p * e;
+            ps += p;
+            qs += p * e;
+        }
+        let mut acc = 0.0f32;
+        for idx in 0..len {
+            LAB_PM[idx] /= ps;
+            LAB_QM[idx] = if qs > 0.0 { LAB_QM[idx] / qs } else { 1.0 / (len as f32) };
+            acc += LAB_QM[idx];
+            LAB_CUM[idx] = acc;
+        }
+    }
+}
+
+#[inline]
+fn lab_cum_search(len: usize, r: f32) -> usize {
+    unsafe {
+        let mut lo = 0usize;
+        let mut hi = len - 1;
+        while lo < hi {
+            let m = (lo + hi) >> 1;
+            if LAB_CUM[m] < r {
+                lo = m + 1;
+            } else {
+                hi = m;
+            }
+        }
+        lo
+    }
+}
+
+// Una estimación con N rayos. method: 0 random, 1 stratified, 2 QMC (áurea),
+// 3 importance (reponderado, insesgado), 4 reverse (rejection ∝ energía, sesgado
+// — exactamente lo que hace el motor en vivo con los rayos inteligentes).
+#[no_mangle]
+pub extern "C" fn lab_estimate(f0: i32, a: i32, n_rays: u32, method: u32, sd: u32) {
+    unsafe {
+        let a = lab_clamp_a(a);
+        RNG = if sd == 0 { 1 } else { sd };
+        let n = if n_rays < 1 { 1 } else { n_rays } as usize;
+        for m in 0..LAB_D {
+            LAB_EST[m] = 0.0;
+        }
+        let rot = rng01() as f64;
+        if method == 3 {
+            let len = (2 * a + 1) as usize;
+            let mut ws = 0.0f64;
+            for i in 0..n {
+                let u = ((i as f32) + rng01()) / (n as f32);
+                let idx = lab_cum_search(len, u);
+                let k = idx as i32 - a;
+                let wi = (LAB_PM[idx] / LAB_QM[idx]) as f64;
+                ws += wi;
+                let b = f0 as i64 + k as i64;
+                for m in 0..LAB_D {
+                    LAB_EST[m] += wi * lab_s(b + m as i64);
+                }
+            }
+            let inv = if ws > 0.0 { 1.0 / ws } else { 0.0 };
+            for m in 0..LAB_D {
+                LAB_EST[m] *= inv * (LAB_WIN[m] as f64);
+            }
+        } else if method == 4 {
+            let len = (2 * a + 1) as i64;
+            for _ in 0..n {
+                let mut k = roundi(tri_inv(rng01()) * (a as f32));
+                let mut tries = 0;
+                while tries < 6 {
+                    let mut idx = k + a as i64;
+                    if idx < 0 {
+                        idx = 0;
+                    }
+                    if idx >= len {
+                        idx = len - 1;
+                    }
+                    if LAB_EN[idx as usize] >= LAB_EMAX * rng01() {
+                        break;
+                    }
+                    k = roundi(tri_inv(rng01()) * (a as f32));
+                    tries += 1;
+                }
+                let b = f0 as i64 + k;
+                for m in 0..LAB_D {
+                    LAB_EST[m] += lab_s(b + m as i64);
+                }
+            }
+            let inv = 1.0 / (n as f64);
+            for m in 0..LAB_D {
+                LAB_EST[m] *= inv * (LAB_WIN[m] as f64);
+            }
+        } else {
+            for i in 0..n {
+                let u: f32 = match method {
+                    1 => ((i as f32) + rng01()) / (n as f32),
+                    // f64: con N grande, la fase de Kronecker en f32 perdería la
+                    // estructura de baja discrepancia.
+                    2 => fract64(rot + (i as f64) * LAB_GOLDEN64) as f32,
+                    _ => rng01(),
+                };
+                let k = roundi(tri_inv(u) * (a as f32));
+                let b = f0 as i64 + k;
+                for m in 0..LAB_D {
+                    LAB_EST[m] += lab_s(b + m as i64);
+                }
+            }
+            let inv = 1.0 / (n as f64);
+            for m in 0..LAB_D {
+                LAB_EST[m] *= inv * (LAB_WIN[m] as f64);
+            }
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn lab_rms() -> f32 {
+    unsafe {
+        let mut s = 0.0f64;
+        for m in 0..LAB_D {
+            let d = LAB_EST[m] - LAB_TGT[m];
+            s += d * d;
+        }
+        sqrtf((s / (LAB_D as f64)) as f32)
     }
 }
 
