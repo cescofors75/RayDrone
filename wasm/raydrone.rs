@@ -67,6 +67,19 @@ static mut WIDTH: f32 = 0.0;
 static mut OCT: f32 = 0.0;
 static mut PITCH_STEP: f32 = 1.0; // multiplicador de velocidad de lectura (transposición)
 
+// ── Escala microtonal: tabla de ratios de un período (octava, tritava…).
+// Vacía (len=0) = pitch continuo, comportamiento de siempre. Cada grano coge
+// un grado de la tabla; el muestreo del grado respeta MODE: estratificado
+// recorre los grados como estratos exactos (cobertura homogénea), QMC usa una
+// secuencia de Kronecker con la constante plástica (R2), decorrelada de la
+// áurea que ya muestrea el eje temporal.
+const SCALE_CAP: usize = 64;
+static mut SCALE: [f32; SCALE_CAP] = [1.0; SCALE_CAP];
+static mut SCALE_LEN: usize = 0;
+static mut SCALE_I: u32 = 0; // estratificado: round-robin por grados
+static mut QMC_P: f32 = 0.5; // QMC pitch (componente R2)
+const R2_ALPHA: f32 = 0.754_877_7; // 1/φ₂, φ₂ = constante plástica ≈ 1.324718
+
 // ── Reverb (Freeverb-lite): 4 combs + 2 allpass por canal, estéreo ──────────
 const NC: usize = 4;
 const NA: usize = 2;
@@ -512,6 +525,52 @@ pub extern "C" fn set_pitch(mult: f32) {
     }
 }
 
+// ── Escala microtonal ──
+#[no_mangle]
+pub extern "C" fn scale_ptr() -> *mut f32 {
+    unsafe { SCALE.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn scale_capacity() -> usize {
+    SCALE_CAP
+}
+#[no_mangle]
+pub extern "C" fn set_scale(len: usize) {
+    unsafe {
+        SCALE_LEN = if len > SCALE_CAP { SCALE_CAP } else { len };
+        SCALE_I = 0;
+    }
+}
+
+// Grado de la escala para el grano nuevo. La dimensión pitch se muestrea
+// aparte de la temporal: estratificado puro sobre los grados (cada grado es
+// un estrato → ningún micro-intervalo queda sin cubrir) o Kronecker R2 en QMC.
+#[inline]
+fn scale_ratio() -> f32 {
+    unsafe {
+        if SCALE_LEN == 0 {
+            return 1.0;
+        }
+        let n = SCALE_LEN;
+        let idx = match MODE {
+            1 => {
+                QMC_P += R2_ALPHA;
+                if QMC_P >= 1.0 {
+                    QMC_P -= 1.0;
+                }
+                (QMC_P * (n as f32)) as usize
+            }
+            2 => {
+                let i = (SCALE_I as usize) % n;
+                SCALE_I = SCALE_I.wrapping_add(1);
+                i
+            }
+            _ => (rng01() * (n as f32)) as usize,
+        };
+        SCALE[if idx >= n { n - 1 } else { idx }]
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn seed(s: u32) {
     unsafe {
@@ -619,7 +678,9 @@ fn place(pos: f32, band: u8, depth: u32) {
             return;
         }
         let detune = 1.0 + (rng01() - 0.5) * DETUNE; // micro-detune lush (batidos entre granos)
-        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * detune; // octava × transposición × detune
+        // octava × transposición × grado microtonal × detune: la retícula exacta
+        // de la escala + el detune ⇒ enjambre alrededor de cada grado, no comb estático.
+        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * scale_ratio() * detune;
         let pan = (rng01() * 2.0 - 1.0) * WIDTH; // paneo aleatorio según el ancho
         let panl = sqrtf((1.0 - pan) * 0.5); // equal-power
         let panr = sqrtf((1.0 + pan) * 0.5);

@@ -82,6 +82,15 @@ Motor con paridad casi completa con la versión JS:
 - ✅ **Estéreo (Width)**: paneo equal-power por grano → nube ancha e inmersiva.
 - ✅ **Octava / Shimmer**: probabilidad de que cada grano suene una octava arriba.
 - ✅ **Pitch (transposición)**: ±12 semitonos (multiplicador de velocidad de lectura).
+- ✅ **Escala (textura microtonal)**: cada grano coge un grado de una tabla de ratios
+  (12/19/22/24-EDO, justa entonación, Bohlen–Pierce). El grado se muestrea con la
+  misma maquinaria de reducción de varianza que el eje temporal: estratificado puro
+  (cada grado = un estrato → cobertura homogénea de la retícula) o Kronecker R2
+  (constante plástica, decorrelada de la áurea del tiempo). El micro-detune ±4 cents
+  convierte la retícula exacta en enjambre. Coste extra: ~0 (solo cambia la
+  distribución del multiplicador de lectura). Verificado espectralmente: contraste
+  grados/huecos ≈ 55×; el grado peor cubierto queda 22× sobre el fondo con QMC
+  frente a ~10× con random.
 - ✅ **Reverb (espacio)**: reverb estéreo Freeverb-lite (4 combs + 2 allpass por canal).
 - ✅ **Trazado inverso (opcional)**: precalcula la energía del sample y lanza los rayos
   hacia donde hay señal (importance desde la fuente) → menos rayos malgastados, más

@@ -63,6 +63,11 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             ex.set_space(d.width, d.oct);
         } else if (d.type === 'pitch') {
             ex.set_pitch(d.mult);
+        } else if (d.type === 'scale') {
+            // Tabla de ratios microtonales (vacía = pitch continuo)
+            const len = Math.min(d.data.length, ex.scale_capacity());
+            if (len) new Float32Array(this.mem.buffer, ex.scale_ptr(), len).set(d.data.subarray(0, len));
+            ex.set_scale(len);
         } else if (d.type === 'reverb') {
             ex.set_reverb(d.wet);
         } else if (d.type === 'smart') {

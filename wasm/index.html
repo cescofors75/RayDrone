@@ -57,6 +57,9 @@
         input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
                               background:var(--accent); cursor:pointer; box-shadow:0 0 10px var(--accent); }
         input[type="checkbox"] { width:20px; height:20px; accent-color:var(--accent); cursor:pointer; }
+        select { width:100%; background:#0f1320; color:#cfe; border:1px solid rgba(255,53,94,0.18);
+                 border-radius:8px; padding:9px 8px; font-family:monospace; font-size:0.8rem; cursor:pointer; }
+        select:focus { outline:none; border-color:var(--accent); }
         .btn { width:100%; border:none; padding:14px; border-radius:10px; font-size:1rem; font-weight:bold;
                text-transform:uppercase; letter-spacing:1px; cursor:pointer; transition:all .25s; }
         .btn-play { background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; margin-top:8px; }
@@ -125,6 +128,18 @@
                     <label>Pitch (transposición) <span class="v" id="pitch-v">0 st</span></label>
                     <input type="range" id="pitch" min="-12" max="12" value="0" step="1">
                 </div>
+                <div class="ctl">
+                    <label>Escala (textura microtonal) <span class="v" id="scale-v">Libre</span></label>
+                    <select id="scale">
+                        <option value="off" selected>Libre (pitch continuo)</option>
+                        <option value="12edo">12-EDO · cromática</option>
+                        <option value="24edo">24-EDO · cuartos de tono</option>
+                        <option value="22edo">22-EDO · shruti</option>
+                        <option value="19edo">19-EDO</option>
+                        <option value="ji7">Justa entonación · 7 grados</option>
+                        <option value="bp">Bohlen–Pierce · 13 ÷ tritava</option>
+                    </select>
+                </div>
             </section>
 
             <!-- ── SPACE ── -->
@@ -191,6 +206,7 @@
     const widthSlider = $('width'), widthV = $('width-v');
     const octSlider = $('oct'), octV = $('oct-v');
     const pitchSlider = $('pitch'), pitchV = $('pitch-v');
+    const scaleSel = $('scale'), scaleV = $('scale-v');
     const reverbSlider = $('reverb'), reverbV = $('reverb-v');
     const smartChk = $('smart'), smartV = $('smart-v');
     const meterFill = $('meter-fill');
@@ -256,6 +272,24 @@
         node.port.postMessage({ type: 'reverb', wet: parseFloat(reverbSlider.value) / 100 });
     }
 
+    // ── Escalas microtonales: ratios de un período (octava o tritava) ──────
+    function scaleRatios(kind) {
+        const edo = (n, period = 2) => Array.from({ length: n }, (_, i) => Math.pow(period, i / n));
+        switch (kind) {
+            case '12edo': return edo(12);
+            case '24edo': return edo(24);
+            case '22edo': return edo(22);
+            case '19edo': return edo(19);
+            case 'ji7':   return [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8]; // mayor justa
+            case 'bp':    return edo(13, 3); // Bohlen–Pierce: 13 divisiones iguales de la tritava 3:1
+            default:      return []; // tabla vacía = pitch continuo (sin retícula)
+        }
+    }
+    function sendScale() {
+        if (!node) return;
+        node.port.postMessage({ type: 'scale', data: Float32Array.from(scaleRatios(scaleSel.value)) });
+    }
+
     function sendSmart() {
         if (!node) return;
         node.port.postMessage({ type: 'smart', on: smartChk.checked ? 1 : 0 });
@@ -319,6 +353,7 @@
             sendPitch();
             sendReverb();
             sendSmart();
+            sendScale();
         }
         if (sampleData) {
             node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
@@ -475,6 +510,12 @@
         const s = parseInt(pitchSlider.value, 10);
         pitchV.innerText = `${s > 0 ? '+' : ''}${s} st`;
         sendPitch();
+    });
+
+    scaleSel.addEventListener('change', () => {
+        const n = scaleRatios(scaleSel.value).length;
+        scaleV.innerText = n ? `${n} grados` : 'Libre';
+        sendScale();
     });
 
     reverbSlider.addEventListener('input', () => {
