@@ -27,7 +27,8 @@
             .p-optics { grid-column:2; grid-row:2; }
             .p-space  { grid-column:3; grid-row:1; }
             .p-engine { grid-column:3; grid-row:2; }
-            .lab    { grid-column:1 / -1; grid-row:3; }
+            .p-zoom { grid-column:1 / -1; grid-row:3; }
+            .lab    { grid-column:1 / -1; grid-row:4; }
         }
         .panel { background:linear-gradient(180deg, rgba(40,18,24,0.55), rgba(16,9,12,0.92));
                  border:1px solid rgba(255,53,94,0.14); border-radius:14px; padding:16px;
@@ -60,6 +61,8 @@
         select { width:100%; background:#0f1320; color:#cfe; border:1px solid rgba(255,53,94,0.18);
                  border-radius:8px; padding:9px 8px; font-family:monospace; font-size:0.8rem; cursor:pointer; }
         select:focus { outline:none; border-color:var(--accent); }
+        #zoomwave { height:150px; touch-action:none; margin:0 0 12px; }
+        #lattice { height:130px; cursor:default; margin:0; }
         .btn { width:100%; border:none; padding:14px; border-radius:10px; font-size:1rem; font-weight:bold;
                text-transform:uppercase; letter-spacing:1px; cursor:pointer; transition:all .25s; }
         .btn-play { background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; margin-top:8px; }
@@ -96,7 +99,6 @@
                 </div>
 
                 <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
-                <button class="btn" id="rec" disabled style="margin-top:8px; background:#1d0c10; color:#ff7d98; border:1px solid rgba(255,53,94,0.35);">● Grabar WAV</button>
                 <div class="status" id="status">Carga un WAV o MP3 para empezar.</div>
             </section>
 
@@ -151,6 +153,10 @@
                         <option value="penta">Pentatónica · 5 grados</option>
                     </select>
                 </div>
+                <div class="ctl">
+                    <label>División tonal (cada rayo en su grado)</label>
+                    <canvas id="lattice" width="380" height="130"></canvas>
+                </div>
             </section>
 
             <!-- ── SPACE ── -->
@@ -186,6 +192,17 @@
                     <input type="checkbox" id="smart">
                 </div>
                 <div id="perf" class="status" style="text-align:left; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,53,94,0.12); line-height:1.6;">CPU audio — · rayos/bloque — · granos/s —<br>latencia: base — · salida —</div>
+            </section>
+
+            <!-- ── ZOOM + GRABACIÓN ── -->
+            <section class="panel p-zoom">
+                <div class="panel-title"><span>🔍 Onda · Zoom</span><span id="zoom-info">—</span></div>
+                <canvas id="zoomwave" width="1100" height="150"></canvas>
+                <div class="ctl">
+                    <label>Zoom (rueda / pellizco / slider · click fija el foco fino) <span class="v" id="zoom-v">×8</span></label>
+                    <input type="range" id="zoom" min="1" max="64" value="8" step="0.1">
+                </div>
+                <button class="btn" id="rec" disabled style="background:#1d0c10; color:#ff7d98; border:1px solid rgba(255,53,94,0.35);">● Grabar WAV</button>
             </section>
 
             <!-- ── ANALYSIS / CONVERGENCE LAB ── -->
@@ -226,6 +243,9 @@
     const recBtn = $('rec');
     const presets = Array.from(document.querySelectorAll('#scene-presets .preset'));
     const waveCanvas = $('wave'), wctx = waveCanvas.getContext('2d');
+    const zoomCanvas = $('zoomwave'), zctx = zoomCanvas.getContext('2d');
+    const zoomSlider = $('zoom'), zoomV = $('zoom-v'), zoomInfo = $('zoom-info');
+    const latCanvas = $('lattice'), lctx = latCanvas.getContext('2d');
 
     let ctx = null, jsGain = null, node = null, wasmBytes = null;
     let sampleData = null, sampleRate = 44100, duration = 0;
@@ -383,7 +403,7 @@
             node.connect(jsGain);
             node.port.onmessage = (e) => {       // rayos + nivel + perf + grabación desde el worklet
                 const d = e.data;
-                if (d.type === 'rays') { pushRays(d.offsets, d.bands); setMeter(d.level); }
+                if (d.type === 'rays') { pushRays(d.offsets, d.bands, d.ratios); setMeter(d.level); }
                 else if (d.type === 'level') setMeter(d.level);
                 else if (d.type === 'recdata') saveRecording(d);
                 else if (d.type === 'sampleinfo' && d.truncated) {
@@ -653,11 +673,17 @@
         }
     }
 
-    function pushRays(offsets, bands) {
+    function pushRays(offsets, bands, ratios) {
         const inv = 1 / Math.max(duration, 0.001);
         for (let k = 0; k < offsets.length; k++) {
             // seed estable por rayo: define su altura de salida y la curva del arco
-            visRays.push({ x: offsets[k] * inv, band: bands ? (bands[k] | 0) : 1, life: 1.0, seed: Math.random() });
+            visRays.push({
+                x: offsets[k] * inv,
+                band: bands ? (bands[k] | 0) : 1,
+                ratio: ratios ? ratios[k] : 1,
+                life: 1.0,
+                seed: Math.random(),
+            });
         }
         if (visRays.length > 450) visRays.splice(0, visRays.length - 450);
     }
@@ -752,7 +778,141 @@
         meterShown += (meterTarget - meterShown) * 0.25;
         meterFill.style.width = `${meterShown}%`;
 
+        drawZoom(glow);
+        drawLattice(glow);
         requestAnimationFrame(frame);
+    }
+
+    // ── Zoom: ventana ampliada alrededor del foco, con sus rayos ────────────
+    function zoomWindow() {
+        const z = clamp(parseFloat(zoomSlider.value), 1, 64);
+        const winDur = Math.max(duration, 0.001) / z;
+        const t0 = clamp(focusSec - winDur / 2, 0, Math.max(0, duration - winDur));
+        return { t0, winDur, z };
+    }
+
+    let zoomPeaks = null, zoomKey = '';
+    function drawZoom(glow) {
+        const W = zoomCanvas.width, H = zoomCanvas.height, mid = H / 2;
+        zctx.clearRect(0, 0, W, H);
+        zctx.fillStyle = '#07080e'; zctx.fillRect(0, 0, W, H);
+        if (!sampleData) return;
+        const { t0, winDur, z } = zoomWindow();
+        const t1 = t0 + winDur;
+
+        // Picos de la ventana visible (cacheados: solo se recalculan al mover foco/zoom)
+        const key = `${t0.toFixed(5)}|${z.toFixed(2)}|${sampleData.length}`;
+        if (key !== zoomKey) {
+            zoomKey = key;
+            zoomPeaks = new Float32Array(W);
+            const i0 = Math.floor(t0 / duration * sampleData.length);
+            const span = Math.max(1, Math.floor(winDur / duration * sampleData.length));
+            for (let x = 0; x < W; x++) {
+                const a = i0 + Math.floor(x / W * span);
+                const b = Math.min(i0 + Math.floor((x + 1) / W * span), sampleData.length);
+                let pk = 0;
+                for (let i = a; i < b; i++) { const v = Math.abs(sampleData[i]); if (v > pk) pk = v; }
+                zoomPeaks[x] = pk;
+            }
+            zoomInfo.innerText = `×${z.toFixed(z < 10 ? 1 : 0)} · ${(winDur * 1000).toFixed(0)} ms visibles`;
+        }
+
+        const focusX = (focusSec - t0) / winDur * W;
+
+        // Cono de apertura (en la escala de la ventana)
+        const tchar = clamp(parseFloat(charSlider.value) / 100, 0, 1);
+        const apX = (0.02 + tchar * tchar * 0.6) / winDur * W;
+        const grad = zctx.createLinearGradient(focusX - apX, 0, focusX + apX, 0);
+        grad.addColorStop(0, 'rgba(255,53,94,0)');
+        grad.addColorStop(0.5, 'rgba(255,53,94,0.10)');
+        grad.addColorStop(1, 'rgba(255,53,94,0)');
+        zctx.fillStyle = grad;
+        zctx.fillRect(focusX - apX, 0, apX * 2, H);
+
+        // Onda ampliada
+        zctx.strokeStyle = 'rgba(255,53,94,0.30)'; zctx.beginPath();
+        for (let x = 0; x < W; x++) {
+            const a = zoomPeaks[x] * (H * 0.46);
+            zctx.moveTo(x, mid - a); zctx.lineTo(x, mid + a);
+        }
+        zctx.stroke();
+
+        // Rayos dentro de la ventana: mismo arco hacia el foco que en la vista global
+        zctx.globalCompositeOperation = 'lighter';
+        const spread = H * 0.42;
+        for (const r of visRays) {
+            const t = r.x * duration;
+            if (t < t0 || t > t1) continue;
+            const p = 1 - r.life;
+            const ease = p * p * (3 - 2 * p);
+            const bx = (t - t0) / winDur * W;
+            const arc = (r.seed * 2 - 1) * spread;
+            const hx = bx + (focusX - bx) * ease;
+            const hy = mid + arc * (1 - ease);
+            const c = BAND_RGB[r.band] || BAND_RGB[1];
+            const a = r.life * glow;
+            zctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.30})`;
+            zctx.beginPath(); zctx.moveTo(bx, mid + arc); zctx.lineTo(hx, hy); zctx.stroke();
+            zctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.20})`;
+            zctx.beginPath(); zctx.arc(hx, hy, 3.4, 0, 6.283); zctx.fill();
+            zctx.fillStyle = `rgba(255,235,240,${a * 0.55})`;
+            zctx.beginPath(); zctx.arc(hx, hy, 1.2, 0, 6.283); zctx.fill();
+        }
+        zctx.globalCompositeOperation = 'source-over';
+
+        // Eje de foco
+        zctx.save();
+        zctx.shadowColor = '#ff355e'; zctx.shadowBlur = 6 + glow * 14;
+        zctx.strokeStyle = `rgba(255,53,94,${0.55 + glow * 0.4})`; zctx.lineWidth = 1.5;
+        zctx.beginPath(); zctx.moveTo(focusX, 0); zctx.lineTo(focusX, H); zctx.stroke();
+        zctx.restore();
+        zctx.lineWidth = 1;
+    }
+
+    // ── División tonal: retícula de grados (cents) + cada rayo sobre su línea ──
+    function drawLattice(glow) {
+        const W = latCanvas.width, H = latCanvas.height;
+        lctx.clearRect(0, 0, W, H);
+        lctx.fillStyle = '#07080e'; lctx.fillRect(0, 0, W, H);
+        const all = scaleRatios(scaleSel.value);
+        if (!all.length) {
+            lctx.fillStyle = 'rgba(138,153,173,0.6)';
+            lctx.font = '11px monospace';
+            lctx.fillText('Libre: pitch continuo (sin retícula)', 12, H / 2 + 4);
+            return;
+        }
+        const period = scaleSel.value === 'bp' ? 3 : 2;
+        const act = activeRatios();
+        const yOf = (r) => H - 10 - (Math.log(r) / Math.log(period)) * (H - 20);
+        const centsOf = (r) => 1200 * Math.log2(r);
+
+        // Todas las divisiones de la escala (tenues) + grados activos (claros, con cents)
+        lctx.font = '9px monospace';
+        for (const r of all) {
+            const y = yOf(r);
+            const active = act.includes(r);
+            lctx.strokeStyle = active ? 'rgba(255,53,94,0.55)' : 'rgba(255,53,94,0.10)';
+            lctx.beginPath(); lctx.moveTo(34, y); lctx.lineTo(W, y); lctx.stroke();
+            if (active) {
+                lctx.fillStyle = 'rgba(255,125,152,0.9)';
+                lctx.fillText(`${Math.round(centsOf(r))}¢`, 2, y + 3);
+            }
+        }
+
+        // Rayos: cada uno viaja por la línea de su grado mientras se apaga
+        lctx.globalCompositeOperation = 'lighter';
+        for (const r of visRays) {
+            if (!r.ratio || r.ratio <= 0) continue;
+            const y = yOf(clamp(r.ratio, 1, period * 0.999));
+            const x = 34 + (1 - r.life) * (W - 34);
+            const c = BAND_RGB[r.band] || BAND_RGB[1];
+            const a = r.life * glow;
+            lctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.25})`;
+            lctx.beginPath(); lctx.arc(x, y, 3.0, 0, 6.283); lctx.fill();
+            lctx.fillStyle = `rgba(255,235,240,${a * 0.6})`;
+            lctx.beginPath(); lctx.arc(x, y, 1.1, 0, 6.283); lctx.fill();
+        }
+        lctx.globalCompositeOperation = 'source-over';
     }
 
     waveCanvas.addEventListener('click', (e) => {
@@ -761,6 +921,45 @@
         focusSec = clamp((e.clientX - rect.left) / rect.width * duration, 0, duration);
         if (isPlaying) { if (mode === 'dry') startDry(); else sendParams(true); }
     });
+
+    // ── Controles del zoom ──────────────────────────────────────────────────
+    function setZoom(z) {
+        zoomSlider.value = clamp(z, 1, 64);
+        zoomV.innerText = `×${parseFloat(zoomSlider.value).toFixed(parseFloat(zoomSlider.value) < 10 ? 1 : 0)}`;
+    }
+    zoomSlider.addEventListener('input', () => setZoom(parseFloat(zoomSlider.value)));
+    setZoom(8);
+
+    zoomCanvas.addEventListener('click', (e) => {
+        if (!sampleData) return;
+        const rect = zoomCanvas.getBoundingClientRect();
+        const { t0, winDur } = zoomWindow();
+        focusSec = clamp(t0 + (e.clientX - rect.left) / rect.width * winDur, 0, duration);
+        if (isPlaying) { if (mode === 'dry') startDry(); else sendParams(true); }
+    });
+
+    zoomCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        setZoom(parseFloat(zoomSlider.value) * Math.pow(1.25, -e.deltaY / 100));
+    }, { passive: false });
+
+    // Pellizco (móvil): dos dedos sobre la onda ampliada
+    let pinchD = 0, pinchZ = 1;
+    zoomCanvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            pinchD = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                                e.touches[0].clientY - e.touches[1].clientY);
+            pinchZ = parseFloat(zoomSlider.value);
+        }
+    }, { passive: true });
+    zoomCanvas.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && pinchD > 0) {
+            e.preventDefault();
+            const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                                 e.touches[0].clientY - e.touches[1].clientY);
+            setZoom(pinchZ * d / pinchD);
+        }
+    }, { passive: false });
 
     // ════════════════════════════════════════════════════════════════════
     //  CONVERGENCE LAB (experimento Monte Carlo sobre el sample, indep. del motor)

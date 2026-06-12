@@ -126,9 +126,10 @@ static mut ENERGY: [f32; EBINS] = [0.0; EBINS];
 static mut EMAX: f32 = 0.000001;
 static mut SMART: u32 = 0; // 1 = rayos inteligentes (trazado inverso)
 
-// Registro de rayos para la visualización (offset en seg + banda)
+// Registro de rayos para la visualización (offset en seg + banda + ratio del grado)
 static mut SLOG: [f32; SLOG_CAP] = [0.0; SLOG_CAP];
 static mut SLOG_B: [f32; SLOG_CAP] = [0.0; SLOG_CAP];
+static mut SLOG_S: [f32; SLOG_CAP] = [1.0; SLOG_CAP];
 static mut SLOG_W: u32 = 0;
 
 // Diagnóstico de rendimiento
@@ -324,6 +325,10 @@ pub extern "C" fn slog_ptr() -> *mut f32 {
 #[no_mangle]
 pub extern "C" fn slog_b_ptr() -> *mut f32 {
     unsafe { SLOG_B.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn slog_s_ptr() -> *mut f32 {
+    unsafe { SLOG_S.as_mut_ptr() }
 }
 #[no_mangle]
 pub extern "C" fn slog_w() -> u32 {
@@ -635,11 +640,12 @@ fn band_filter(i: usize, x: f32) -> f32 {
 }
 
 #[inline]
-fn log_push(off_sec: f32, band: u8) {
+fn log_push(off_sec: f32, band: u8, ratio: f32) {
     unsafe {
         let w = (SLOG_W as usize) % SLOG_CAP;
         SLOG[w] = off_sec;
         SLOG_B[w] = band as f32;
+        SLOG_S[w] = ratio;
         SLOG_W = SLOG_W.wrapping_add(1);
     }
 }
@@ -680,7 +686,8 @@ fn place(pos: f32, band: u8, depth: u32) {
         let detune = 1.0 + (rng01() - 0.5) * DETUNE; // micro-detune lush (batidos entre granos)
         // octava × transposición × grado microtonal × detune: la retícula exacta
         // de la escala + el detune ⇒ enjambre alrededor de cada grado, no comb estático.
-        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * scale_ratio() * detune;
+        let ratio = scale_ratio();
+        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * ratio * detune;
         let pan = (rng01() * 2.0 - 1.0) * WIDTH; // paneo aleatorio según el ancho
         let panl = sqrtf((1.0 - pan) * 0.5); // equal-power
         let panr = sqrtf((1.0 + pan) * 0.5);
@@ -698,7 +705,7 @@ fn place(pos: f32, band: u8, depth: u32) {
             panl,
             panr,
         };
-        log_push(pos / SR, band);
+        log_push(pos / SR, band, ratio);
         SPAWN_COUNT = SPAWN_COUNT.wrapping_add(1);
     }
 }

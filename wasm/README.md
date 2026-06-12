@@ -102,6 +102,12 @@ Motor con paridad casi completa con la versión JS:
   lleno y limpio. Brilla con material disperso; con notas sostenidas la mejora es leve.
 - ✅ **Visual**: cono de dispersión, rayos coloreados por banda (grave/medio/agudo),
   medidor de salida y glow reactivo al nivel.
+- ✅ **Onda · Zoom**: vista ampliada alrededor del foco (rueda, pellizco en móvil o
+  slider, ×1–×64) con sus rayos; click en ella fija el foco con precisión fina.
+  El botón Grabar WAV vive debajo.
+- ✅ **División tonal**: visor junto a los selectores de escala/acorde — la retícula
+  de grados en cents (activos resaltados) y cada rayo viajando sobre la línea del
+  grado que le tocó (el motor registra el ratio por rayo).
 - ✅ **Convergence Lab**: experimento Monte Carlo sobre el sample (N = 1…4096, las 4
   estrategias), gráfica error RMS vs N en log-log con la línea ideal 1/√N, exponentes
   ajustados y A/B audible (objetivo / N=4 / N=256).

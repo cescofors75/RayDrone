@@ -17,6 +17,7 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.lastW = 0;
         this.rayOff = [];
         this.rayBand = [];
+        this.rayRatio = [];
         this.blockCount = 0;
         // Diagnóstico de rendimiento
         this.now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : null;
@@ -120,12 +121,14 @@ class RayDroneProcessor extends AudioWorkletProcessor {
                 const cap = this.ex.slog_cap();
                 const off = new Float32Array(this.mem.buffer, this.ex.slog_ptr(), cap);
                 const bnd = new Float32Array(this.mem.buffer, this.ex.slog_b_ptr(), cap);
+                const rat = new Float32Array(this.mem.buffer, this.ex.slog_s_ptr(), cap);
                 let count = (w - this.lastW) >>> 0;
                 if (count > cap) count = cap;
                 for (let k = 0; k < count; k++) {
                     const idx = (this.lastW + k) % cap;
                     this.rayOff.push(off[idx]);
                     this.rayBand.push(bnd[idx]);
+                    this.rayRatio.push(rat[idx]);
                 }
                 this.lastW = w;
             }
@@ -146,9 +149,10 @@ class RayDroneProcessor extends AudioWorkletProcessor {
                 const perf = { cpu, voices, spawnsPerSec };
 
                 if (this.rayOff.length) {
-                    this.port.postMessage({ type: 'rays', offsets: this.rayOff, bands: this.rayBand, level, perf });
+                    this.port.postMessage({ type: 'rays', offsets: this.rayOff, bands: this.rayBand, ratios: this.rayRatio, level, perf });
                     this.rayOff = [];
                     this.rayBand = [];
+                    this.rayRatio = [];
                 } else {
                     this.port.postMessage({ type: 'level', level, perf });
                 }
