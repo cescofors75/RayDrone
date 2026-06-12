@@ -91,6 +91,11 @@ Motor con paridad casi completa con la versión JS:
   distribución del multiplicador de lectura). Verificado espectralmente: contraste
   grados/huecos ≈ 55×; el grado peor cubierto queda 22× sobre el fondo con QMC
   frente a ~10× con random.
+- ✅ **Acorde (grados activos)**: subconjunto de la escala — tónica, quinta, tríada
+  4:5:6, tétrada 4:5:6:7 (en BP, el acorde canónico 3:5:7) o pentatónica. Para cada
+  ratio objetivo se usa el grado más cercano de la escala, así el mismo acorde queda
+  afinado distinto en cada temperamento y la diferencia entre escalas se vuelve
+  audible (con todos los grados activos, cualquier EDO denso suena a cluster).
 - ✅ **Reverb (espacio)**: reverb estéreo Freeverb-lite (4 combs + 2 allpass por canal).
 - ✅ **Trazado inverso (opcional)**: precalcula la energía del sample y lanza los rayos
   hacia donde hay señal (importance desde la fuente) → menos rayos malgastados, más

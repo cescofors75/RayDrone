@@ -140,6 +140,17 @@
                         <option value="bp">Bohlen–Pierce · 13 ÷ tritava</option>
                     </select>
                 </div>
+                <div class="ctl">
+                    <label>Acorde (grados activos) <span class="v" id="chord-v">—</span></label>
+                    <select id="chord">
+                        <option value="cluster" selected>Cluster · todos los grados</option>
+                        <option value="tonic">Tónica (drone)</option>
+                        <option value="fifth">Tónica + quinta</option>
+                        <option value="triad">Tríada · 4:5:6</option>
+                        <option value="tetrad">Tétrada armónica · 4:5:6:7</option>
+                        <option value="penta">Pentatónica · 5 grados</option>
+                    </select>
+                </div>
             </section>
 
             <!-- ── SPACE ── -->
@@ -207,6 +218,7 @@
     const octSlider = $('oct'), octV = $('oct-v');
     const pitchSlider = $('pitch'), pitchV = $('pitch-v');
     const scaleSel = $('scale'), scaleV = $('scale-v');
+    const chordSel = $('chord'), chordV = $('chord-v');
     const reverbSlider = $('reverb'), reverbV = $('reverb-v');
     const smartChk = $('smart'), smartV = $('smart-v');
     const meterFill = $('meter-fill');
@@ -285,9 +297,45 @@
             default:      return []; // tabla vacía = pitch continuo (sin retícula)
         }
     }
+    // Acorde = subconjunto de grados. Con TODOS los grados activos cualquier EDO
+    // denso suena a cluster cromático y los temperamentos no se distinguen; al
+    // restringir a un acorde, cada escala afina sus intervalos a su manera y la
+    // diferencia 12/19/22-EDO/justa se vuelve audible. Para cada ratio objetivo
+    // se elige el grado más cercano de la escala (en cents).
+    function chordTargets(kind, scaleKind) {
+        const bp = scaleKind === 'bp'; // BP: el acorde canónico es 3:5:7 en la tritava
+        switch (kind) {
+            case 'tonic':  return [1];
+            case 'fifth':  return bp ? [1, 5 / 3] : [1, 3 / 2];
+            case 'triad':  return bp ? [1, 5 / 3, 7 / 3] : [1, 5 / 4, 3 / 2];
+            case 'tetrad': return bp ? [1, 5 / 3, 9 / 5, 7 / 3] : [1, 5 / 4, 3 / 2, 7 / 4];
+            default:       return null; // cluster: todos los grados
+        }
+    }
+    function activeRatios() {
+        const all = scaleRatios(scaleSel.value);
+        if (!all.length) return all;
+        const kind = chordSel.value;
+        if (kind === 'penta') { // 5 grados equiespaciados dentro de la escala
+            const out = [];
+            for (let i = 0; i < 5; i++) out.push(all[Math.round(i * all.length / 5) % all.length]);
+            return [...new Set(out)].sort((a, b) => a - b);
+        }
+        const targets = chordTargets(kind, scaleSel.value);
+        if (!targets) return all;
+        const pick = targets.map((t) =>
+            all.reduce((best, r) => Math.abs(Math.log(r / t)) < Math.abs(Math.log(best / t)) ? r : best, all[0]));
+        return [...new Set(pick)].sort((a, b) => a - b);
+    }
+    function updateScaleLabels() {
+        const all = scaleRatios(scaleSel.value);
+        const act = activeRatios();
+        scaleV.innerText = all.length ? `${all.length} grados` : 'Libre';
+        chordV.innerText = all.length ? `${act.length} de ${all.length}` : '—';
+    }
     function sendScale() {
         if (!node) return;
-        node.port.postMessage({ type: 'scale', data: Float32Array.from(scaleRatios(scaleSel.value)) });
+        node.port.postMessage({ type: 'scale', data: Float32Array.from(activeRatios()) });
     }
 
     function sendSmart() {
@@ -512,11 +560,8 @@
         sendPitch();
     });
 
-    scaleSel.addEventListener('change', () => {
-        const n = scaleRatios(scaleSel.value).length;
-        scaleV.innerText = n ? `${n} grados` : 'Libre';
-        sendScale();
-    });
+    scaleSel.addEventListener('change', () => { updateScaleLabels(); sendScale(); });
+    chordSel.addEventListener('change', () => { updateScaleLabels(); sendScale(); });
 
     reverbSlider.addEventListener('input', () => {
         reverbV.innerText = `${reverbSlider.value} %`;
