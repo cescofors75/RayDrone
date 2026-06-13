@@ -80,6 +80,32 @@ static mut SCALE_I: u32 = 0; // estratificado: round-robin por grados
 static mut QMC_P: f32 = 0.5; // QMC pitch (componente R2)
 const R2_ALPHA: f32 = 0.754_877_7; // 1/φ₂, φ₂ = constante plástica ≈ 1.324718
 
+// ── Ambient: focos múltiples autónomos + árbol recursivo de focos ───────────
+// Modo ambient (AMB_ON=1): en vez de un único FOCUS, una constelación de focos.
+// Las SEMILLAS se colocan en baja discrepancia (golden ratio) a lo largo del
+// sample y derivan solas (paseo aleatorio lento, independiente por foco).
+// Recursión: cada cierto tiempo un foco "padre" (depth>0) engendra un foco hijo
+// cerca suyo, con offset/apertura/vida que encogen por nivel → estructura
+// auto-similar (secciones → frases → granos comparten la misma ley generativa).
+// Cada grano elige su foco ponderado por el peso (envolvente de fade del foco).
+const FMAX: usize = 48;
+static mut FPOS: [f32; FMAX] = [0.0; FMAX];   // posición (segundos)
+static mut FVEL: [f32; FMAX] = [0.0; FMAX];   // deriva (seg/seg)
+static mut FW: [f32; FMAX] = [0.0; FMAX];     // peso actual (0..1, con fade)
+static mut FWT: [f32; FMAX] = [0.0; FMAX];    // peso objetivo
+static mut FDEPTH: [u8; FMAX] = [0; FMAX];    // niveles de recursión restantes
+static mut FAGE: [f32; FMAX] = [0.0; FMAX];   // edad (s)
+static mut FTTL: [f32; FMAX] = [0.0; FMAX];   // vida (s); <0 = inmortal (semilla)
+static mut FACT: [bool; FMAX] = [false; FMAX];
+static mut AMB_ON: u32 = 0;
+static mut AMB_SEEDS: u32 = 3;
+static mut AMB_DEPTH: u32 = 2;
+static mut AMB_SPREAD: f32 = 0.25; // offset del hijo = SPREAD·span·shrink
+static mut AMB_DRIFT: f32 = 0.3;   // velocidad de deriva
+static mut AMB_RATE: f32 = 0.4;    // nacimientos de focos por segundo
+static mut AMB_DIRTY: bool = true; // recolocar semillas
+static mut FOCI_ACC: f32 = 0.0;    // acumulador de nacimientos
+
 // ── Reverb (Freeverb-lite): 4 combs + 2 allpass por canal, estéreo ──────────
 const NC: usize = 4;
 const NA: usize = 2;
@@ -376,6 +402,7 @@ pub extern "C" fn set_sample(len: usize, sr: f32) {
     unsafe {
         SAMPLE_LEN = if len > SAMPLE_CAP { SAMPLE_CAP } else { len };
         SR = if sr > 1.0 { sr } else { 44100.0 };
+        AMB_DIRTY = true; // recolocar las semillas al span del nuevo sample
     }
     update_coeffs();
     build_energy();
@@ -592,6 +619,231 @@ fn scale_ratio() -> f32 {
         };
         SCALE[if idx >= n { n - 1 } else { idx }]
     }
+}
+
+// ── Ambient: focos múltiples + recursión ────────────────────────────────────
+#[no_mangle]
+pub extern "C" fn set_ambient(on: u32, seeds: u32, depth: u32, spread: f32, drift: f32, rate: f32) {
+    unsafe {
+        let was = AMB_ON;
+        AMB_ON = if on != 0 { 1 } else { 0 };
+        let ns = if seeds < 1 { 1 } else if seeds > 8 { 8 } else { seeds };
+        if ns != AMB_SEEDS || was != AMB_ON {
+            AMB_DIRTY = true; // recolocar semillas si cambia el nº o se enciende
+        }
+        AMB_SEEDS = ns;
+        AMB_DEPTH = if depth > 4 { 4 } else { depth };
+        AMB_SPREAD = clampf(spread, 0.0, 1.0);
+        AMB_DRIFT = clampf(drift, 0.0, 1.0);
+        AMB_RATE = clampf(rate, 0.0, 4.0);
+    }
+}
+
+#[inline]
+fn powf_i(base: f32, n: u32) -> f32 {
+    let mut r = 1.0f32;
+    let mut i = 0;
+    while i < n {
+        r *= base;
+        i += 1;
+    }
+    r
+}
+
+#[inline]
+fn focus_span() -> f32 {
+    unsafe {
+        let s = (SAMPLE_LEN as f32) / SR;
+        if s > 0.0 {
+            s
+        } else {
+            0.0
+        }
+    }
+}
+
+// (Re)colocar las semillas en baja discrepancia (golden ratio) a lo largo del
+// sample: máxima dispersión, sin solapes. Inmortales y a peso pleno.
+fn reinit_foci() {
+    unsafe {
+        let span = focus_span();
+        for i in 0..FMAX {
+            FACT[i] = false;
+            FW[i] = 0.0;
+        }
+        let ns = AMB_SEEDS as usize;
+        for i in 0..ns {
+            let g = 0.5 + (i as f32) * 0.618_034;
+            let u = g - (g as u32 as f32); // parte fraccionaria (g siempre > 0)
+            FPOS[i] = u * span;
+            FVEL[i] = (rng01() - 0.5) * AMB_DRIFT * span * 0.02;
+            FW[i] = 1.0;
+            FWT[i] = 1.0;
+            FDEPTH[i] = AMB_DEPTH as u8;
+            FAGE[i] = 0.0;
+            FTTL[i] = -1.0; // inmortal
+            FACT[i] = true;
+        }
+        FOCI_ACC = 0.0;
+        AMB_DIRTY = false;
+    }
+}
+
+fn free_focus_slot() -> i32 {
+    unsafe {
+        for i in 0..FMAX {
+            if !FACT[i] {
+                return i as i32;
+            }
+        }
+        -1
+    }
+}
+
+// Engendrar un foco hijo: padre elegido ponderado entre los que aún tienen
+// niveles (depth>0). El hijo cae cerca, con offset/vida/peso que encogen por
+// nivel → árbol auto-similar.
+fn birth_focus() {
+    unsafe {
+        let slot = free_focus_slot();
+        if slot < 0 {
+            return;
+        }
+        // padre ponderado por peso, con depth>0
+        let mut sum = 0.0f32;
+        for i in 0..FMAX {
+            if FACT[i] && FDEPTH[i] > 0 {
+                sum += FW[i];
+            }
+        }
+        if sum <= 0.0 {
+            return;
+        }
+        let mut r = rng01() * sum;
+        let mut parent = -1i32;
+        for i in 0..FMAX {
+            if FACT[i] && FDEPTH[i] > 0 {
+                r -= FW[i];
+                if r <= 0.0 {
+                    parent = i as i32;
+                    break;
+                }
+            }
+        }
+        if parent < 0 {
+            return;
+        }
+        let p = parent as usize;
+        let level = (AMB_DEPTH as i32 - FDEPTH[p] as i32 + 1).max(0) as u32; // 1 en el primer nivel
+        let shrink = powf_i(0.55, level);
+        let span = focus_span();
+        let off = (rng01() - 0.5) * 2.0 * AMB_SPREAD * span * shrink;
+        let s = slot as usize;
+        FPOS[s] = clampf(FPOS[p] + off, 0.0, span);
+        FVEL[s] = (rng01() - 0.5) * AMB_DRIFT * span * 0.02 * (1.0 + shrink);
+        FW[s] = 0.0; // fade-in
+        FWT[s] = FW[p] * 0.72; // hijos más discretos
+        FDEPTH[s] = FDEPTH[p] - 1;
+        FAGE[s] = 0.0;
+        FTTL[s] = 12.0 * shrink; // vida finita, más corta a escala fina
+        FACT[s] = true;
+    }
+}
+
+// Avanzar la constelación dt segundos: deriva, fades, nacimientos, muertes.
+fn update_foci(dt: f32) {
+    unsafe {
+        if AMB_ON == 0 {
+            return;
+        }
+        let span = focus_span();
+        if span <= 0.0 {
+            return;
+        }
+        if AMB_DIRTY {
+            reinit_foci();
+        }
+        let maxv = AMB_DRIFT * span * 0.03;
+        let fade = if dt / 1.5 < 1.0 { dt / 1.5 } else { 1.0 };
+        for i in 0..FMAX {
+            if !FACT[i] {
+                continue;
+            }
+            FAGE[i] += dt;
+            // deriva: re-aleatorizar velocidad de vez en cuando (~cada 3 s)
+            if rng01() < dt / 3.0 {
+                FVEL[i] = (rng01() - 0.5) * 2.0 * maxv;
+            }
+            let mut pos = FPOS[i] + FVEL[i] * dt;
+            if pos < 0.0 {
+                pos = -pos;
+                FVEL[i] = -FVEL[i];
+            } else if pos > span {
+                pos = 2.0 * span - pos;
+                FVEL[i] = -FVEL[i];
+            }
+            FPOS[i] = clampf(pos, 0.0, span);
+            // envolvente de peso: los mortales se apagan al acercarse a su TTL
+            if FTTL[i] >= 0.0 && FAGE[i] > FTTL[i] - 1.5 {
+                FWT[i] = 0.0;
+            }
+            FW[i] += (FWT[i] - FW[i]) * fade;
+            if FTTL[i] >= 0.0 && FAGE[i] > FTTL[i] && FW[i] < 0.002 {
+                FACT[i] = false;
+                FW[i] = 0.0;
+            }
+        }
+        // nacimientos
+        if AMB_DEPTH > 0 {
+            FOCI_ACC += AMB_RATE * dt;
+            let mut guard = 0;
+            while FOCI_ACC >= 1.0 && guard < 8 {
+                birth_focus();
+                FOCI_ACC -= 1.0;
+                guard += 1;
+            }
+        }
+    }
+}
+
+// Elegir foco ponderado por peso → (índice, factor de apertura por nivel).
+// Devuelve índice -1 si no hay constelación (cae al FOCUS único de siempre).
+fn pick_focus() -> i32 {
+    unsafe {
+        let mut sum = 0.0f32;
+        for i in 0..FMAX {
+            if FACT[i] {
+                sum += FW[i];
+            }
+        }
+        if sum <= 0.0 {
+            return -1;
+        }
+        let mut r = rng01() * sum;
+        for i in 0..FMAX {
+            if FACT[i] {
+                r -= FW[i];
+                if r <= 0.0 {
+                    return i as i32;
+                }
+            }
+        }
+        -1
+    }
+}
+
+// Punteros para la visualización de la constelación (posición en seg + peso).
+#[no_mangle]
+pub extern "C" fn foci_ptr() -> *mut f32 {
+    unsafe { FPOS.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn foci_w_ptr() -> *mut f32 {
+    unsafe { FW.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn foci_cap() -> usize {
+    FMAX
 }
 
 #[no_mangle]
@@ -986,10 +1238,20 @@ fn spawn() {
             }
         };
         let span = (SAMPLE_LEN as f32) / SR;
-        // Autoevolución acotada: el barrido del foco y la apertura crecen con FEEDBACK
-        // pero con techos suaves, para que valores altos modulen sin volverse caóticos.
-        let eff_focus = clampf(FOCUS + (EVO - 0.5) * FEEDBACK * span * 0.45, 0.0, span);
-        let eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 0.8);
+        // Foco efectivo: en ambient, un foco de la constelación (ponderado por peso),
+        // con apertura más cerrada a escala fina (auto-similar). Si no, el FOCUS
+        // único de siempre con su autoevolución acotada por FEEDBACK.
+        let (eff_focus, eff_ap);
+        let fsel = if AMB_ON == 1 { pick_focus() } else { -1 };
+        if fsel >= 0 {
+            let fi = fsel as usize;
+            let level = (AMB_DEPTH as i32 - FDEPTH[fi] as i32).max(0) as u32;
+            eff_focus = clampf(FPOS[fi], 0.0, span);
+            eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 0.8) * powf_i(0.7, level);
+        } else {
+            eff_focus = clampf(FOCUS + (EVO - 0.5) * FEEDBACK * span * 0.45, 0.0, span);
+            eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 0.8);
+        }
         let mut off_sec = eff_focus + tri_inv(next_u()) * eff_ap * scale;
         // Trazado inverso: rejection ∝ energía → los rayos caen donde hay señal.
         if SMART == 1 {
@@ -1018,6 +1280,8 @@ pub extern "C" fn process(frames: usize) {
         } else {
             0.0
         };
+        // La constelación de focos avanza una vez por bloque (deriva lenta).
+        update_foci(n as f32 / SR);
         for f in 0..n {
             SPAWN_ACC += rate_per_sample;
             while SPAWN_ACC >= 1.0 {

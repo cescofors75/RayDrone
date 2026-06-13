@@ -80,6 +80,15 @@ Motor con paridad casi completa con la versión JS:
   nace un grano hijo (cola/transporte), con tope de profundidad.
 - ✅ **Autoevolución recursiva**: la envolvente de la salida realimenta foco y
   apertura → el drone se modula a sí mismo.
+- ✅ **Ambient · focos recursivos**: en vez de un único foco, una constelación.
+  Las semillas se reparten en baja discrepancia (golden ratio) sobre el sample y
+  derivan solas (paseo aleatorio lento, independiente por foco). Recursión: cada
+  foco engendra focos hijo más breves y cercanos, con offset/apertura/vida que
+  encogen por nivel → estructura **auto-similar** (la misma ley QMC a escala de
+  sección, frase y grano). Controles: semillas, niveles del árbol, dispersión,
+  deriva, nacimientos/seg. La constelación se dibuja sobre la onda (un bloom y un
+  eje por foco, opacidad ∝ peso) y sobre el minimapa. Coste: O(focos) por bloque
+  (≤48 focos) + O(focos) por grano; el bucle de audio sigue siendo O(voces).
 - ✅ **Estéreo (Width)**: paneo equal-power por grano → nube ancha e inmersiva.
 - ✅ **Octava / Shimmer**: probabilidad de que cada grano suene una octava arriba.
 - ✅ **Pitch (transposición)**: ±12 semitonos (multiplicador de velocidad de lectura).

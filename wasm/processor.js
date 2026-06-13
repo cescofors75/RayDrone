@@ -73,6 +73,9 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             ex.set_reverb(d.wet);
         } else if (d.type === 'smart') {
             ex.set_smart(d.on >>> 0);
+        } else if (d.type === 'ambient') {
+            ex.set_ambient(d.on >>> 0, d.seeds >>> 0, d.depth >>> 0, d.spread, d.drift, d.rate);
+            this.ambOn = (d.on >>> 0) === 1;
         }
     }
 
@@ -148,13 +151,23 @@ class RayDroneProcessor extends AudioWorkletProcessor {
                 this.cpuAcc = 0; this.cpuBlocks = 0;
                 const perf = { cpu, voices, spawnsPerSec };
 
+                // Constelación de focos (solo en ambient): posición + peso de cada foco vivo.
+                let foci = null;
+                if (this.ambOn) {
+                    const cap = this.ex.foci_cap();
+                    const fp = new Float32Array(this.mem.buffer, this.ex.foci_ptr(), cap);
+                    const fw = new Float32Array(this.mem.buffer, this.ex.foci_w_ptr(), cap);
+                    foci = [];
+                    for (let i = 0; i < cap; i++) if (fw[i] > 0.004) foci.push(fp[i], fw[i]);
+                }
+
                 if (this.rayOff.length) {
-                    this.port.postMessage({ type: 'rays', offsets: this.rayOff, bands: this.rayBand, ratios: this.rayRatio, level, perf });
+                    this.port.postMessage({ type: 'rays', offsets: this.rayOff, bands: this.rayBand, ratios: this.rayRatio, foci, level, perf });
                     this.rayOff = [];
                     this.rayBand = [];
                     this.rayRatio = [];
                 } else {
-                    this.port.postMessage({ type: 'level', level, perf });
+                    this.port.postMessage({ type: 'level', foci, level, perf });
                 }
             }
         } else {
