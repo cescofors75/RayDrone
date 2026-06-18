@@ -79,6 +79,9 @@ struct RayDroneParams {
     /// Autoevolution — recursive feedback. The output drifts focus & aperture on its own.
     #[id = "evolve"]
     evolve: FloatParam,
+    /// Shimmer — probability a grain plays an octave up (airy sheen).
+    #[id = "shimmer"]
+    shimmer: FloatParam,
     /// Master output level.
     #[id = "master"]
     master: FloatParam,
@@ -129,6 +132,11 @@ impl Default for RayDroneParams {
                 .with_string_to_value(formatters::s2v_f32_percentage()),
 
             evolve: FloatParam::new("Evolve", 0.3, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_unit(" %")
+                .with_value_to_string(formatters::v2s_f32_percentage(0))
+                .with_string_to_value(formatters::s2v_f32_percentage()),
+
+            shimmer: FloatParam::new("Shimmer", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit(" %")
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
@@ -242,6 +250,7 @@ impl Plugin for RayDrone {
         self.engine.set_focus(self.params.focus.value());
         self.engine.set_reverb(self.params.reverb.value());
         self.engine.set_feedback(self.params.evolve.value());
+        self.engine.set_octave(self.params.shimmer.value());
 
         for mut frame in buffer.iter_samples() {
             self.engine.set_master(self.params.master.smoothed.next());
@@ -337,11 +346,27 @@ fn draw_ui(
         ui.separator();
         ui.add_space(6.0);
 
+        // ── Presets (the "Simple mode": one click sets the character) ────────
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Character:").color(egui::Color32::from_gray(160)));
+            if preset_button(ui, "Tonal").clicked() {
+                apply_preset(setter, params, Preset::Tonal);
+            }
+            if preset_button(ui, "Drone").clicked() {
+                apply_preset(setter, params, Preset::Drone);
+            }
+            if preset_button(ui, "Shimmer").clicked() {
+                apply_preset(setter, params, Preset::Shimmer);
+            }
+        });
+        ui.add_space(6.0);
+
         labeled(ui, "Density", &params.density, setter);
         labeled(ui, "Aperture", &params.aperture, setter);
         labeled(ui, "Focus", &params.focus, setter);
         labeled(ui, "Reverb", &params.reverb, setter);
         labeled(ui, "Evolve", &params.evolve, setter);
+        labeled(ui, "Shimmer", &params.shimmer, setter);
         labeled(ui, "Master", &params.master, setter);
 
         ui.add_space(10.0);
@@ -503,6 +528,45 @@ fn labeled(ui: &mut egui::Ui, name: &str, param: &FloatParam, setter: &ParamSett
     ui.label(name);
     ui.add(widgets::ParamSlider::for_param(param, setter));
     ui.add_space(4.0);
+}
+
+// ── Presets ("Simple mode") ─────────────────────────────────────────────────
+#[derive(Clone, Copy)]
+enum Preset {
+    Tonal,
+    Drone,
+    Shimmer,
+}
+
+fn preset_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    ui.add(
+        egui::Button::new(egui::RichText::new(label).color(egui::Color32::from_gray(230)))
+            .fill(BG1)
+            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(70))),
+    )
+}
+
+/// Set one parameter as a complete host gesture (so DAW automation records it).
+fn set_p(setter: &ParamSetter, param: &FloatParam, value: f32) {
+    setter.begin_set_parameter(param);
+    setter.set_parameter(param, value);
+    setter.end_set_parameter(param);
+}
+
+/// Move the character knobs (density + aperture + reverb + evolve + shimmer) to a
+/// preset. Focus and Master are left to the user. Mirrors the classic Simple mode.
+fn apply_preset(setter: &ParamSetter, params: &Arc<RayDroneParams>, preset: Preset) {
+    // (density, aperture_ms, reverb, evolve, shimmer)
+    let (d, a, rev, evo, shim) = match preset {
+        Preset::Tonal => (140.0, 6.0, 0.10, 0.10, 0.0),
+        Preset::Drone => (320.0, 700.0, 0.35, 0.45, 0.0),
+        Preset::Shimmer => (420.0, 220.0, 0.50, 0.60, 0.5),
+    };
+    set_p(setter, &params.density, d);
+    set_p(setter, &params.aperture, a);
+    set_p(setter, &params.reverb, rev);
+    set_p(setter, &params.evolve, evo);
+    set_p(setter, &params.shimmer, shim);
 }
 
 // ── WAV loading ─────────────────────────────────────────────────────────────

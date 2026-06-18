@@ -27,7 +27,7 @@ exactly as a rendered image emerges from the convergence of light rays.
 | Version | File | Engine | Status |
 |---|---|---|---|
 | **WASM** (current) | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** | ✅ **Actively developed** — per-sample engine, stereo, reverb, Convergence Lab, WAV export |
-| **VST** (plugin) | [`vst/`](vst/) → [`vst/README.md`](vst/README.md) | **Rust + nih-plug (VST3 / CLAP)** | 🎛️ **Simplified** — loads a WAV scene, 6 knobs incl. recursive autoevolution, live ray visualizer |
+| **VST** (plugin) | [`vst/`](vst/) → [`vst/README.md`](vst/README.md) | **Rust + nih-plug (VST3 / CLAP)** | 🎛️ **Simplified** — loads a WAV scene, 7 knobs + Tonal/Drone/Shimmer presets, recursive autoevolution, live ray visualizer |
 | **Classic** (legacy) | [`rta.html`](rta.html) | Vanilla JS + Web Audio API | 🧊 **Frozen** — kept as a no-build demo; no new features |
 
 Both implement the same idea, but **all development happens in the WASM version**: it

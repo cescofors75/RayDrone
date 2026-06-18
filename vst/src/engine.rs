@@ -74,6 +74,7 @@ pub struct Engine {
     master: f32,      // output gain (linear)
     reverb_wet: f32,
     feedback: f32,    // autoevolution amount (recursive feedback)
+    octave: f32,      // probability a grain plays an octave up (shimmer)
     mode: u32, // 0 random, 1 QMC (golden), 2 stratified
 
     // Recursive autoevolution: the output envelope feeds back into focus/aperture,
@@ -140,6 +141,7 @@ impl Engine {
             master: 0.5,
             reverb_wet: 0.2,
             feedback: 0.3,
+            octave: 0.0,
             mode: 1,
             env: 0.0,
             evo: 0.5,
@@ -253,6 +255,9 @@ impl Engine {
     pub fn set_feedback(&mut self, amount: f32) {
         self.feedback = clampf(amount, 0.0, 1.0);
     }
+    pub fn set_octave(&mut self, p: f32) {
+        self.octave = clampf(p, 0.0, 1.0);
+    }
 
     // ── Visualization getters (read by the GUI thread) ──────────────────────
     pub fn viz_level(&self) -> f32 {
@@ -351,7 +356,9 @@ impl Engine {
         }
         let detune = 1.0 + (self.rng01() - 0.5) * DETUNE;
         // Read speed: sample-rate ratio keeps pitch correct across host SR.
-        let step = (self.samp_sr / self.host_sr) * detune;
+        // Shimmer: some grains read an octave up (×2) for a bright, airy sheen.
+        let oct = if self.rng01() < self.octave { 2.0 } else { 1.0 };
+        let step = oct * (self.samp_sr / self.host_sr) * detune;
         let pan = (self.rng01() * 2.0 - 1.0) * WIDTH;
         let panl = ((1.0 - pan) * 0.5).sqrt(); // equal-power
         let panr = ((1.0 + pan) * 0.5).sqrt();

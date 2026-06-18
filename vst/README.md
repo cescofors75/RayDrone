@@ -17,10 +17,20 @@ is a per-instance port of `wasm/raydrone.rs` in [`src/engine.rs`](src/engine.rs)
 | **Focus** | Camera focal point | Position in the sample the rays are cast around |
 | **Reverb** | — | Freeverb-lite wet mix |
 | **Evolve** | Recursive transport | Autoevolution: the output envelope feeds back into focus & aperture so the drone drifts and breathes on its own |
+| **Shimmer** | Octave transport | Probability a grain reads an octave up → airy, bright sheen |
 | **Master** | — | Output level |
 
 Load a WAV with the **Load WAV…** button. The path is saved with the DAW
 project, so the scene is recalled on reload.
+
+### Presets (the classic "Simple mode")
+
+Three one-click character presets move Density + Aperture + Reverb + Evolve +
+Shimmer together (Focus and Master are left to you):
+
+- **Tonal** — narrow aperture, coherent, almost pitched.
+- **Drone** — wide aperture, dense, evolving atmosphere.
+- **Shimmer** — bright, octave-sprinkled, reverberant and drifting.
 
 ## The visualizer
 
@@ -76,7 +86,29 @@ This drops `RayDrone.vst3` and `RayDrone.clap` in `target/bundled/`. Copy them t
 - `~/Library/Audio/Plug-Ins/VST3/`
 - `~/Library/Audio/Plug-Ins/CLAP/`
 
-Then rescan in your DAW (Ableton, Logic via a VST3 host, Bitwig, Reaper…).
+Then rescan in your DAW (Reaper, Waveform, Bitwig, Ableton Live 10.1+…).
+
+#### Which DAW on macOS? (free options)
+
+⚠️ **GarageBand and Logic do _not_ load VST3 or CLAP** — they only accept Apple
+**Audio Units (AU)**. This plugin is VST3 + CLAP, so it will _not_ appear in
+GarageBand. To use it you need a host that loads VST3. Free options for Mac:
+
+- **Reaper** — <https://reaper.fm>. Not strictly free, but the full version runs
+  forever on an unlimited evaluation. Best all-round choice for loading and
+  testing VST3 instruments. **Recommended.**
+- **Tracktion Waveform Free** — <https://www.tracktion.com/products/waveform-free>.
+  A genuinely free, full DAW that loads VST3.
+- **Carla** — <https://kx.studio/Applications:Carla>. A free, lightweight plugin
+  _host_ (not a full DAW); the fastest way to just open the plugin and hear it.
+
+In any of them: add RayDrone on an instrument track, click **Load WAV…**, and the
+drone plays continuously (no MIDI notes needed).
+
+> Want it in GarageBand/Logic anyway? That requires an **AU** build, which
+> nih-plug doesn't produce directly — it can be wrapped from the CLAP with
+> [clap-wrapper](https://github.com/free-audio/clap-wrapper) (CMake + Xcode).
+> Ask and it can be scaffolded.
 
 **Universal binary (Apple Silicon + Intel)** — build a fat plugin so it runs on
 both architectures:
