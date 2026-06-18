@@ -127,6 +127,51 @@ Notes for macOS:
 - It's an **instrument** (stereo out, no MIDI): add it on an instrument/MIDI
   track, load a WAV, and it renders the drone continuously.
 
+## Download & share (Windows + macOS + Linux)
+
+A VST3 is a **compiled binary per operating system** — there is no single file
+that works everywhere. Each friend needs the build for *their* OS. You don't have
+to compile on every machine: the repo ships a GitHub Actions workflow
+([`.github/workflows/build-vst.yml`](../.github/workflows/build-vst.yml)) that
+builds all three automatically.
+
+**To publish a shareable release (recommended):**
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GitHub then builds Windows, macOS (universal Intel+ARM) and Linux and attaches
+three zips to a public **Release**:
+
+- `raydrone-windows.zip`
+- `raydrone-macos.zip`
+- `raydrone-linux.zip`
+
+Your friends just open the **Releases** page of the repo (no login needed),
+download the zip for their OS, unzip, and copy `RayDrone.vst3` into their VST3
+folder:
+
+| OS | VST3 folder |
+|---|---|
+| Windows | `C:\Program Files\Common Files\VST3\` |
+| macOS | `~/Library/Audio/Plug-Ins/VST3/` |
+| Linux | `~/.vst3/` |
+
+Then rescan plugins in their DAW. (Each zip also contains a `RayDrone.clap` for
+CLAP hosts.)
+
+> **macOS note for your friends:** the build is unsigned, so Gatekeeper may block
+> it. Run once:
+> `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/RayDrone.vst3`
+> And remember GarageBand/Logic won't see it — use a VST3 host (Reaper, Waveform
+> Free, Carla).
+
+You can also grab builds **without** cutting a release: go to the repo's
+**Actions** tab → the latest "Build VST plugin" run → download the artifacts
+(this requires a GitHub login).
+
 ## License
 
 MIT — same as the parent project.

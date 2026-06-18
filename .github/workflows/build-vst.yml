@@ -1,0 +1,77 @@
+name: Build VST plugin
+
+# Compiles the RayDrone VST3 + CLAP plugin for Windows, macOS and Linux.
+#   - Push a tag `vX.Y.Z`  → builds all three and attaches the zips to a public Release.
+#   - "Run workflow" / push to master → uploads the builds as downloadable artifacts.
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux,   os: ubuntu-latest }
+          - { name: macos,   os: macos-latest }
+          - { name: windows, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: vst
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Linux system deps (X11 / OpenGL for the GUI)
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip libgl-dev libx11-xcb-dev libxcb1-dev \
+            libxcb-icccm4-dev libxcursor-dev libxkbcommon-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - name: Add macOS universal targets
+        if: matrix.name == 'macos'
+        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+
+      - name: Build bundle
+        shell: bash
+        run: |
+          if [ "${{ matrix.name }}" = "macos" ]; then
+            cargo xtask bundle-universal raydrone --release
+          else
+            cargo xtask bundle raydrone --release
+          fi
+
+      - name: Package
+        shell: bash
+        run: |
+          cd target/bundled
+          OUT="$GITHUB_WORKSPACE/raydrone-${{ matrix.name }}.zip"
+          if command -v zip >/dev/null 2>&1; then
+            zip -r "$OUT" RayDrone.vst3 RayDrone.clap
+          else
+            7z a "$OUT" RayDrone.vst3 RayDrone.clap
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: raydrone-${{ matrix.name }}
+          path: raydrone-${{ matrix.name }}.zip
+
+      - name: Attach to Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: raydrone-${{ matrix.name }}.zip
