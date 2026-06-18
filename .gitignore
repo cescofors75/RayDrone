@@ -4,6 +4,10 @@ paper/figures/
 # Compiled wasm — built locally via wasm/build.sh or attached to a tagged Release
 wasm/raydrone.wasm
 
+# Rust / VST plugin build output
+vst/target/
+target/
+
 # Python / tooling cruft
 __pycache__/
 *.pyc

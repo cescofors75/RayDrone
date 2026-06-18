@@ -1,0 +1,29 @@
+[package]
+name = "raydrone"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["RayDrone"]
+description = "RayDrone (simplified) — stochastic ray-traced granular drone VST3/CLAP instrument"
+
+[workspace]
+members = ["xtask"]
+
+[lib]
+# `lib` so the engine can be unit-tested; `cdylib` for the plugin binary.
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+hound = "3.5"
+rfd = "0.14"
+
+[profile.release]
+lto = "thin"
+opt-level = 3
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"
