@@ -61,6 +61,10 @@ pub struct RayDrone {
     sample_name: Arc<Mutex<String>>,
     /// Live state for the ray visualizer.
     viz: Viz,
+    /// Notes currently held via incoming MIDI (persists across blocks).
+    midi_held: [bool; 128],
+    /// Notes currently pressed on the on-screen piano (shared with the editor).
+    keys: Arc<Mutex<[bool; 128]>>,
 }
 
 #[derive(Params)]
@@ -114,6 +118,8 @@ impl Default for RayDrone {
             pending: Arc::new(Mutex::new(None)),
             sample_name: Arc::new(Mutex::new("(no sample)".to_string())),
             viz: Arc::new(Mutex::new(VizState::default())),
+            midi_held: [false; 128],
+            keys: Arc::new(Mutex::new([false; 128])),
         }
     }
 }
@@ -121,7 +127,7 @@ impl Default for RayDrone {
 impl Default for RayDroneParams {
     fn default() -> Self {
         Self {
-            editor_state: EguiState::from_size(460, 660),
+            editor_state: EguiState::from_size(760, 520),
             sample_path: Arc::new(Mutex::new(None)),
 
             density: FloatParam::new(
@@ -209,7 +215,8 @@ impl Plugin for RayDrone {
         names: PortNames::const_default(),
     }];
 
-    const MIDI_INPUT: MidiConfig = MidiConfig::None;
+    // Accept MIDI notes so you can play the drone from a keyboard.
+    const MIDI_INPUT: MidiConfig = MidiConfig::Basic;
     const MIDI_OUTPUT: MidiConfig = MidiConfig::None;
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
@@ -225,6 +232,7 @@ impl Plugin for RayDrone {
         let pending = self.pending.clone();
         let sample_name = self.sample_name.clone();
         let viz = self.viz.clone();
+        let keys = self.keys.clone();
         let egui_state = self.params.editor_state.clone();
 
         create_egui_editor(
@@ -232,7 +240,7 @@ impl Plugin for RayDrone {
             (),
             |_, _| {},
             move |ctx, setter, _state| {
-                draw_ui(ctx, setter, &params, &pending, &sample_name, &viz);
+                draw_ui(ctx, setter, &params, &pending, &sample_name, &viz, &keys);
             },
         )
     }
@@ -302,7 +310,7 @@ impl Plugin for RayDrone {
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<Self>,
+        context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         // Pick up a scene change from the GUI thread (rare event).
         if let Ok(mut slot) = self.pending.try_lock() {
@@ -312,6 +320,24 @@ impl Plugin for RayDrone {
                 None => {}
             }
         }
+
+        // Collect MIDI note on/off (block-accurate is fine for a drone).
+        while let Some(event) = context.next_event() {
+            match event {
+                NoteEvent::NoteOn { note, .. } => self.midi_held[note as usize] = true,
+                NoteEvent::NoteOff { note, .. } => self.midi_held[note as usize] = false,
+                NoteEvent::Choke { note, .. } => self.midi_held[note as usize] = false,
+                _ => {}
+            }
+        }
+        // Union of MIDI notes and the on-screen piano → held pitches.
+        let mut held = self.midi_held;
+        if let Ok(ui_keys) = self.keys.try_lock() {
+            for (h, &k) in held.iter_mut().zip(ui_keys.iter()) {
+                *h |= k;
+            }
+        }
+        self.engine.set_keys(&held, 60);
 
         // Bypass: pass the input straight through, untouched.
         if self.params.bypass.value() {
@@ -380,6 +406,7 @@ fn draw_ui(
     pending: &PendingSample,
     sample_name: &Arc<Mutex<String>>,
     viz: &Viz,
+    keys: &Arc<Mutex<[bool; 128]>>,
 ) {
     let frame = egui::Frame::new().fill(BG0).inner_margin(egui::Margin::same(14));
     egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
@@ -431,13 +458,13 @@ fn draw_ui(
         draw_visualizer(ui, viz, params.focus.value(), params.evolve.value());
         ui.add_space(10.0);
 
-        // ── SOURCE menu: live input, a built-in scene, or a WAV ──────────────
+        // ── Source / character menus (one wide row) ──────────────────────────
         ui.horizontal(|ui| {
             ui.label(menu_tag("SOURCE"));
             let current = sample_name.lock().unwrap().clone();
             egui::ComboBox::from_id_salt("scene_menu")
                 .selected_text(egui::RichText::new(current).color(CYAN))
-                .width(168.0)
+                .width(150.0)
                 .show_ui(ui, |ui| {
                     // Live input: process the track audio into an ambient texture.
                     if ui.selectable_label(false, "◉  Live input (FX)").clicked() {
@@ -470,14 +497,11 @@ fn draw_ui(
             {
                 spawn_wav_dialog(pending, viz, sample_name, &params.sample_path);
             }
-        });
-
-        // ── CHARACTER menu: the classic Simple-mode presets ──────────────────
-        ui.horizontal(|ui| {
+            ui.add_space(16.0);
             ui.label(menu_tag("CHARACTER"));
             egui::ComboBox::from_id_salt("character_menu")
                 .selected_text(egui::RichText::new("Presets…").color(ACCENT))
-                .width(168.0)
+                .width(150.0)
                 .show_ui(ui, |ui| {
                     if ui.selectable_label(false, "Tonal — narrow, pitched").clicked() {
                         apply_preset(setter, params, Preset::Tonal);
@@ -493,38 +517,36 @@ fn draw_ui(
 
         ui.add_space(8.0);
 
-        // ── Parameter knobs, grouped into sections ───────────────────────────
-        section_header(ui, "RENDER");
-        ui.horizontal(|ui| {
-            knob(ui, &params.density, setter, "DENSITY", ACCENT);
-            knob(ui, &params.aperture, setter, "APERTURE", ACCENT);
-            knob(ui, &params.focus, setter, "FOCUS", ACCENT);
-        });
-
-        section_header(ui, "MOTION  ·  RECURSIVE AUTOEVOLUTION");
-        ui.horizontal(|ui| {
-            knob(ui, &params.evolve, setter, "EVOLVE", CYAN);
-            knob(ui, &params.shimmer, setter, "SHIMMER", CYAN);
-        });
-
-        section_header(ui, "BOUNCES  ·  RECURSIVE RAYS");
-        ui.horizontal(|ui| {
-            knob(ui, &params.bounce, setter, "BOUNCE", ACCENT);
-            knob(ui, &params.reflect, setter, "REFLECT", ACCENT);
-        });
-
-        section_header(ui, "SPACE & OUTPUT");
-        ui.horizontal(|ui| {
-            knob(ui, &params.reverb, setter, "REVERB", ACCENT);
-            knob(ui, &params.mix, setter, "MIX", CYAN);
-            knob(ui, &params.master, setter, "MASTER", ACCENT);
+        // ── Knob panels in a wide row (landscape, pro layout) ────────────────
+        ui.horizontal_top(|ui| {
+            knob_group(ui, "RENDER", |ui| {
+                knob(ui, &params.density, setter, "DENSITY", ACCENT);
+                knob(ui, &params.aperture, setter, "APERTURE", ACCENT);
+                knob(ui, &params.focus, setter, "FOCUS", ACCENT);
+            });
+            knob_group(ui, "MOTION", |ui| {
+                knob(ui, &params.evolve, setter, "EVOLVE", CYAN);
+                knob(ui, &params.shimmer, setter, "SHIMMER", CYAN);
+            });
+            knob_group(ui, "RECURSIVE RAYS", |ui| {
+                knob(ui, &params.bounce, setter, "BOUNCE", ACCENT);
+                knob(ui, &params.reflect, setter, "REFLECT", ACCENT);
+            });
+            knob_group(ui, "OUTPUT", |ui| {
+                knob(ui, &params.reverb, setter, "REVERB", ACCENT);
+                knob(ui, &params.mix, setter, "MIX", CYAN);
+                knob(ui, &params.master, setter, "MASTER", ACCENT);
+            });
         });
 
         ui.add_space(8.0);
+        section_header(ui, "PLAY  ·  computer keys (A W S E D…), mouse or MIDI pitch the drone");
+        draw_piano(ui, keys);
+
+        ui.add_space(6.0);
         ui.label(
             egui::RichText::new(
-                "FX on a track: pick SOURCE ▸ Live input, then set MIX (dry↔drone).\n\
-                 Or use a built-in scene / WAV as a pure instrument.",
+                "FX on a track: SOURCE ▸ Live input + MIX (dry↔drone) · hold notes to play chords.",
             )
             .size(10.0)
             .color(egui::Color32::from_gray(120)),
@@ -950,6 +972,124 @@ fn knob(ui: &mut egui::Ui, param: &FloatParam, setter: &ParamSetter, label: &str
         egui::FontId::proportional(10.0),
         egui::Color32::from_gray(190),
     );
+}
+
+/// A titled, bordered panel holding a row of knobs (the pro-plugin look).
+fn knob_group(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::new()
+        .fill(BG1)
+        .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(34)))
+        .corner_radius(8)
+        .inner_margin(egui::Margin::symmetric(8, 6))
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.label(
+                    egui::RichText::new(title)
+                        .size(10.0)
+                        .strong()
+                        .color(egui::Color32::from_gray(150)),
+                );
+                ui.add_space(2.0);
+                ui.horizontal(|ui| add(ui));
+            });
+        });
+}
+
+/// On-screen piano. Plays via three inputs at once: the computer keyboard
+/// (A,W,S,E,D,F,T,G,Y,H,U,J,K… from C4), mouse clicks, and incoming MIDI. The
+/// resulting note mask is shared with the audio thread, which pitches the rays.
+fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>) {
+    const LO: i32 = 48; // C3
+    const HI: i32 = 76; // exclusive (E5)
+    let h = 58.0;
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), h), egui::Sense::click_and_drag());
+    let p = ui.painter_at(rect);
+
+    let is_black = |n: i32| matches!(((n % 12) + 12) % 12, 1 | 3 | 6 | 8 | 10);
+    let whites: Vec<i32> = (LO..HI).filter(|&n| !is_black(n)).collect();
+    let ww = rect.width() / whites.len().max(1) as f32;
+    let white_rect = |i: usize| {
+        egui::Rect::from_min_size(
+            egui::pos2(rect.left() + i as f32 * ww, rect.top()),
+            egui::vec2(ww - 1.0, h),
+        )
+    };
+    let black_rect = |i: usize| {
+        egui::Rect::from_min_size(
+            egui::pos2(rect.left() + (i as f32 + 1.0) * ww - ww * 0.3, rect.top()),
+            egui::vec2(ww * 0.6, h * 0.6),
+        )
+    };
+
+    let mut mask = [false; 128];
+
+    // Computer keyboard → notes (base C4 = MIDI 60).
+    const KB: &[(egui::Key, i32)] = &[
+        (egui::Key::A, 0), (egui::Key::W, 1), (egui::Key::S, 2), (egui::Key::E, 3),
+        (egui::Key::D, 4), (egui::Key::F, 5), (egui::Key::T, 6), (egui::Key::G, 7),
+        (egui::Key::Y, 8), (egui::Key::H, 9), (egui::Key::U, 10), (egui::Key::J, 11),
+        (egui::Key::K, 12), (egui::Key::O, 13), (egui::Key::L, 14),
+    ];
+    ui.input(|i| {
+        for &(k, off) in KB {
+            if i.key_down(k) {
+                let n = 60 + off;
+                if (0..128).contains(&n) {
+                    mask[n as usize] = true;
+                }
+            }
+        }
+    });
+
+    // Mouse → the note under a pressed pointer (black keys take priority).
+    if resp.is_pointer_button_down_on() {
+        if let Some(pp) = ui.input(|i| i.pointer.interact_pos()) {
+            let mut hit = None;
+            for (i, &n) in whites.iter().enumerate() {
+                if is_black(n + 1) && black_rect(i).contains(pp) {
+                    hit = Some(n + 1);
+                    break;
+                }
+            }
+            if hit.is_none() {
+                for (i, &n) in whites.iter().enumerate() {
+                    if white_rect(i).contains(pp) {
+                        hit = Some(n);
+                        break;
+                    }
+                }
+            }
+            if let Some(n) = hit {
+                if (0..128).contains(&n) {
+                    mask[n as usize] = true;
+                }
+            }
+        }
+    }
+
+    // Draw white keys, then black keys on top.
+    let low = egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 };
+    for (i, &n) in whites.iter().enumerate() {
+        let col = if mask[n as usize] { CYAN } else { egui::Color32::from_gray(232) };
+        p.rect_filled(white_rect(i), low, col);
+        p.rect_stroke(
+            white_rect(i),
+            low,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(40)),
+            egui::StrokeKind::Inside,
+        );
+    }
+    for (i, &n) in whites.iter().enumerate() {
+        if is_black(n + 1) {
+            let col = if mask[(n + 1) as usize] { ACCENT } else { egui::Color32::from_gray(16) };
+            p.rect_filled(black_rect(i), low, col);
+        }
+    }
+
+    if let Ok(mut k) = keys.lock() {
+        *k = mask;
+    }
 }
 
 /// Open the native WAV dialog on a background thread (see the crash note above).

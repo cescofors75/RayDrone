@@ -110,6 +110,9 @@ pub struct Engine {
     // (the plugin works as an ambient effect on a track instead of an instrument).
     live: bool,
     cap_w: usize,
+    // Held-note pitch ratios (MIDI / on-screen piano). Empty = unison drone;
+    // otherwise each grain picks one → play the drone as chords.
+    key_ratios: Vec<f32>,
     voices: Vec<Voice>,
     active: Vec<usize>,
     free: Vec<usize>,
@@ -174,6 +177,7 @@ impl Engine {
             strat_i: 0,
             live: false,
             cap_w: 0,
+            key_ratios: Vec::with_capacity(128),
             voices: vec![Voice::default(); MAX_VOICES],
             active: vec![0usize; MAX_VOICES],
             free: (0..MAX_VOICES).map(|i| MAX_VOICES - 1 - i).collect(),
@@ -309,6 +313,18 @@ impl Engine {
         self.refl = clampf(r, 0.0, 1.0);
     }
 
+    /// Set the currently held notes (128-entry mask). `root` is the note that
+    /// plays the scene at its natural pitch (unison). Empty mask = unison drone.
+    pub fn set_keys(&mut self, mask: &[bool; 128], root: u8) {
+        self.key_ratios.clear();
+        for (n, &on) in mask.iter().enumerate() {
+            if on {
+                let semis = n as f32 - root as f32;
+                self.key_ratios.push(2.0f32.powf(semis / 12.0));
+            }
+        }
+    }
+
     // ── Visualization getters (read by the GUI thread) ──────────────────────
     pub fn viz_level(&self) -> f32 {
         self.env
@@ -408,7 +424,14 @@ impl Engine {
         // Read speed: sample-rate ratio keeps pitch correct across host SR.
         // Shimmer: some grains read an octave up (×2) for a bright, airy sheen.
         let oct = if self.rng01() < self.octave { 2.0 } else { 1.0 };
-        let step = oct * (self.samp_sr / self.host_sr) * detune;
+        // Play the drone: when notes are held, each grain takes one note's pitch.
+        let key = if self.key_ratios.is_empty() {
+            1.0
+        } else {
+            let idx = (self.rng01() * self.key_ratios.len() as f32) as usize;
+            self.key_ratios[idx.min(self.key_ratios.len() - 1)]
+        };
+        let step = key * oct * (self.samp_sr / self.host_sr) * detune;
         let pan = (self.rng01() * 2.0 - 1.0) * WIDTH;
         let panl = ((1.0 - pan) * 0.5).sqrt(); // equal-power
         let panr = ((1.0 + pan) * 0.5).sqrt();

@@ -1,9 +1,19 @@
-# RayDrone VST (simplified)
+# RayDrone VST
 
-A **VST3 / CLAP instrument** version of [RayDrone](../README.md): load a WAV
-"scene" and a continuous cloud of stochastic grains ("rays") is cast around a
-focal point. The drone is not stored in the sample — it **emerges** from the
-convergence of N rays, exactly as in the WASM engine, just slimmed down.
+A **VST3 / CLAP** build of [RayDrone](../README.md). A continuous cloud of
+stochastic grains ("rays") is cast around a focal point inside a "scene"; the
+drone is not stored in the scene — it **emerges** from the convergence of N rays.
+
+It works three ways:
+
+- **Ambient effect on a track** — *Live input* captures the track audio as the
+  scene and the rays reshape it into a drifting texture (set the **Mix**).
+- **Instrument** — built-in scenes (Pad/Choir/Bell/Noise) or a loaded WAV.
+- **Playable** — incoming **MIDI**, the **on-screen piano**, or your **computer
+  keyboard** pitch the drone; hold notes to play chords.
+
+Both recursions of the original are present: the **autoevolution** control
+feedback *and* the **recursive ray bounces** (Russian roulette).
 
 Built with [nih-plug](https://github.com/robbert-vdh/nih-plug) (Rust). The DSP
 is a per-instance port of `wasm/raydrone.rs` in [`src/engine.rs`](src/engine.rs).
@@ -140,8 +150,9 @@ Notes for macOS:
   (unlike Linux, which needs the X11/GL `-dev` headers to build).
 - The plugin is **unsigned**. If Gatekeeper blocks it, clear the quarantine flag:
   `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/RayDrone.vst3`.
-- It's an **instrument** (stereo out, no MIDI): add it on an instrument/MIDI
-  track, load a WAV, and it renders the drone continuously.
+- It's a **stereo effect that also takes MIDI**: drop it on a track with audio
+  and choose *Source ▸ Live input*, or use a built-in scene / WAV and play it
+  from a MIDI keyboard, the on-screen piano, or your computer keys.
 
 ## Download & share (Windows + macOS + Linux)
 

@@ -22,18 +22,20 @@ exactly as a rendered image emerges from the convergence of light rays.
 
 ---
 
-## 📦 Two versions
+## 📦 Three versions
 
 | Version | File | Engine | Status |
 |---|---|---|---|
 | **WASM** (current) | [`wasm/`](wasm/) → [`wasm/README.md`](wasm/README.md) | **Rust → WebAssembly + AudioWorklet** | ✅ **Actively developed** — per-sample engine, stereo, reverb, Convergence Lab, WAV export |
-| **VST** (plugin) | [`vst/`](vst/) → [`vst/README.md`](vst/README.md) | **Rust + nih-plug (VST3 / CLAP)** | 🎛️ **Simplified** — built-in scenes or load a WAV, 7 knobs + Tonal/Drone/Shimmer presets, recursive autoevolution, live ray visualizer |
+| **VST** (plugin) | [`vst/`](vst/) → [`vst/README.md`](vst/README.md) | **Rust + nih-plug (VST3 / CLAP)** | 🎛️ **Plays in your DAW** — ambient effect (live input + dry/wet) **or** instrument (built-in scenes / WAV), playable by **MIDI / on-screen piano / computer keys**, both recursions (autoevolution + recursive ray bounces), live ray visualizer |
 | **Classic** (legacy) | [`rta.html`](rta.html) | Vanilla JS + Web Audio API | 🧊 **Frozen** — kept as a no-build demo; no new features |
 
-Both implement the same idea, but **all development happens in the WASM version**: it
-mixes **every sample** in a tight loop on the audio thread, which removes the JS engine's
-limits by design (no voice cap, no `setTimeout` jitter, no pulsing). The Classic build
-remains useful as a zero-toolchain demo (open the file, it runs).
+Both web builds implement the same idea, and **most development happens in the WASM
+version**: it mixes **every sample** in a tight loop on the audio thread, which removes
+the JS engine's limits by design (no voice cap, no `setTimeout` jitter, no pulsing). The
+**VST** brings the engine into any DAW as a VST3/CLAP plugin (see
+[`vst/README.md`](vst/README.md)). The Classic build remains useful as a zero-toolchain
+demo (open the file, it runs).
 See **[wasm/README.md](wasm/README.md)** for how to build and run the current version.
 
 ---
