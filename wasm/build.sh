@@ -8,9 +8,19 @@ cd "$(dirname "$0")"
 # (Necesita rustup; si lo instalaste con rustup, descargará el std de wasm offline-friendly.)
 rustup target add wasm32-unknown-unknown 2>/dev/null || true
 
+# 1) Kernel DSP compartido con el VST (no_std, sin deps) → rlib. Se compila con
+#    el mismo rustc crudo, así que seguimos sin Cargo ni crates.io.
 rustc --edition 2021 \
       --target wasm32-unknown-unknown \
       -O -C panic=abort -C lto=fat \
+      --crate-name raydrone_core --crate-type=lib \
+      ../core/src/lib.rs -o libraydrone_core.rlib
+
+# 2) Motor → wasm, enlazando el kernel por --extern.
+rustc --edition 2021 \
+      --target wasm32-unknown-unknown \
+      -O -C panic=abort -C lto=fat \
+      --extern raydrone_core=libraydrone_core.rlib \
       --crate-type=cdylib \
       raydrone.rs -o raydrone.wasm
 

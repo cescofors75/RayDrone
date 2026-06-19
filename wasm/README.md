@@ -24,10 +24,11 @@ necesita acceso a crates.io**. Solo `rustc` + el target `wasm32-unknown-unknown`
 | Archivo | Qué es |
 |---|---|
 | `raydrone.rs` | Motor granular en Rust (`no_std`, sin deps). Exporta `set_sample`, `set_params`, `process`, punteros de memoria. |
+| `../core/` | Kernel DSP compartido (`raydrone_core`, `no_std`, sin deps): `clampf`, `soft`, `sample_at`, `win_at`, RNG. **El mismo código que enlaza el VST** — una sola fuente de verdad. |
 | `processor.js` | `AudioWorkletProcessor` que instancia el wasm y rellena la salida cada bloque. |
 | `lab-worker.js` | Web Worker del Convergence Lab: otra instancia del mismo wasm para medir convergencia sin congelar la UI. |
 | `index.html` | La página (UI sencilla: Original/Drone/Shimmer + Carácter + Volumen). |
-| `build.sh` | Compila `raydrone.rs` → `raydrone.wasm`. |
+| `build.sh` | Compila `../core` → `libraydrone_core.rlib` y luego `raydrone.rs` → `raydrone.wasm` (lo enlaza con `--extern`). |
 
 ## Compilar
 
@@ -45,10 +46,16 @@ rustup target add wasm32-unknown-unknown
 (Requiere `rustup`. Si no lo tienes: instálalo desde https://rustup.rs — una vez
 añadido el target, la compilación es **offline**, no descarga crates.)
 
-El comando real que ejecuta `build.sh` es:
+El comando real que ejecuta `build.sh` son dos pasos (ambos con `rustc` crudo,
+sin Cargo ni crates.io): primero el kernel compartido, luego el motor enlazándolo.
 
 ```bash
+# 1) kernel DSP compartido (no_std, sin deps) → rlib
 rustc --edition 2021 --target wasm32-unknown-unknown -O -C panic=abort -C lto=fat \
+      --crate-name raydrone_core --crate-type=lib ../core/src/lib.rs -o libraydrone_core.rlib
+# 2) motor → wasm, enlazando el kernel
+rustc --edition 2021 --target wasm32-unknown-unknown -O -C panic=abort -C lto=fat \
+      --extern raydrone_core=libraydrone_core.rlib \
       --crate-type=cdylib raydrone.rs -o raydrone.wasm
 ```
 

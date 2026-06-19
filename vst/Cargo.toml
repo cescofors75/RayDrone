@@ -27,6 +27,8 @@ required-features = ["standalone"]
 standalone = ["nih_plug/standalone", "jack/dynamic_loading"]
 
 [dependencies]
+# Shared DSP kernel (same code the WASM engine links). Path dep, no crates.io.
+raydrone_core = { path = "../core" }
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 hound = "3.5"

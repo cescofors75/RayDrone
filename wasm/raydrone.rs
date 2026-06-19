@@ -12,6 +12,11 @@
 #![no_std]
 #![allow(static_mut_refs)]
 
+// Primitivas DSP compartidas con el motor del VST (un único sitio donde viven).
+// El crate es no_std y sin deps, así que el build de `rustc` crudo (sin Cargo) lo
+// enlaza vía `--extern raydrone_core=...` — ver build.sh. No toca crates.io.
+use raydrone_core::{clampf, sample_at as core_sample_at, soft, win_at as core_win_at};
+
 use core::panic::PanicInfo;
 
 #[panic_handler]
@@ -232,25 +237,7 @@ fn ensure_voice_init() {
 
 #[inline]
 fn rng01() -> f32 {
-    unsafe {
-        let mut x = RNG;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        RNG = x;
-        (x as f32) * (1.0 / 4_294_967_296.0)
-    }
-}
-
-#[inline]
-fn clampf(x: f32, a: f32, b: f32) -> f32 {
-    if x < a {
-        a
-    } else if x > b {
-        b
-    } else {
-        x
-    }
+    unsafe { raydrone_core::rng01(&mut RNG) }
 }
 
 #[inline]
@@ -327,17 +314,6 @@ fn update_coeffs() {
                 APR_I[a] = 0;
             }
         }
-    }
-}
-
-#[inline]
-fn soft(x: f32) -> f32 {
-    if x > 1.0 {
-        0.666_666_7
-    } else if x < -1.0 {
-        -0.666_666_7
-    } else {
-        x - x * x * x * (1.0 / 3.0)
     }
 }
 
@@ -1089,42 +1065,6 @@ pub extern "C" fn lab_rms() -> f32 {
 }
 
 #[inline]
-fn sample_at(pos: f32) -> f32 {
-    unsafe {
-        if SAMPLE_LEN < 4 {
-            return 0.0;
-        }
-        let i = pos as usize;
-        if i + 2 >= SAMPLE_LEN {
-            return 0.0;
-        }
-        let frac = pos - (i as f32);
-        // Interpolación cúbica Catmull-Rom (4 puntos): menos aliasing y más
-        // brillo que la lineal, sobre todo al leer a velocidad != 1 (octava/pitch).
-        let s0 = if i >= 1 { SAMPLE[i - 1] } else { SAMPLE[i] };
-        let s1 = SAMPLE[i];
-        let s2 = SAMPLE[i + 1];
-        let s3 = SAMPLE[i + 2];
-        let a = -0.5 * s0 + 1.5 * s1 - 1.5 * s2 + 0.5 * s3;
-        let b = s0 - 2.5 * s1 + 2.0 * s2 - 0.5 * s3;
-        let c = -0.5 * s0 + 0.5 * s2;
-        ((a * frac + b) * frac + c) * frac + s1
-    }
-}
-
-#[inline]
-fn win_at(ph: f32) -> f32 {
-    unsafe {
-        let idx = (ph * ((WIN - 1) as f32)) as usize;
-        if idx >= WIN {
-            0.0
-        } else {
-            WINDOW[idx]
-        }
-    }
-}
-
-#[inline]
 fn band_filter(i: usize, x: f32) -> f32 {
     unsafe {
         if ABER <= 0.0 {
@@ -1311,8 +1251,8 @@ pub extern "C" fn process(frames: usize) {
                     }
                     continue; // ACTIVE[k] ahora es otra voz: no avanzar k
                 }
-                let raw = sample_at(VOICES[i].pos);
-                let s = band_filter(i, raw) * win_at(ph) * VOICES[i].gain;
+                let raw = core_sample_at(&SAMPLE[..SAMPLE_LEN], VOICES[i].pos);
+                let s = band_filter(i, raw) * core_win_at(&WINDOW, ph) * VOICES[i].gain;
                 accl += s * VOICES[i].panl;
                 accr += s * VOICES[i].panr;
                 VOICES[i].pos += VOICES[i].step;

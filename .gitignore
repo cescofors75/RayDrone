@@ -3,10 +3,15 @@ paper/figures/
 
 # Compiled wasm — built locally via wasm/build.sh or attached to a tagged Release
 wasm/raydrone.wasm
+# Shared-core rlib, an intermediate of wasm/build.sh (rustc --extern)
+wasm/*.rlib
 
 # Rust / VST plugin build output
 vst/target/
 target/
+
+# Shared core crate: a lib, so its lock isn't versioned (and it has no deps)
+core/Cargo.lock
 
 # Python / tooling cruft
 __pycache__/

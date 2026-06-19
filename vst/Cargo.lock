@@ -2676,8 +2676,13 @@ dependencies = [
  "jack",
  "nih_plug",
  "nih_plug_egui",
+ "raydrone_core",
  "rfd",
 ]
+
+[[package]]
+name = "raydrone_core"
+version = "0.1.0"
 
 [[package]]
 name = "redox_syscall"

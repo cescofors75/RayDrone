@@ -17,6 +17,12 @@
 
 use std::f32::consts::PI;
 
+// Shared DSP kernel — the same primitives the WASM engine links (one source of
+// truth). `tri_inv` stays local here because the VST uses the hardware sqrt while
+// the WASM build uses a no_std Newton approximation; unifying them would change
+// the render.
+use raydrone_core::{clampf, sample_at, soft, win_at};
+
 const WIN: usize = 2048;
 const MAX_VOICES: usize = 512;
 
@@ -365,12 +371,7 @@ impl Engine {
 
     #[inline]
     fn rng01(&mut self) -> f32 {
-        let mut x = self.rng;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.rng = x;
-        (x as f32) * (1.0 / 4_294_967_296.0)
+        raydrone_core::rng01(&mut self.rng)
     }
 
     #[inline]
@@ -614,17 +615,10 @@ impl Engine {
 }
 
 // ── Free helpers (so the hot loop can split-borrow engine fields) ───────────
-#[inline]
-fn clampf(x: f32, a: f32, b: f32) -> f32 {
-    if x < a {
-        a
-    } else if x > b {
-        b
-    } else {
-        x
-    }
-}
-
+// `clampf`, `soft`, `sample_at`, `win_at` now come from `raydrone_core` (shared
+// with the WASM engine). `tri_inv` stays local: the VST uses the hardware sqrt
+// while the WASM build uses a no_std Newton approximation, so sharing it would
+// nudge the render.
 #[inline]
 fn tri_inv(u: f32) -> f32 {
     // Inverse CDF of a symmetric triangular distribution on [-1, 1].
@@ -632,49 +626,5 @@ fn tri_inv(u: f32) -> f32 {
         -1.0 + (2.0 * u).sqrt()
     } else {
         1.0 - (2.0 * (1.0 - u)).sqrt()
-    }
-}
-
-#[inline]
-fn soft(x: f32) -> f32 {
-    if x > 1.0 {
-        0.666_666_7
-    } else if x < -1.0 {
-        -0.666_666_7
-    } else {
-        x - x * x * x * (1.0 / 3.0)
-    }
-}
-
-#[inline]
-fn sample_at(sample: &[f32], pos: f32) -> f32 {
-    let len = sample.len();
-    if len < 4 {
-        return 0.0;
-    }
-    let i = pos as usize;
-    if i + 2 >= len {
-        return 0.0;
-    }
-    let frac = pos - (i as f32);
-    // Catmull-Rom cubic (4-point): less aliasing / more brightness than linear,
-    // especially when reading at speed != 1 (host/sample SR mismatch, detune).
-    let s0 = if i >= 1 { sample[i - 1] } else { sample[i] };
-    let s1 = sample[i];
-    let s2 = sample[i + 1];
-    let s3 = sample[i + 2];
-    let a = -0.5 * s0 + 1.5 * s1 - 1.5 * s2 + 0.5 * s3;
-    let b = s0 - 2.5 * s1 + 2.0 * s2 - 0.5 * s3;
-    let c = -0.5 * s0 + 0.5 * s2;
-    ((a * frac + b) * frac + c) * frac + s1
-}
-
-#[inline]
-fn win_at(window: &[f32], ph: f32) -> f32 {
-    let idx = (ph * ((WIN - 1) as f32)) as usize;
-    if idx >= WIN {
-        0.0
-    } else {
-        window[idx]
     }
 }

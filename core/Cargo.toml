@@ -1,0 +1,11 @@
+[package]
+name = "raydrone_core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Shared no_std, dependency-free DSP kernel for RayDrone (WASM engine + VST engine)."
+
+[lib]
+# Plain rlib: usable both by the VST's Cargo build and by the WASM engine's raw
+# `rustc --extern` build (see ../wasm/build.sh). No crates.io needed.
+crate-type = ["lib"]
