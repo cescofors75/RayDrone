@@ -21,7 +21,7 @@ use std::f32::consts::PI;
 // truth). `tri_inv` stays local here because the VST uses the hardware sqrt while
 // the WASM build uses a no_std Newton approximation; unifying them would change
 // the render.
-use raydrone_core::{clampf, sample_at, soft, win_at, DcBlocker, Reverb};
+use raydrone_core::{clampf, sample_at, soft, sqrtf, tri_inv, win_at, DcBlocker, Reverb};
 
 const WIN: usize = 2048;
 const MAX_VOICES: usize = 512;
@@ -361,8 +361,8 @@ impl Engine {
         };
         let step = key * oct * (self.samp_sr / self.host_sr) * detune;
         let pan = (self.rng01() * 2.0 - 1.0) * WIDTH;
-        let panl = ((1.0 - pan) * 0.5).sqrt(); // equal-power
-        let panr = ((1.0 + pan) * 0.5).sqrt();
+        let panl = sqrtf((1.0 - pan) * 0.5); // equal-power (shared sqrt → matches WASM)
+        let panr = sqrtf((1.0 + pan) * 0.5);
         let slot = self.alloc_voice();
         self.voices[slot] = Voice {
             pos,
@@ -480,17 +480,6 @@ impl Engine {
     }
 }
 
-// ── Free helpers (so the hot loop can split-borrow engine fields) ───────────
-// `clampf`, `soft`, `sample_at`, `win_at` now come from `raydrone_core` (shared
-// with the WASM engine). `tri_inv` stays local: the VST uses the hardware sqrt
-// while the WASM build uses a no_std Newton approximation, so sharing it would
-// nudge the render.
-#[inline]
-fn tri_inv(u: f32) -> f32 {
-    // Inverse CDF of a symmetric triangular distribution on [-1, 1].
-    if u < 0.5 {
-        -1.0 + (2.0 * u).sqrt()
-    } else {
-        1.0 - (2.0 * (1.0 - u)).sqrt()
-    }
-}
+// The whole DSP kernel — clampf, soft, sqrtf, tri_inv, sample_at, win_at, rng,
+// Reverb, DcBlocker — now lives in `raydrone_core`, shared verbatim with the
+// WASM engine. Nothing engine-specific left to define here.

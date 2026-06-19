@@ -46,6 +46,34 @@ pub fn soft(x: f32) -> f32 {
     }
 }
 
+/// Square root for `no_std`: a fast inverse-bit-trick seed refined by three
+/// Newton iterations. The WASM build has no `std`/libm, so this is *the* sqrt
+/// both engines use — keeping it shared means their renders stay identical.
+/// Returns 0 for `x <= 0`.
+#[inline]
+pub fn sqrtf(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    let mut y = f32::from_bits((x.to_bits() >> 1) + 0x1fbd_1df5);
+    y = 0.5 * (y + x / y);
+    y = 0.5 * (y + x / y);
+    y = 0.5 * (y + x / y);
+    y
+}
+
+/// Inverse CDF of a symmetric triangular distribution on [-1, 1] — the grain
+/// dispersion ("depth of field") around the focus. Uses [`sqrtf`] so both
+/// engines disperse rays identically.
+#[inline]
+pub fn tri_inv(u: f32) -> f32 {
+    if u < 0.5 {
+        -1.0 + sqrtf(2.0 * u)
+    } else {
+        1.0 - sqrtf(2.0 * (1.0 - u))
+    }
+}
+
 /// Advance an xorshift32 PRNG in place and return the new state.
 #[inline]
 pub fn xorshift32(state: &mut u32) -> u32 {
@@ -348,6 +376,28 @@ mod tests {
         assert_eq!(soft(0.0), 0.0);
         // Strictly compressive inside the range.
         assert!(soft(0.9) < 0.9 && soft(0.9) > 0.0);
+    }
+
+    #[test]
+    fn sqrtf_matches_reference() {
+        assert_eq!(sqrtf(0.0), 0.0);
+        assert_eq!(sqrtf(-1.0), 0.0);
+        for &x in &[1e-4f32, 0.25, 1.0, 2.0, 9.0, 1234.5, 1e6] {
+            let approx = sqrtf(x);
+            let exact = x.sqrt();
+            assert!((approx - exact).abs() / exact < 1e-3, "sqrtf({x}) = {approx} vs {exact}");
+        }
+    }
+
+    #[test]
+    fn tri_inv_endpoints_and_symmetry() {
+        assert!(tri_inv(0.0) <= -0.999); // u=0 → -1
+        assert!(tri_inv(1.0) >= 0.999); //  u=1 → +1
+        assert!(tri_inv(0.5).abs() < 1e-3); // centre → 0
+        // Symmetric: tri_inv(u) == -tri_inv(1-u).
+        for &u in &[0.1f32, 0.27, 0.4] {
+            assert!((tri_inv(u) + tri_inv(1.0 - u)).abs() < 1e-5);
+        }
     }
 
     #[test]

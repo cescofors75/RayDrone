@@ -16,7 +16,8 @@
 // El crate es no_std y sin deps, así que el build de `rustc` crudo (sin Cargo) lo
 // enlaza vía `--extern raydrone_core=...` — ver build.sh. No toca crates.io.
 use raydrone_core::{
-    clampf, sample_at as core_sample_at, soft, win_at as core_win_at, DcBlocker, Reverb,
+    clampf, sample_at as core_sample_at, soft, sqrtf, tri_inv, win_at as core_win_at, DcBlocker,
+    Reverb,
 };
 
 use core::panic::PanicInfo;
@@ -209,27 +210,6 @@ fn ensure_voice_init() {
 #[inline]
 fn rng01() -> f32 {
     unsafe { raydrone_core::rng01(&mut RNG) }
-}
-
-#[inline]
-fn sqrtf(x: f32) -> f32 {
-    if x <= 0.0 {
-        return 0.0;
-    }
-    let mut y = f32::from_bits((x.to_bits() >> 1) + 0x1fbd_1df5);
-    y = 0.5 * (y + x / y);
-    y = 0.5 * (y + x / y);
-    y = 0.5 * (y + x / y);
-    y
-}
-
-#[inline]
-fn tri_inv(u: f32) -> f32 {
-    if u < 0.5 {
-        -1.0 + sqrtf(2.0 * u)
-    } else {
-        1.0 - sqrtf(2.0 * (1.0 - u))
-    }
 }
 
 #[inline]
