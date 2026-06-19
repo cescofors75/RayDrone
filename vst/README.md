@@ -20,8 +20,18 @@ is a per-instance port of `wasm/raydrone.rs` in [`src/engine.rs`](src/engine.rs)
 | **Shimmer** | Octave transport | Probability a grain reads an octave up → airy, bright sheen |
 | **Master** | — | Output level |
 
-Load a WAV with the **Load WAV…** button. The path is saved with the DAW
-project, so the scene is recalled on reload.
+### Sound source (the "scene")
+
+The plugin starts **already making sound** with a built-in **Pad** scene — no
+file needed. Pick a different built-in (**Pad / Choir / Bell / Noise**) for an
+instant tonal or textural source, or load your own audio with **Load WAV…**. The
+choice (built-in name or WAV path) is saved with the DAW project and recalled on
+reload.
+
+> The **Load WAV…** dialog opens on a background thread on purpose: opening a
+> native file dialog directly inside the plugin UI loop crashes some hosts
+> (Reaper on macOS in particular). If you ever built an earlier version that
+> crashed on load, this is the fix.
 
 ### Presets (the classic "Simple mode")
 

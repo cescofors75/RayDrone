@@ -210,19 +210,39 @@ impl Plugin for RayDrone {
     ) -> bool {
         self.engine.set_sample_rate(buffer_config.sample_rate);
 
-        // Restore a persisted scene (DAW project recall).
+        // Restore a persisted scene (DAW project recall), or fall back to a
+        // built-in so the plugin makes sound out of the box.
         if self.engine.is_empty() {
             let path = self.params.sample_path.lock().unwrap().clone();
-            if let Some(p) = path {
-                if let Ok((data, sr)) = load_wav(Path::new(&p)) {
-                    let peaks = wave_peaks(&data, 256);
-                    self.engine.load(data, sr);
-                    if let Ok(mut v) = self.viz.lock() {
-                        v.wave = peaks;
-                    }
-                    *self.sample_name.lock().unwrap() = file_label(&p);
+            let (data, sr, name): (Vec<f32>, f32, String) = match path {
+                // A built-in scene was saved with the project.
+                Some(p) if p.starts_with("builtin:") => {
+                    let scene = scene_from_id(&p["builtin:".len()..]).unwrap_or(Scene::Pad);
+                    let (d, s) = builtin_scene(scene);
+                    (d, s, format!("built-in: {}", scene_id(scene)))
                 }
+                // A WAV file path was saved.
+                Some(p) => match load_wav(Path::new(&p)) {
+                    Ok((d, s)) => (d, s, file_label(&p)),
+                    // File missing/moved → don't leave it silent.
+                    Err(_) => {
+                        let (d, s) = builtin_scene(Scene::Pad);
+                        (d, s, "built-in: Pad".to_string())
+                    }
+                },
+                // Fresh instance → default built-in Pad.
+                None => {
+                    let (d, s) = builtin_scene(Scene::Pad);
+                    *self.params.sample_path.lock().unwrap() = Some("builtin:Pad".to_string());
+                    (d, s, "built-in: Pad".to_string())
+                }
+            };
+            let peaks = wave_peaks(&data, 256);
+            self.engine.load(data, sr);
+            if let Ok(mut v) = self.viz.lock() {
+                v.wave = peaks;
             }
+            *self.sample_name.lock().unwrap() = name;
         }
         true
     }
@@ -313,29 +333,55 @@ fn draw_ui(
             .add(egui::Button::new(egui::RichText::new("  Load WAV…  ").color(BG0)).fill(CYAN))
             .clicked()
         {
-            if let Some(file) =
-                rfd::FileDialog::new().add_filter("WAV audio", &["wav"]).pick_file()
-            {
-                match load_wav(&file) {
-                    Ok((data, sr)) => {
-                        let peaks = wave_peaks(&data, 256);
-                        *pending.lock().unwrap() = Some((data, sr));
-                        if let Ok(mut v) = viz.lock() {
-                            v.wave = peaks;
+            // IMPORTANT: open the native file dialog on a SEPARATE THREAD. Calling
+            // the blocking `rfd` dialog directly inside the egui/baseview event loop
+            // reenters the host's run loop and crashes some DAWs (notably Reaper on
+            // macOS). Off-thread, the result is handed back through the shared slots.
+            let pending = pending.clone();
+            let viz = viz.clone();
+            let sample_name = sample_name.clone();
+            let sample_path = params.sample_path.clone();
+            std::thread::spawn(move || {
+                if let Some(file) =
+                    rfd::FileDialog::new().add_filter("WAV audio", &["wav"]).pick_file()
+                {
+                    match load_wav(&file) {
+                        Ok((data, sr)) => {
+                            let peaks = wave_peaks(&data, 256);
+                            *sample_name.lock().unwrap() = file
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_else(|| "loaded".to_string());
+                            *sample_path.lock().unwrap() =
+                                Some(file.to_string_lossy().to_string());
+                            if let Ok(mut v) = viz.lock() {
+                                v.wave = peaks;
+                            }
+                            *pending.lock().unwrap() = Some((data, sr));
                         }
-                        *sample_name.lock().unwrap() = file
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_else(|| "loaded".to_string());
-                        *params.sample_path.lock().unwrap() =
-                            Some(file.to_string_lossy().to_string());
-                    }
-                    Err(e) => {
-                        *sample_name.lock().unwrap() = format!("error: {e}");
+                        Err(e) => {
+                            *sample_name.lock().unwrap() = format!("error: {e}");
+                        }
                     }
                 }
-            }
+            });
         }
+
+        // ── Built-in scenes: instant sound, no file needed ──────────────────
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Built-in:").color(egui::Color32::from_gray(160)));
+            for &(label, scene) in &[
+                ("Pad", Scene::Pad),
+                ("Choir", Scene::Choir),
+                ("Bell", Scene::Bell),
+                ("Noise", Scene::Noise),
+            ] {
+                if preset_button(ui, label).clicked() {
+                    load_scene(scene, pending, viz, sample_name, &params.sample_path);
+                }
+            }
+        });
         ui.label(
             egui::RichText::new(format!("scene: {}", sample_name.lock().unwrap()))
                 .color(egui::Color32::from_gray(150))
@@ -522,6 +568,146 @@ fn wave_peaks(samples: &[f32], n: usize) -> Vec<f32> {
         *v /= max;
     }
     out
+}
+
+// ── Built-in scenes ─────────────────────────────────────────────────────────
+// Synthesized "scenes" so the plugin makes sound with no WAV loaded. Each is a
+// pitched/textured buffer the granular engine renders into a drone.
+#[derive(Clone, Copy)]
+enum Scene {
+    Pad,
+    Choir,
+    Bell,
+    Noise,
+}
+
+fn scene_id(scene: Scene) -> &'static str {
+    match scene {
+        Scene::Pad => "Pad",
+        Scene::Choir => "Choir",
+        Scene::Bell => "Bell",
+        Scene::Noise => "Noise",
+    }
+}
+
+fn scene_from_id(id: &str) -> Option<Scene> {
+    match id {
+        "Pad" => Some(Scene::Pad),
+        "Choir" => Some(Scene::Choir),
+        "Bell" => Some(Scene::Bell),
+        "Noise" => Some(Scene::Noise),
+        _ => None,
+    }
+}
+
+/// Generate ~3 s of audio for a built-in scene. Returns (samples, sample_rate).
+fn builtin_scene(scene: Scene) -> (Vec<f32>, f32) {
+    let sr = 44_100.0f32;
+    let len = (sr * 3.0) as usize;
+    let mut buf = vec![0.0f32; len];
+    let tau = std::f32::consts::TAU;
+
+    match scene {
+        // Rich harmonic pad around A2 — a warm, sustained drone source.
+        Scene::Pad => {
+            let f0 = 110.0;
+            for k in 0..8u32 {
+                let h = k as f32 + 1.0;
+                let amp = 0.6 / h;
+                let det = 1.0 + 0.0015 * k as f32; // gentle stretch → lush
+                for (i, s) in buf.iter_mut().enumerate() {
+                    let t = i as f32 / sr;
+                    *s += amp * (tau * f0 * h * det * t).sin();
+                }
+            }
+        }
+        // Vowel-ish formant tone around D3 with a slow vibrato.
+        Scene::Choir => {
+            let f0 = 146.83;
+            for k in 0..12u32 {
+                let h = k as f32 + 1.0;
+                let fr = f0 * h;
+                let amp = formant(fr) * 0.5 / h.sqrt();
+                for (i, s) in buf.iter_mut().enumerate() {
+                    let t = i as f32 / sr;
+                    let vib = 1.0 + 0.004 * (tau * 5.0 * t).sin();
+                    *s += amp * (tau * fr * vib * t).sin();
+                }
+            }
+        }
+        // Inharmonic bell partials, struck a few times across the buffer.
+        Scene::Bell => {
+            let f0 = 220.0;
+            let ratios = [1.0f32, 2.0, 2.4, 3.0, 4.5, 5.33, 6.67];
+            let decays = [2.5f32, 2.0, 1.6, 1.3, 1.0, 0.8, 0.6];
+            for strike in 0..3 {
+                let t0 = strike as f32;
+                for (r, d) in ratios.iter().zip(decays.iter()) {
+                    let fr = f0 * r;
+                    let amp = 0.5 / r;
+                    for (i, s) in buf.iter_mut().enumerate() {
+                        let t = i as f32 / sr - t0;
+                        if t < 0.0 {
+                            continue;
+                        }
+                        *s += amp * (-t / d).exp() * (tau * fr * t).sin();
+                    }
+                }
+            }
+        }
+        // Colored (low-passed) noise — an airy wash for pure-texture drones.
+        Scene::Noise => {
+            let mut rng = 0x9e37_79b9u32;
+            let mut lp = 0.0f32;
+            for s in buf.iter_mut() {
+                rng ^= rng << 13;
+                rng ^= rng >> 17;
+                rng ^= rng << 5;
+                let white = (rng as f32) * (2.0 / 4_294_967_296.0) - 1.0;
+                lp += 0.02 * (white - lp);
+                *s = lp * 3.0;
+            }
+        }
+    }
+
+    // Normalize to ~0.9 peak.
+    let mut max = 1e-6f32;
+    for &v in &buf {
+        let a = v.abs();
+        if a > max {
+            max = a;
+        }
+    }
+    let g = 0.9 / max;
+    for v in buf.iter_mut() {
+        *v *= g;
+    }
+    (buf, sr)
+}
+
+/// Two resonances (~700 & ~1220 Hz) → a rough vowel coloring for the choir scene.
+fn formant(f: f32) -> f32 {
+    let r = |c: f32, bw: f32| (bw * bw) / ((f - c) * (f - c) + bw * bw);
+    0.4 + r(700.0, 120.0) + 0.7 * r(1220.0, 150.0)
+}
+
+/// Hand a built-in scene to the audio thread (GUI thread, instant — no dialog).
+fn load_scene(
+    scene: Scene,
+    pending: &PendingSample,
+    viz: &Viz,
+    sample_name: &Arc<Mutex<String>>,
+    sample_path: &Arc<Mutex<Option<String>>>,
+) {
+    let (data, sr) = builtin_scene(scene);
+    let peaks = wave_peaks(&data, 256);
+    *sample_name.lock().unwrap() = format!("built-in: {}", scene_id(scene));
+    // Persist the choice so the DAW project recalls this scene (not a file path).
+    *sample_path.lock().unwrap() = Some(format!("builtin:{}", scene_id(scene)));
+    if let Ok(mut v) = viz.lock() {
+        v.wave = peaks;
+    }
+    *pending.lock().unwrap() = Some((data, sr));
 }
 
 fn labeled(ui: &mut egui::Ui, name: &str, param: &FloatParam, setter: &ParamSetter) {
