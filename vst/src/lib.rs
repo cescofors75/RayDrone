@@ -99,6 +99,9 @@ struct RayDroneParams {
     /// Reflect — probability each bounce survives (tail energy & length).
     #[id = "reflect"]
     reflect: FloatParam,
+    /// Keys — how much held notes take over vs. the base drone (0 = drone only).
+    #[id = "keymix"]
+    keymix: FloatParam,
     /// Dry/Wet — blend of the original signal and the rendered drone.
     #[id = "mix"]
     mix: FloatParam,
@@ -170,6 +173,11 @@ impl Default for RayDroneParams {
                 .with_value_to_string(formatters::v2s_f32_rounded(0)),
 
             reflect: FloatParam::new("Reflect", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_unit(" %")
+                .with_value_to_string(formatters::v2s_f32_percentage(0))
+                .with_string_to_value(formatters::s2v_f32_percentage()),
+
+            keymix: FloatParam::new("Keys", 0.6, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit(" %")
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
@@ -324,9 +332,16 @@ impl Plugin for RayDrone {
         // Collect MIDI note on/off (block-accurate is fine for a drone).
         while let Some(event) = context.next_event() {
             match event {
-                NoteEvent::NoteOn { note, .. } => self.midi_held[note as usize] = true,
-                NoteEvent::NoteOff { note, .. } => self.midi_held[note as usize] = false,
-                NoteEvent::Choke { note, .. } => self.midi_held[note as usize] = false,
+                NoteEvent::NoteOn { note, .. } => {
+                    if let Some(s) = self.midi_held.get_mut(note as usize) {
+                        *s = true;
+                    }
+                }
+                NoteEvent::NoteOff { note, .. } | NoteEvent::Choke { note, .. } => {
+                    if let Some(s) = self.midi_held.get_mut(note as usize) {
+                        *s = false;
+                    }
+                }
                 _ => {}
             }
         }
@@ -353,6 +368,7 @@ impl Plugin for RayDrone {
         self.engine.set_octave(self.params.shimmer.value());
         self.engine.set_bounce(self.params.bounce.value().round() as u32);
         self.engine.set_reflect(self.params.reflect.value());
+        self.engine.set_key_mix(self.params.keymix.value());
 
         for mut frame in buffer.iter_samples() {
             self.engine.set_master(self.params.master.smoothed.next());
@@ -408,6 +424,10 @@ fn draw_ui(
     viz: &Viz,
     keys: &Arc<Mutex<[bool; 128]>>,
 ) {
+    // Safety net: a panic inside the egui draw must never cross baseview's
+    // extern "C" timer callback — that aborts the whole DAW. Catch it here so a
+    // GUI glitch degrades to a skipped frame instead of crashing the host.
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     let frame = egui::Frame::new().fill(BG0).inner_margin(egui::Margin::same(14));
     egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
         ui.visuals_mut().override_text_color = Some(egui::Color32::from_gray(225));
@@ -461,7 +481,8 @@ fn draw_ui(
         // ── Source / character menus (one wide row) ──────────────────────────
         ui.horizontal(|ui| {
             ui.label(menu_tag("SOURCE"));
-            let current = sample_name.lock().unwrap().clone();
+            let current =
+                sample_name.lock().map(|s| s.clone()).unwrap_or_else(|_| "scene".to_string());
             egui::ComboBox::from_id_salt("scene_menu")
                 .selected_text(egui::RichText::new(current).color(CYAN))
                 .width(150.0)
@@ -527,6 +548,7 @@ fn draw_ui(
             knob_group(ui, "MOTION", |ui| {
                 knob(ui, &params.evolve, setter, "EVOLVE", CYAN);
                 knob(ui, &params.shimmer, setter, "SHIMMER", CYAN);
+                knob(ui, &params.keymix, setter, "KEYS", CYAN);
             });
             knob_group(ui, "RECURSIVE RAYS", |ui| {
                 knob(ui, &params.bounce, setter, "BOUNCE", ACCENT);
@@ -572,6 +594,7 @@ fn draw_ui(
         );
         }); // ScrollArea
     });
+    })); // catch_unwind
 }
 
 /// The signature view: a focal "camera" casting rays at the scene timeline. The

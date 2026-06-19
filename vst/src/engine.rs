@@ -87,6 +87,8 @@ pub struct Engine {
     octave: f32,      // probability a grain plays an octave up (shimmer)
     bounces: u32,     // recursive ray bounces (Russian-roulette depth)
     refl: f32,        // reflection coefficient: probability each bounce survives
+    key_mix: f32,     // when notes are held: fraction of grains that follow them
+                      // (the rest stay on the base drone, so it never disappears)
     mode: u32, // 0 random, 1 QMC (golden), 2 stratified
 
     // Recursive autoevolution: the output envelope feeds back into focus/aperture,
@@ -163,6 +165,7 @@ impl Engine {
             octave: 0.0,
             bounces: 0,
             refl: 0.5,
+            key_mix: 0.6,
             mode: 1,
             env: 0.0,
             evo: 0.5,
@@ -312,6 +315,9 @@ impl Engine {
     pub fn set_reflect(&mut self, r: f32) {
         self.refl = clampf(r, 0.0, 1.0);
     }
+    pub fn set_key_mix(&mut self, m: f32) {
+        self.key_mix = clampf(m, 0.0, 1.0);
+    }
 
     /// Set the currently held notes (128-entry mask). `root` is the note that
     /// plays the scene at its natural pitch (unison). Empty mask = unison drone.
@@ -424,8 +430,10 @@ impl Engine {
         // Read speed: sample-rate ratio keeps pitch correct across host SR.
         // Shimmer: some grains read an octave up (×2) for a bright, airy sheen.
         let oct = if self.rng01() < self.octave { 2.0 } else { 1.0 };
-        // Play the drone: when notes are held, each grain takes one note's pitch.
-        let key = if self.key_ratios.is_empty() {
+        // Play ON TOP of the drone: when notes are held, only a fraction of grains
+        // (key_mix) follow a held note; the rest keep the base drone alive, so
+        // playing layers pitched voices instead of replacing the texture.
+        let key = if self.key_ratios.is_empty() || self.rng01() >= self.key_mix {
             1.0
         } else {
             let idx = (self.rng01() * self.key_ratios.len() as f32) as usize;
