@@ -8,17 +8,23 @@ convergence of N rays, exactly as in the WASM engine, just slimmed down.
 Built with [nih-plug](https://github.com/robbert-vdh/nih-plug) (Rust). The DSP
 is a per-instance port of `wasm/raydrone.rs` in [`src/engine.rs`](src/engine.rs).
 
-## Controls (minimal set)
+## Controls
 
 | Knob | Optical analogy | Effect |
 |---|---|---|
 | **Density** | Number of rays (N) | Grains per second. More → smoother, richer render |
 | **Aperture** | Depth of field | Width of the temporal dispersion cone (ms). Narrow = tonal, wide = drone |
-| **Focus** | Camera focal point | Position in the sample the rays are cast around |
+| **Focus** | Camera focal point | Position in the scene the rays are cast around |
 | **Reverb** | — | Freeverb-lite wet mix |
-| **Evolve** | Recursive transport | Autoevolution: the output envelope feeds back into focus & aperture so the drone drifts and breathes on its own |
+| **Evolve** | Recursive feedback | Autoevolution: the output envelope feeds back into focus & aperture so the drone drifts and breathes on its own |
 | **Shimmer** | Octave transport | Probability a grain reads an octave up → airy, bright sheen |
+| **Bounce** | Recursive transport depth | How many times a dying grain relaunches a child grain (Russian-roulette bounces — recursive rays) |
+| **Reflect** | Path survival probability | Probability each bounce survives → tail energy & length (the Neumann series) |
+| **Mix** | — | Dry/Wet: blend of the original signal and the rendered drone |
 | **Master** | — | Output level |
+
+Plus a **Bypass** toggle (header) and a **Live input** source mode (process the
+track audio instead of a loaded scene).
 
 ### Sound source (the "scene")
 

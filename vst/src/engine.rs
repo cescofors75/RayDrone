@@ -51,11 +51,21 @@ struct Voice {
     step: f32,
     panl: f32,
     panr: f32,
+    depth: u32, // remaining recursive bounces (Russian roulette)
 }
 
 impl Default for Voice {
     fn default() -> Self {
-        Voice { pos: 0.0, age: 0.0, inv_dur: 0.0, gain: 0.0, step: 1.0, panl: 0.707, panr: 0.707 }
+        Voice {
+            pos: 0.0,
+            age: 0.0,
+            inv_dur: 0.0,
+            gain: 0.0,
+            step: 1.0,
+            panl: 0.707,
+            panr: 0.707,
+            depth: 0,
+        }
     }
 }
 
@@ -75,6 +85,8 @@ pub struct Engine {
     reverb_wet: f32,
     feedback: f32,    // autoevolution amount (recursive feedback)
     octave: f32,      // probability a grain plays an octave up (shimmer)
+    bounces: u32,     // recursive ray bounces (Russian-roulette depth)
+    refl: f32,        // reflection coefficient: probability each bounce survives
     mode: u32, // 0 random, 1 QMC (golden), 2 stratified
 
     // Recursive autoevolution: the output envelope feeds back into focus/aperture,
@@ -146,6 +158,8 @@ impl Engine {
             reverb_wet: 0.2,
             feedback: 0.3,
             octave: 0.0,
+            bounces: 0,
+            refl: 0.5,
             mode: 1,
             env: 0.0,
             evo: 0.5,
@@ -288,6 +302,12 @@ impl Engine {
     pub fn set_octave(&mut self, p: f32) {
         self.octave = clampf(p, 0.0, 1.0);
     }
+    pub fn set_bounce(&mut self, n: u32) {
+        self.bounces = n.min(6);
+    }
+    pub fn set_reflect(&mut self, r: f32) {
+        self.refl = clampf(r, 0.0, 1.0);
+    }
 
     // ── Visualization getters (read by the GUI thread) ──────────────────────
     pub fn viz_level(&self) -> f32 {
@@ -379,7 +399,7 @@ impl Engine {
         self.active[best]
     }
 
-    fn place(&mut self, pos: f32) {
+    fn place(&mut self, pos: f32, depth: u32) {
         let dur_samp = GRAIN_DUR * self.host_sr;
         if dur_samp < 1.0 {
             return;
@@ -401,6 +421,7 @@ impl Engine {
             step,
             panl,
             panr,
+            depth,
         };
     }
 
@@ -431,7 +452,7 @@ impl Engine {
         self.vlog_pos[w] = if maxp > 0.0 { pos / maxp } else { 0.5 };
         self.vlog_w = self.vlog_w.wrapping_add(1);
 
-        self.place(pos);
+        self.place(pos, self.bounces);
     }
 
     // One stereo output frame.
@@ -454,11 +475,23 @@ impl Engine {
             let i = self.active[k];
             let ph = self.voices[i].age * self.voices[i].inv_dur;
             if ph >= 1.0 {
+                // Capture the dying grain's state before recycling its slot.
+                let depth = self.voices[i].depth;
+                let endpos = self.voices[i].pos;
                 // swap-remove from active list + return slot to the free pool
                 self.nactive -= 1;
                 self.active[k] = self.active[self.nactive];
                 self.free[self.nfree] = i;
                 self.nfree += 1;
+                // Recursive bounce (Russian roulette): the ray survives with
+                // probability = reflection coefficient, relaunching a child grain
+                // near where it landed. The decaying chain is the Neumann tail.
+                if depth > 0 && self.rng01() < self.refl {
+                    let maxp = (self.sample.len().max(2) - 2) as f32;
+                    let jitter = (self.rng01() - 0.5) * 0.1 * self.samp_sr;
+                    let cpos = clampf(endpos + jitter, 0.0, maxp);
+                    self.place(cpos, depth - 1);
+                }
                 continue; // active[k] is now another voice: don't advance k
             }
             let raw = sample_at(&self.sample, self.voices[i].pos);

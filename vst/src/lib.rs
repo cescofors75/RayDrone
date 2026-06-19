@@ -89,6 +89,12 @@ struct RayDroneParams {
     /// Shimmer — probability a grain plays an octave up (airy sheen).
     #[id = "shimmer"]
     shimmer: FloatParam,
+    /// Bounce — recursive ray depth: how many times a grain relaunches a child.
+    #[id = "bounce"]
+    bounce: FloatParam,
+    /// Reflect — probability each bounce survives (tail energy & length).
+    #[id = "reflect"]
+    reflect: FloatParam,
     /// Dry/Wet — blend of the original signal and the rendered drone.
     #[id = "mix"]
     mix: FloatParam,
@@ -150,6 +156,14 @@ impl Default for RayDroneParams {
                 .with_string_to_value(formatters::s2v_f32_percentage()),
 
             shimmer: FloatParam::new("Shimmer", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_unit(" %")
+                .with_value_to_string(formatters::v2s_f32_percentage(0))
+                .with_string_to_value(formatters::s2v_f32_percentage()),
+
+            bounce: FloatParam::new("Bounce", 0.0, FloatRange::Linear { min: 0.0, max: 6.0 })
+                .with_value_to_string(formatters::v2s_f32_rounded(0)),
+
+            reflect: FloatParam::new("Reflect", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit(" %")
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
@@ -311,6 +325,8 @@ impl Plugin for RayDrone {
         self.engine.set_reverb(self.params.reverb.value());
         self.engine.set_feedback(self.params.evolve.value());
         self.engine.set_octave(self.params.shimmer.value());
+        self.engine.set_bounce(self.params.bounce.value().round() as u32);
+        self.engine.set_reflect(self.params.reflect.value());
 
         for mut frame in buffer.iter_samples() {
             self.engine.set_master(self.params.master.smoothed.next());
@@ -489,6 +505,12 @@ fn draw_ui(
         ui.horizontal(|ui| {
             knob(ui, &params.evolve, setter, "EVOLVE", CYAN);
             knob(ui, &params.shimmer, setter, "SHIMMER", CYAN);
+        });
+
+        section_header(ui, "BOUNCES  ·  RECURSIVE RAYS");
+        ui.horizontal(|ui| {
+            knob(ui, &params.bounce, setter, "BOUNCE", ACCENT);
+            knob(ui, &params.reflect, setter, "REFLECT", ACCENT);
         });
 
         section_header(ui, "SPACE & OUTPUT");
