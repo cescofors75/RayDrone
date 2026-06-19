@@ -2676,6 +2676,7 @@ dependencies = [
  "jack",
  "nih_plug",
  "nih_plug_egui",
+ "objc",
  "rfd",
 ]
 

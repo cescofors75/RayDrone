@@ -52,6 +52,81 @@ impl Default for VizState {
 
 type Viz = Arc<Mutex<VizState>>;
 
+// ── macOS: claim keyboard focus for the plugin's view ───────────────────────
+// Inside a DAW the host window keeps "first responder", so keystrokes go to the
+// host (e.g. pressing a letter triggers a Reaper menu) instead of the plugin.
+// nih-plug's VST3 wrapper deliberately doesn't take host key events and relies
+// on the OS routing them to the plugin's native view — which only happens if
+// that view is first responder. baseview accepts first responder but doesn't
+// claim it on click, so we do it here: when the GUI is clicked, find baseview's
+// NSView under the key window and make it first responder. Best-effort/defensive.
+#[cfg(target_os = "macos")]
+mod macos_focus {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+
+    unsafe fn class_name_starts_with(view: *mut Object, prefix: &str) -> bool {
+        let cls: *mut Object = msg_send![view, class];
+        if cls.is_null() {
+            return false;
+        }
+        let name: *const std::os::raw::c_char = msg_send![cls, name];
+        if name.is_null() {
+            return false;
+        }
+        std::ffi::CStr::from_ptr(name).to_bytes().starts_with(prefix.as_bytes())
+    }
+
+    unsafe fn find_baseview(view: *mut Object) -> *mut Object {
+        if view.is_null() {
+            return std::ptr::null_mut();
+        }
+        if class_name_starts_with(view, "BaseviewNSView") {
+            return view;
+        }
+        let subs: *mut Object = msg_send![view, subviews];
+        if subs.is_null() {
+            return std::ptr::null_mut();
+        }
+        let count: usize = msg_send![subs, count];
+        for i in 0..count {
+            let sv: *mut Object = msg_send![subs, objectAtIndex: i];
+            let found = find_baseview(sv);
+            if !found.is_null() {
+                return found;
+            }
+        }
+        std::ptr::null_mut()
+    }
+
+    /// Make the plugin's view first responder so the keyboard reaches it.
+    pub fn grab_key_focus() {
+        unsafe {
+            let nsapp: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+            if nsapp.is_null() {
+                return;
+            }
+            let key_window: *mut Object = msg_send![nsapp, keyWindow];
+            if key_window.is_null() {
+                return;
+            }
+            let content: *mut Object = msg_send![key_window, contentView];
+            if content.is_null() {
+                return;
+            }
+            let bv = find_baseview(content);
+            if bv.is_null() {
+                return;
+            }
+            let current: *mut Object = msg_send![key_window, firstResponder];
+            if current == bv {
+                return; // already focused
+            }
+            let _: bool = msg_send![key_window, makeFirstResponder: bv];
+        }
+    }
+}
+
 pub struct RayDrone {
     params: Arc<RayDroneParams>,
     engine: Engine,
@@ -408,6 +483,13 @@ fn draw_ui(
     viz: &Viz,
     keys: &Arc<Mutex<[bool; 128]>>,
 ) {
+    // macOS: when the user clicks the GUI, grab keyboard focus from the host so
+    // the computer keyboard can play the piano inside the DAW.
+    #[cfg(target_os = "macos")]
+    if ctx.input(|i| i.pointer.any_pressed()) {
+        macos_focus::grab_key_focus();
+    }
+
     let frame = egui::Frame::new().fill(BG0).inner_margin(egui::Margin::same(14));
     egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
         ui.visuals_mut().override_text_color = Some(egui::Color32::from_gray(225));

@@ -33,6 +33,11 @@ hound = "3.5"
 rfd = "0.14"
 jack = { version = "0.11.4", optional = true, default-features = false }
 
+# macOS only: claim keyboard focus for the plugin view so the DAW stops eating
+# keystrokes (lets the computer keyboard play the piano inside the host).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
+
 [profile.release]
 lto = "thin"
 opt-level = 3
