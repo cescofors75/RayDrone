@@ -154,6 +154,32 @@ Notes for macOS:
   and choose *Source ▸ Live input*, or use a built-in scene / WAV and play it
   from a MIDI keyboard, the on-screen piano, or your computer keys.
 
+## Standalone app — play with your laptop keyboard
+
+Inside a DAW the host grabs your computer keystrokes for its own shortcuts, so
+the **computer keyboard usually can't reach a plugin** (especially on macOS).
+The fix is the **standalone app**: a normal OS window where the keyboard works.
+
+```sh
+cd vst
+cargo run --release --features standalone --bin raydrone-standalone
+```
+
+This opens RayDrone as a desktop application. The computer keyboard plays the
+piano (a row from C4): `A W S E D F T G Y H U J K …` — `A`=C, `W`=C#, `S`=D,
+`E`=D#, `D`=E, `F`=F … hold keys to play chords. The on-screen piano (mouse) and
+MIDI also work.
+
+- On macOS it builds **without JACK** (the `jack/dynamic_loading` feature loads
+  it at runtime if present, otherwise it uses **CoreAudio**). Audio/MIDI device
+  options: add `--help`, e.g. `--backend coreaudio`.
+- Pick a built-in scene or load a WAV, then play. To process external audio,
+  run with the right input device and choose *Source ▸ Live input*.
+
+> Inside the DAW, play it with **MIDI** or the **on-screen piano** instead — the
+> computer keyboard is a standalone-only convenience because of how hosts route
+> keys.
+
 ## Download & share (Windows + macOS + Linux)
 
 A VST3 is a **compiled binary per operating system** — there is no single file
