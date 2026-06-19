@@ -112,6 +112,31 @@ const fw = f32(ex.foci_w_ptr(), fcap);
 for (let i = 0; i < fcap; i++) if (fw[i] > 0.004) fociAlive++;
 check('focus constellation is populated', fociAlive > 0, `${fociAlive} foci alive`);
 
+console.log('\n[resonant filter — set_filter through the real process()]');
+ex.set_ambient(0, 0, 0, 0, 0, 0);
+ex.set_smart(0);
+ex.set_fx(0, 0, 0.5, 0);
+ex.set_scale(0);
+ex.set_space(0, 0);
+ex.set_reverb(0);
+ex.set_filter_lfo(0, 0);
+function rmsOut(blocks) {
+    let sum = 0, n = 0;
+    for (let b = 0; b < blocks; b++) {
+        ex.process(BLOCK);
+        const L = f32(ex.out_l_ptr(), BLOCK), R = f32(ex.out_r_ptr(), BLOCK);
+        for (let i = 0; i < BLOCK; i++) { sum += L[i] * L[i] + R[i] * R[i]; n += 2; }
+    }
+    return Math.sqrt(sum / n);
+}
+ex.set_params(1.0, 0.25, 150, 260, 0.3, 1.0);
+ex.set_filter(22050, 0); // open
+const rmsOpen = rmsOut(120);
+ex.set_filter(90, 0.1); // cutoff well below the 220 Hz source → should gut it
+const rmsLow = rmsOut(120);
+check('low cutoff attenuates the signal (filter is in the path)', rmsLow < rmsOpen * 0.5, `rms open=${rmsOpen.toExponential(2)} → low=${rmsLow.toExponential(2)}`);
+ex.set_filter(22050, 0); // reopen
+
 console.log('\n[convergence lab — the offline estimator]');
 // The same estimator, measured offline: more rays → lower error vs the target.
 f32(ex.lab_win_ptr(), ex.lab_grain()).fill(1.0); // flat window for the measurement

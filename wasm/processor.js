@@ -69,6 +69,13 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             const len = Math.min(d.data.length, ex.scale_capacity());
             if (len) new Float32Array(this.mem.buffer, ex.scale_ptr(), len).set(d.data.subarray(0, len));
             ex.set_scale(len);
+        } else if (d.type === 'chord') {
+            // Voicing afinado de core::music (0 = unísono/continuo).
+            ex.set_chord(d.preset >>> 0);
+        } else if (d.type === 'filter') {
+            ex.set_filter(d.cutoff, d.res);
+        } else if (d.type === 'filterlfo') {
+            ex.set_filter_lfo(d.rate, d.depth);
         } else if (d.type === 'reverb') {
             ex.set_reverb(d.wet);
         } else if (d.type === 'smart') {

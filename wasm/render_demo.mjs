@@ -104,6 +104,10 @@ ex.set_space(0.75, 0.18); // stereo width + a touch of octave shimmer
 ex.set_reverb(0.42);      // lush tail
 ex.set_fx(0.12, 1, 0.45, 0.35); // gentle aberration + 1 bounce + slow autoevolution
 ex.set_ambient(1, 3, 2, 0.22, 0.28, 0.35); // slow evolving focus constellation
+// Resonant filter with a tempo-synced sweep (70 BPM, 2-bar cycle, 2.5 oct) — the
+// classic pad "swell" that opens and closes in time with the track.
+ex.set_filter(900, 0.35);
+ex.set_filter_lfo(70 / (60 * 8), 2.5);
 const after = render(8);
 const d2 = writeWav(join(here, '..', 'raydrone_after.wav'), after.L, after.R);
 

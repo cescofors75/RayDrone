@@ -137,8 +137,8 @@
                     <input type="range" id="tail" min="0" max="100" value="0">
                 </div>
                 <div class="ctl">
-                    <label>Pitch (transposición) <span class="v" id="pitch-v">0 st</span></label>
-                    <input type="range" id="pitch" min="-12" max="12" value="0" step="1">
+                    <label>Pitch / Afinación (semitonos) <span class="v" id="pitch-v">0 st</span></label>
+                    <input type="range" id="pitch" min="-24" max="24" value="0" step="1">
                 </div>
             </section>
 
@@ -243,6 +243,54 @@
                 </div>
             </section>
 
+            <!-- ── PAD: VOICING AFINADO + FILTRO ── -->
+            <section class="panel">
+                <div class="panel-title"><span>🎹 Tonalidad &amp; Filtro</span><span>pad afinado · filtro con LFO a tempo</span></div>
+                <div class="ctl">
+                    <label>Voicing (acorde afinado · core::music) <span class="v" id="voicing-v">Ninguno</span></label>
+                    <select id="voicing">
+                        <option value="" selected>Ninguno (usa Microtonal)</option>
+                        <option value="2">Power pad · sub·raíz·5ª·8ª</option>
+                        <option value="1">Octavas</option>
+                        <option value="5">Quintas apiladas</option>
+                        <option value="3">Tríada mayor</option>
+                        <option value="4">Tríada menor</option>
+                        <option value="6">Sus2</option>
+                        <option value="7">Pentatónica</option>
+                        <option value="8">Escala mayor (justa)</option>
+                        <option value="9">Escala menor (justa)</option>
+                    </select>
+                </div>
+                <div class="ctl">
+                    <label>Filtro · Cutoff <span class="v" id="cutoff-v">abierto</span></label>
+                    <input type="range" id="cutoff" min="0" max="100" value="100">
+                </div>
+                <div class="ctl">
+                    <label>Filtro · Resonancia <span class="v" id="reso-v">0 %</span></label>
+                    <input type="range" id="reso" min="0" max="100" value="0">
+                </div>
+                <div class="ctl">
+                    <label>Tempo (BPM) <span class="v" id="bpm-v">120</span></label>
+                    <input type="range" id="bpm" min="40" max="200" value="120" step="1">
+                </div>
+                <div class="ctl">
+                    <label>LFO de filtro · división <span class="v" id="lfodiv-v">1/4</span></label>
+                    <select id="lfodiv">
+                        <option value="0.25">1/16</option>
+                        <option value="0.5">1/8</option>
+                        <option value="1" selected>1/4</option>
+                        <option value="2">1/2</option>
+                        <option value="4">1 compás</option>
+                        <option value="8">2 compases</option>
+                    </select>
+                </div>
+                <div class="ctl">
+                    <label>LFO de filtro · profundidad <span class="v" id="lfodepth-v">0 oct</span></label>
+                    <input type="range" id="lfodepth" min="0" max="100" value="0">
+                </div>
+                <div class="sub" style="text-align:left; margin:6px 0 0;">El voicing reparte cada rayo por los grados de un acorde en entonación justa → pad afinado y consonante (anula la rejilla Microtonal mientras esté activo). Ajusta la afinación con el slider <b>Pitch</b> para meterlo en tu tonalidad. El barrido del filtro va sincronizado al BPM.</div>
+            </section>
+
             <!-- ── ANALYSIS / CONVERGENCE LAB ── -->
             <section class="panel lab">
                 <div class="panel-title"><span>⚗ Convergence Lab</span><span>error RMS vs N · 1/√N · wasm</span></div>
@@ -275,6 +323,12 @@
     const scaleSel = $('scale'), scaleV = $('scale-v');
     const chordSel = $('chord'), chordV = $('chord-v');
     const reverbSlider = $('reverb'), reverbV = $('reverb-v');
+    const voicingSel = $('voicing'), voicingV = $('voicing-v');
+    const cutoffSlider = $('cutoff'), cutoffV = $('cutoff-v');
+    const resoSlider = $('reso'), resoV = $('reso-v');
+    const bpmSlider = $('bpm'), bpmV = $('bpm-v');
+    const lfodivSel = $('lfodiv'), lfodivV = $('lfodiv-v');
+    const lfodepthSlider = $('lfodepth'), lfodepthV = $('lfodepth-v');
     const smartChk = $('smart'), smartV = $('smart-v');
     const ambientChk = $('ambient'), ambientV = $('ambient-v');
     const aseedsS = $('aseeds'), adepthS = $('adepth'), aspreadS = $('aspread'), adriftS = $('adrift'), arateS = $('arate');
@@ -342,6 +396,36 @@
     function sendReverb() {
         if (!node) return;
         node.port.postMessage({ type: 'reverb', wet: parseFloat(reverbSlider.value) / 100 });
+    }
+
+    // ── Tonalidad: un voicing afinado (core::music vía set_chord) tiene prioridad
+    // sobre la rejilla Microtonal; "Ninguno" devuelve el control al panel Microtonal.
+    function applyTonality() {
+        if (!node) return;
+        if (voicingSel.value) {
+            node.port.postMessage({ type: 'chord', preset: parseInt(voicingSel.value, 10) });
+        } else {
+            sendScale();
+        }
+    }
+
+    // Cutoff: slider 0..99 mapea 80 Hz..18 kHz exponencial; 100 = abierto (bypass).
+    function cutoffHz() {
+        const v = parseFloat(cutoffSlider.value);
+        return v >= 100 ? 22050 : 80 * Math.pow(18000 / 80, v / 100);
+    }
+    function sendFilter() {
+        if (!node) return;
+        node.port.postMessage({ type: 'filter', cutoff: cutoffHz(), res: parseFloat(resoSlider.value) / 100 });
+    }
+    // LFO sincronizado: división de nota (en negras) + BPM → frecuencia de barrido.
+    function sendFilterLfo() {
+        if (!node) return;
+        const bpm = parseFloat(bpmSlider.value);
+        const beats = parseFloat(lfodivSel.value);     // negras por ciclo
+        const rate = bpm / (60 * beats);                // ciclos por segundo
+        const depth = parseFloat(lfodepthSlider.value) / 100 * 4; // 0..4 octavas
+        node.port.postMessage({ type: 'filterlfo', rate, depth });
     }
 
     // ── Escalas microtonales: ratios de un período (octava o tritava) ──────
@@ -474,7 +558,9 @@
             sendPitch();
             sendReverb();
             sendSmart();
-            sendScale();
+            applyTonality();
+            sendFilter();
+            sendFilterLfo();
             sendAmbient();
         }
         if (sampleData) {
@@ -634,12 +720,43 @@
         sendPitch();
     });
 
-    scaleSel.addEventListener('change', () => { updateScaleLabels(); sendScale(); });
-    chordSel.addEventListener('change', () => { updateScaleLabels(); sendScale(); });
+    // Elegir una escala/acorde microtonal deja el voicing afinado en "Ninguno".
+    function leaveVoicing() { voicingSel.value = ''; voicingV.innerText = 'Ninguno'; }
+    scaleSel.addEventListener('change', () => { leaveVoicing(); updateScaleLabels(); sendScale(); });
+    chordSel.addEventListener('change', () => { leaveVoicing(); updateScaleLabels(); sendScale(); });
+
+    voicingSel.addEventListener('change', () => {
+        const opt = voicingSel.options[voicingSel.selectedIndex];
+        voicingV.innerText = voicingSel.value ? opt.text.split('·')[0].trim() : 'Ninguno';
+        applyTonality();
+    });
 
     reverbSlider.addEventListener('input', () => {
         reverbV.innerText = `${reverbSlider.value} %`;
         sendReverb();
+    });
+
+    cutoffSlider.addEventListener('input', () => {
+        const v = parseFloat(cutoffSlider.value);
+        cutoffV.innerText = v >= 100 ? 'abierto' : `${Math.round(cutoffHz())} Hz`;
+        sendFilter();
+    });
+    resoSlider.addEventListener('input', () => {
+        resoV.innerText = `${resoSlider.value} %`;
+        sendFilter();
+    });
+    bpmSlider.addEventListener('input', () => {
+        bpmV.innerText = bpmSlider.value;
+        sendFilterLfo();
+    });
+    lfodivSel.addEventListener('change', () => {
+        lfodivV.innerText = lfodivSel.options[lfodivSel.selectedIndex].text;
+        sendFilterLfo();
+    });
+    lfodepthSlider.addEventListener('input', () => {
+        const oct = (parseFloat(lfodepthSlider.value) / 100 * 4).toFixed(1);
+        lfodepthV.innerText = `${oct} oct`;
+        sendFilterLfo();
     });
 
     smartChk.addEventListener('change', () => {

@@ -16,8 +16,8 @@
 // El crate es no_std y sin deps, así que el build de `rustc` crudo (sin Cargo) lo
 // enlaza vía `--extern raydrone_core=...` — ver build.sh. No toca crates.io.
 use raydrone_core::{
-    clampf, sample_at as core_sample_at, soft, sqrtf, tri_inv, win_at as core_win_at, DcBlocker,
-    Reverb,
+    clampf, filter::Filter, sample_at as core_sample_at, soft, sqrtf, tri_inv,
+    win_at as core_win_at, DcBlocker, Reverb,
 };
 
 use core::panic::PanicInfo;
@@ -118,6 +118,8 @@ static mut FOCI_ACC: f32 = 0.0;    // acumulador de nacimientos
 // (el mismo código que enlaza el VST). Una sola instancia estática de cada uno.
 static mut REVERB: Reverb = Reverb::new();
 static mut DC: DcBlocker = DcBlocker::new();
+// Filtro resonante (SVF) con LFO sincronizable a BPM — vive en core::filter.
+static mut FILTER: Filter = Filter::new();
 
 // Micro-detune por grano (±0.25% ≈ ±4 cents): batidos entre granos → drone lush, no estático.
 const DETUNE: f32 = 0.005;
@@ -241,6 +243,7 @@ fn update_coeffs() {
         // DC blocker (~10 Hz) y longitudes de reverb escaladas al SR real.
         DC.set_sample_rate(SR);
         REVERB.set_sample_rate(SR);
+        FILTER.set_sample_rate(SR);
     }
 }
 
@@ -370,6 +373,23 @@ pub extern "C" fn set_smart(on: u32) {
 pub extern "C" fn set_reverb(wet: f32) {
     unsafe {
         REVERB.set_wet(wet);
+    }
+}
+
+// Filtro resonante: cutoff en Hz (>= ~Nyquist = abierto/bypass) y resonancia 0..1.
+#[no_mangle]
+pub extern "C" fn set_filter(cutoff_hz: f32, res: f32) {
+    unsafe {
+        FILTER.set(cutoff_hz, res);
+    }
+}
+
+// LFO de cutoff: rate en Hz (la UI lo deriva de BPM + división de nota) y
+// profundidad en octavas (0 = LFO apagado). Sincroniza el barrido al tempo.
+#[no_mangle]
+pub extern "C" fn set_filter_lfo(rate_hz: f32, depth_oct: f32) {
+    unsafe {
+        FILTER.set_lfo(rate_hz, depth_oct);
     }
 }
 
@@ -1149,7 +1169,8 @@ pub extern "C" fn process(frames: usize) {
                 VOICES[i].age += 1.0;
                 k += 1;
             }
-            let (rl, rr) = REVERB.process(accl * MASTER, accr * MASTER);
+            let (fl, fr) = FILTER.process(accl * MASTER, accr * MASTER);
+            let (rl, rr) = REVERB.process(fl, fr);
             let (yl, yr) = DC.process(rl, rr);
             OUTL[f] = soft(yl);
             OUTR[f] = soft(yr);

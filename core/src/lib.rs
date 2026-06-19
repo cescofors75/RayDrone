@@ -22,6 +22,7 @@
 // std, so only drop it when not testing.
 #![cfg_attr(not(test), no_std)]
 
+pub mod filter;
 pub mod music;
 
 /// Clamp `x` into `[a, b]`.
