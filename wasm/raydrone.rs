@@ -436,6 +436,28 @@ pub extern "C" fn set_scale(len: usize) {
     }
 }
 
+// Cargar una de las voces armónicas curadas de `core::music` (acordes/escalas en
+// entonación justa) en la tabla de escala — cada grano coge un grado, así la nube
+// se apila en un pad afinado en vez de un lavado a una sola altura. preset 0 =
+// unísono (continuo de siempre).
+#[no_mangle]
+pub extern "C" fn set_chord(preset: u32) {
+    unsafe {
+        if preset == raydrone_core::music::CHORD_UNISON {
+            SCALE_LEN = 0;
+            SCALE_I = 0;
+            return;
+        }
+        let ratios = raydrone_core::music::chord_ratios(preset);
+        let n = if ratios.len() > SCALE_CAP { SCALE_CAP } else { ratios.len() };
+        for i in 0..n {
+            SCALE[i] = ratios[i];
+        }
+        SCALE_LEN = n;
+        SCALE_I = 0;
+    }
+}
+
 // Grado de la escala para el grano nuevo. La dimensión pitch se muestrea
 // aparte de la temporal: estratificado puro sobre los grados (cada grado es
 // un estrato → ningún micro-intervalo queda sin cubrir) o Kronecker R2 en QMC.

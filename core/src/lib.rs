@@ -22,6 +22,8 @@
 // std, so only drop it when not testing.
 #![cfg_attr(not(test), no_std)]
 
+pub mod music;
+
 /// Clamp `x` into `[a, b]`.
 #[inline]
 pub fn clampf(x: f32, a: f32, b: f32) -> f32 {

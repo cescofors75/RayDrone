@@ -13,6 +13,9 @@ target/
 # Shared core crate: a lib, so its lock isn't versioned (and it has no deps)
 core/Cargo.lock
 
+# Rendered audio demos (reproducible via node wasm/render_demo.mjs)
+*.wav
+
 # Python / tooling cruft
 __pycache__/
 *.pyc
