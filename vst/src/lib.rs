@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use nih_plug::prelude::*;
-use nih_plug_egui::{create_egui_editor, egui, widgets, EguiState};
+use nih_plug_egui::{create_egui_editor, egui, EguiState};
 
 mod engine;
 use engine::{Engine, VLOG};
@@ -102,7 +102,7 @@ impl Default for RayDrone {
 impl Default for RayDroneParams {
     fn default() -> Self {
         Self {
-            editor_state: EguiState::from_size(440, 680),
+            editor_state: EguiState::from_size(460, 660),
             sample_path: Arc::new(Mutex::new(None)),
 
             density: FloatParam::new(
@@ -314,124 +314,113 @@ fn draw_ui(
     let frame = egui::Frame::new().fill(BG0).inner_margin(egui::Margin::same(14));
     egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
         ui.visuals_mut().override_text_color = Some(egui::Color32::from_gray(225));
+        ui.spacing_mut().item_spacing = egui::vec2(8.0, 6.0);
 
-        ui.vertical_centered(|ui| {
-            ui.heading(egui::RichText::new("RAYDRONE").strong().color(ACCENT).size(26.0));
-            ui.label(
-                egui::RichText::new("stochastic ray-traced drone")
-                    .italics()
-                    .color(egui::Color32::from_gray(140)),
+        // ── Header bar ───────────────────────────────────────────────────────
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("◢◣").color(ACCENT).size(18.0));
+            ui.heading(
+                egui::RichText::new("RAYDRONE").strong().color(egui::Color32::WHITE).size(22.0),
             );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
+                        .small()
+                        .color(egui::Color32::from_gray(90)),
+                );
+            });
         });
+        ui.label(
+            egui::RichText::new("STOCHASTIC · RAY-TRACED · DRONE")
+                .size(9.0)
+                .color(CYAN)
+                .weak(),
+        );
+        ui.add_space(8.0);
+
+        // ── Ray visualizer (shows the live render + autoevolution) ───────────
+        draw_visualizer(ui, viz, params.focus.value(), params.evolve.value());
         ui.add_space(10.0);
 
-        // ── Ray visualizer ──────────────────────────────────────────────────
-        draw_visualizer(ui, viz);
-        ui.add_space(10.0);
-
-        if ui
-            .add(egui::Button::new(egui::RichText::new("  Load WAV…  ").color(BG0)).fill(CYAN))
-            .clicked()
-        {
-            // IMPORTANT: open the native file dialog on a SEPARATE THREAD. Calling
-            // the blocking `rfd` dialog directly inside the egui/baseview event loop
-            // reenters the host's run loop and crashes some DAWs (notably Reaper on
-            // macOS). Off-thread, the result is handed back through the shared slots.
-            let pending = pending.clone();
-            let viz = viz.clone();
-            let sample_name = sample_name.clone();
-            let sample_path = params.sample_path.clone();
-            std::thread::spawn(move || {
-                if let Some(file) =
-                    rfd::FileDialog::new().add_filter("WAV audio", &["wav"]).pick_file()
-                {
-                    match load_wav(&file) {
-                        Ok((data, sr)) => {
-                            let peaks = wave_peaks(&data, 256);
-                            *sample_name.lock().unwrap() = file
-                                .file_name()
-                                .map(|n| n.to_string_lossy().to_string())
-                                .unwrap_or_else(|| "loaded".to_string());
-                            *sample_path.lock().unwrap() =
-                                Some(file.to_string_lossy().to_string());
-                            if let Ok(mut v) = viz.lock() {
-                                v.wave = peaks;
-                            }
-                            *pending.lock().unwrap() = Some((data, sr));
-                        }
-                        Err(e) => {
-                            *sample_name.lock().unwrap() = format!("error: {e}");
+        // ── SOURCE menu: pick a built-in scene or load a WAV ─────────────────
+        ui.horizontal(|ui| {
+            ui.label(menu_tag("SOURCE"));
+            let current = sample_name.lock().unwrap().clone();
+            egui::ComboBox::from_id_salt("scene_menu")
+                .selected_text(egui::RichText::new(current).color(CYAN))
+                .width(168.0)
+                .show_ui(ui, |ui| {
+                    for &(label, scene) in &[
+                        ("Pad", Scene::Pad),
+                        ("Choir", Scene::Choir),
+                        ("Bell", Scene::Bell),
+                        ("Noise", Scene::Noise),
+                    ] {
+                        if ui.selectable_label(false, format!("●  {label}")).clicked() {
+                            load_scene(scene, pending, viz, sample_name, &params.sample_path);
                         }
                     }
-                }
-            });
-        }
-
-        // ── Built-in scenes: instant sound, no file needed ──────────────────
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Built-in:").color(egui::Color32::from_gray(160)));
-            for &(label, scene) in &[
-                ("Pad", Scene::Pad),
-                ("Choir", Scene::Choir),
-                ("Bell", Scene::Bell),
-                ("Noise", Scene::Noise),
-            ] {
-                if preset_button(ui, label).clicked() {
-                    load_scene(scene, pending, viz, sample_name, &params.sample_path);
-                }
+                });
+            if ui
+                .add(
+                    egui::Button::new(egui::RichText::new("Load WAV…").color(BG0).size(12.0))
+                        .fill(CYAN)
+                        .corner_radius(6),
+                )
+                .clicked()
+            {
+                spawn_wav_dialog(pending, viz, sample_name, &params.sample_path);
             }
         });
-        ui.label(
-            egui::RichText::new(format!("scene: {}", sample_name.lock().unwrap()))
-                .color(egui::Color32::from_gray(150))
-                .small(),
-        );
 
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(6.0);
-
-        // ── Presets (the "Simple mode": one click sets the character) ────────
+        // ── CHARACTER menu: the classic Simple-mode presets ──────────────────
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Character:").color(egui::Color32::from_gray(160)));
-            if preset_button(ui, "Tonal").clicked() {
-                apply_preset(setter, params, Preset::Tonal);
-            }
-            if preset_button(ui, "Drone").clicked() {
-                apply_preset(setter, params, Preset::Drone);
-            }
-            if preset_button(ui, "Shimmer").clicked() {
-                apply_preset(setter, params, Preset::Shimmer);
-            }
+            ui.label(menu_tag("CHARACTER"));
+            egui::ComboBox::from_id_salt("character_menu")
+                .selected_text(egui::RichText::new("Presets…").color(ACCENT))
+                .width(168.0)
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(false, "Tonal — narrow, pitched").clicked() {
+                        apply_preset(setter, params, Preset::Tonal);
+                    }
+                    if ui.selectable_label(false, "Drone — wide, dense").clicked() {
+                        apply_preset(setter, params, Preset::Drone);
+                    }
+                    if ui.selectable_label(false, "Shimmer — bright, evolving").clicked() {
+                        apply_preset(setter, params, Preset::Shimmer);
+                    }
+                });
         });
-        ui.add_space(6.0);
 
-        labeled(ui, "Density", &params.density, setter);
-        labeled(ui, "Aperture", &params.aperture, setter);
-        labeled(ui, "Focus", &params.focus, setter);
-        labeled(ui, "Reverb", &params.reverb, setter);
-        labeled(ui, "Evolve", &params.evolve, setter);
-        labeled(ui, "Shimmer", &params.shimmer, setter);
-        labeled(ui, "Master", &params.master, setter);
+        ui.add_space(8.0);
 
-        ui.add_space(10.0);
-        ui.label(
-            egui::RichText::new(
-                "Narrow aperture → tonal · wide → drone.\n\
-                 More density → smoother render · Evolve → it drifts on its own.",
-            )
-            .color(egui::Color32::from_gray(120))
-            .small(),
-        );
+        // ── Parameter knobs, grouped into sections ───────────────────────────
+        section_header(ui, "RENDER");
+        ui.horizontal(|ui| {
+            knob(ui, &params.density, setter, "DENSITY", ACCENT);
+            knob(ui, &params.aperture, setter, "APERTURE", ACCENT);
+            knob(ui, &params.focus, setter, "FOCUS", ACCENT);
+        });
+
+        section_header(ui, "MOTION  ·  RECURSIVE AUTOEVOLUTION");
+        ui.horizontal(|ui| {
+            knob(ui, &params.evolve, setter, "EVOLVE", CYAN);
+            knob(ui, &params.shimmer, setter, "SHIMMER", CYAN);
+        });
+
+        section_header(ui, "SPACE & OUTPUT");
+        ui.horizontal(|ui| {
+            knob(ui, &params.reverb, setter, "REVERB", ACCENT);
+            knob(ui, &params.master, setter, "MASTER", ACCENT);
+        });
     });
 }
 
 /// The signature view: a focal "camera" casting rays at the scene timeline. The
 /// dispersion cone is the depth of field; the rays land where grains are fired;
 /// everything glows with the live output level and drifts with autoevolution.
-fn draw_visualizer(ui: &mut egui::Ui, viz: &Viz) {
-    let desired = egui::vec2(ui.available_width(), 200.0);
+fn draw_visualizer(ui: &mut egui::Ui, viz: &Viz, base_focus: f32, evolve: f32) {
+    let desired = egui::vec2(ui.available_width(), 184.0);
     let (rect, _resp) = ui.allocate_exact_size(desired, egui::Sense::hover());
     // Keep the rays alive even when the host isn't repainting for us.
     ui.ctx().request_repaint();
@@ -442,15 +431,56 @@ fn draw_visualizer(ui: &mut egui::Ui, viz: &Viz) {
 
     let rounding = egui::CornerRadius::same(10);
     p.rect_filled(rect, rounding, BG1);
+    p.rect_stroke(
+        rect,
+        rounding,
+        egui::Stroke::new(1.0, egui::Color32::from_gray(34)),
+        egui::StrokeKind::Inside,
+    );
 
     let pad = 14.0;
     let left = rect.left() + pad;
     let width = rect.width() - 2.0 * pad;
     let base_y = rect.bottom() - 26.0;
     let focus_x = left + snap.focus.clamp(0.0, 1.0) * width;
-    let apex = egui::pos2(focus_x, rect.top() + 22.0);
+    let base_focus_x = left + base_focus.clamp(0.0, 1.0) * width;
+    let apex_y = rect.top() + 30.0;
+    let apex = egui::pos2(focus_x, apex_y);
     let level = snap.level.clamp(0.0, 1.0);
     let glow = (level * 6.0).clamp(0.0, 1.0); // perceptual lift
+
+    // ── Recursive autoevolution: the band the focus wanders within, plus a
+    // feedback orbit around the apex. This is the visible signature of the
+    // output looping back into focus & aperture.
+    if evolve > 0.001 {
+        let hr = (0.225 * evolve * width).min(width * 0.5);
+        let band = egui::Rect::from_min_max(
+            egui::pos2((base_focus_x - hr).max(left), apex_y - 6.0),
+            egui::pos2((base_focus_x + hr).min(left + width), apex_y + 6.0),
+        );
+        p.rect_filled(
+            band,
+            egui::CornerRadius::same(6),
+            egui::Color32::from_rgba_unmultiplied(40, 230, 220, (16.0 + glow * 26.0) as u8),
+        );
+        // Feedback orbit (recursion): a dot circling the apex.
+        let orbit_r = 9.0 + evolve * 9.0;
+        let ang = t * (0.6 + evolve * 2.2);
+        let od = egui::pos2(apex.x + orbit_r * ang.cos(), apex.y + orbit_r * ang.sin() * 0.55);
+        p.circle_stroke(
+            apex,
+            orbit_r,
+            egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(40, 230, 220, 60)),
+        );
+        p.circle_filled(od, 2.0, CYAN);
+        p.text(
+            egui::pos2(left, apex_y - 14.0),
+            egui::Align2::LEFT_BOTTOM,
+            "↻ AUTOEVOLUTION",
+            egui::FontId::proportional(9.0),
+            egui::Color32::from_rgba_unmultiplied(40, 230, 220, 180),
+        );
+    }
 
     // Scene waveform along the baseline.
     if !snap.wave.is_empty() {
@@ -710,10 +740,133 @@ fn load_scene(
     *pending.lock().unwrap() = Some((data, sr));
 }
 
-fn labeled(ui: &mut egui::Ui, name: &str, param: &FloatParam, setter: &ParamSetter) {
-    ui.label(name);
-    ui.add(widgets::ParamSlider::for_param(param, setter));
+/// Small left-hand tag for a menu row.
+fn menu_tag(text: &str) -> egui::RichText {
+    egui::RichText::new(text).size(10.0).strong().color(egui::Color32::from_gray(120))
+}
+
+/// Section divider: an uppercase label with a thin rule to its right.
+fn section_header(ui: &mut egui::Ui, text: &str) {
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new(text).size(10.0).strong().color(egui::Color32::from_rgb(150, 150, 175)),
+        );
+        let r = ui.available_rect_before_wrap();
+        let y = r.center().y;
+        ui.painter().line_segment(
+            [egui::pos2(r.left() + 6.0, y), egui::pos2(r.right(), y)],
+            egui::Stroke::new(1.0, egui::Color32::from_gray(36)),
+        );
+    });
     ui.add_space(4.0);
+}
+
+/// Polyline arc helper (egui has no arc primitive).
+fn paint_arc(p: &egui::Painter, c: egui::Pos2, r: f32, a0: f32, a1: f32, stroke: egui::Stroke) {
+    const STEPS: usize = 40;
+    let pts: Vec<egui::Pos2> = (0..=STEPS)
+        .map(|i| {
+            let a = a0 + (a1 - a0) * (i as f32 / STEPS as f32);
+            egui::pos2(c.x + r * a.cos(), c.y + r * a.sin())
+        })
+        .collect();
+    p.add(egui::Shape::line(pts, stroke));
+}
+
+/// A rotary knob bound to a plugin parameter. Vertical drag changes the value
+/// (Shift = fine), double-click resets to default, hover shows the value.
+fn knob(ui: &mut egui::Ui, param: &FloatParam, setter: &ParamSetter, label: &str, accent: egui::Color32) {
+    let diameter = 52.0;
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(diameter + 8.0, diameter + 22.0), egui::Sense::click_and_drag());
+    let center = egui::pos2(rect.center().x, rect.top() + diameter * 0.5 + 2.0);
+    let radius = diameter * 0.5;
+
+    let mut norm = param.unmodulated_normalized_value();
+    if resp.drag_started() {
+        setter.begin_set_parameter(param);
+    }
+    if resp.dragged() {
+        let d = resp.drag_delta();
+        let speed = if ui.input(|i| i.modifiers.shift) { 0.0009 } else { 0.005 };
+        norm = (norm - d.y * speed + d.x * speed * 0.25).clamp(0.0, 1.0);
+        setter.set_parameter_normalized(param, norm);
+    }
+    if resp.drag_stopped() {
+        setter.end_set_parameter(param);
+    }
+    if resp.double_clicked() {
+        let def = param.default_normalized_value();
+        setter.begin_set_parameter(param);
+        setter.set_parameter_normalized(param, def);
+        setter.end_set_parameter(param);
+        norm = def;
+    }
+
+    let p = ui.painter_at(rect);
+    let a0 = 135f32.to_radians();
+    let a1 = 405f32.to_radians();
+    let av = a0 + (a1 - a0) * norm;
+    // Track, value arc, body, pointer.
+    paint_arc(&p, center, radius, a0, a1, egui::Stroke::new(3.0, egui::Color32::from_gray(42)));
+    paint_arc(&p, center, radius, a0, av, egui::Stroke::new(3.0, accent));
+    p.circle_filled(center, radius - 5.0, egui::Color32::from_rgb(22, 22, 32));
+    p.circle_stroke(center, radius - 5.0, egui::Stroke::new(1.0, egui::Color32::from_gray(58)));
+    if resp.hovered() {
+        p.circle_stroke(center, radius - 5.0, egui::Stroke::new(1.0, accent));
+    }
+    let inner = egui::pos2(center.x + 5.0 * av.cos(), center.y + 5.0 * av.sin());
+    let outer = egui::pos2(center.x + (radius - 8.0) * av.cos(), center.y + (radius - 8.0) * av.sin());
+    p.line_segment([inner, outer], egui::Stroke::new(2.5, egui::Color32::WHITE));
+
+    // Caption: name normally, live value while hovered/dragged.
+    let caption = if resp.hovered() || resp.dragged() {
+        param.normalized_value_to_string(norm, true)
+    } else {
+        label.to_string()
+    };
+    p.text(
+        egui::pos2(center.x, rect.bottom() - 1.0),
+        egui::Align2::CENTER_BOTTOM,
+        caption,
+        egui::FontId::proportional(10.0),
+        egui::Color32::from_gray(190),
+    );
+}
+
+/// Open the native WAV dialog on a background thread (see the crash note above).
+fn spawn_wav_dialog(
+    pending: &PendingSample,
+    viz: &Viz,
+    sample_name: &Arc<Mutex<String>>,
+    sample_path: &Arc<Mutex<Option<String>>>,
+) {
+    let pending = pending.clone();
+    let viz = viz.clone();
+    let sample_name = sample_name.clone();
+    let sample_path = sample_path.clone();
+    std::thread::spawn(move || {
+        if let Some(file) = rfd::FileDialog::new().add_filter("WAV audio", &["wav"]).pick_file() {
+            match load_wav(&file) {
+                Ok((data, sr)) => {
+                    let peaks = wave_peaks(&data, 256);
+                    *sample_name.lock().unwrap() = file
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "loaded".to_string());
+                    *sample_path.lock().unwrap() = Some(file.to_string_lossy().to_string());
+                    if let Ok(mut v) = viz.lock() {
+                        v.wave = peaks;
+                    }
+                    *pending.lock().unwrap() = Some((data, sr));
+                }
+                Err(e) => {
+                    *sample_name.lock().unwrap() = format!("error: {e}");
+                }
+            }
+        }
+    });
 }
 
 // ── Presets ("Simple mode") ─────────────────────────────────────────────────
@@ -722,14 +875,6 @@ enum Preset {
     Tonal,
     Drone,
     Shimmer,
-}
-
-fn preset_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
-    ui.add(
-        egui::Button::new(egui::RichText::new(label).color(egui::Color32::from_gray(230)))
-            .fill(BG1)
-            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(70))),
-    )
 }
 
 /// Set one parameter as a complete host gesture (so DAW automation records it).
