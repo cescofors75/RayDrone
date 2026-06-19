@@ -94,6 +94,10 @@ pub struct Engine {
     rng: u32,
     qmc: f32,
     strat_i: u32,
+    // Live capture: when on, `sample` is a rolling buffer fed by the host input
+    // (the plugin works as an ambient effect on a track instead of an instrument).
+    live: bool,
+    cap_w: usize,
     voices: Vec<Voice>,
     active: Vec<usize>,
     free: Vec<usize>,
@@ -154,6 +158,8 @@ impl Engine {
             rng: 0x1234_5678,
             qmc: 0.5,
             strat_i: 0,
+            live: false,
+            cap_w: 0,
             voices: vec![Voice::default(); MAX_VOICES],
             active: vec![0usize; MAX_VOICES],
             free: (0..MAX_VOICES).map(|i| MAX_VOICES - 1 - i).collect(),
@@ -189,9 +195,33 @@ impl Engine {
     }
 
     pub fn load(&mut self, sample: Vec<f32>, sr: f32) {
+        self.live = false;
         self.sample = sample;
         self.samp_sr = if sr > 1.0 { sr } else { 44100.0 };
         self.reset();
+    }
+
+    /// Switch to live-input mode: `sample` becomes a rolling buffer of the last
+    /// `secs` seconds of host audio, which the rays render into an ambient cloud.
+    pub fn begin_live_capture(&mut self, secs: f32) {
+        let len = ((secs * self.host_sr) as usize).max(2);
+        self.sample = vec![0.0; len];
+        self.samp_sr = self.host_sr; // captured at the host's rate
+        self.cap_w = 0;
+        self.live = true;
+        self.reset();
+    }
+
+    /// Feed one input sample into the rolling capture buffer (no-op unless live).
+    #[inline]
+    pub fn push_input(&mut self, x: f32) {
+        if self.live && !self.sample.is_empty() {
+            self.sample[self.cap_w] = x;
+            self.cap_w += 1;
+            if self.cap_w >= self.sample.len() {
+                self.cap_w = 0;
+            }
+        }
     }
 
     pub fn reset(&mut self) {

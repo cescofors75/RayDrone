@@ -16,7 +16,14 @@ mod engine;
 use engine::{Engine, VLOG};
 
 /// Source samples + native sample-rate waiting to be picked up by the audio thread.
-type PendingSample = Arc<Mutex<Option<(Vec<f32>, f32)>>>;
+/// A scene-change command handed from the GUI thread to the audio thread.
+enum SceneCmd {
+    /// Replace the scene with decoded audio (samples, sample_rate).
+    Wav(Vec<f32>, f32),
+    /// Switch to live-input capture of the last N seconds of host audio.
+    Live(f32),
+}
+type PendingSample = Arc<Mutex<Option<SceneCmd>>>;
 
 /// Snapshot of the engine state for the visualizer. The audio thread writes it
 /// (try-lock, once per block); the GUI thread reads it each frame.
@@ -82,9 +89,15 @@ struct RayDroneParams {
     /// Shimmer — probability a grain plays an octave up (airy sheen).
     #[id = "shimmer"]
     shimmer: FloatParam,
+    /// Dry/Wet — blend of the original signal and the rendered drone.
+    #[id = "mix"]
+    mix: FloatParam,
     /// Master output level.
     #[id = "master"]
     master: FloatParam,
+    /// Bypass — pass the input through untouched.
+    #[id = "bypass"]
+    bypass: BoolParam,
 }
 
 impl Default for RayDrone {
@@ -141,6 +154,14 @@ impl Default for RayDroneParams {
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
 
+            mix: FloatParam::new("Mix", 0.7, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_unit(" %")
+                .with_value_to_string(formatters::v2s_f32_percentage(0))
+                .with_string_to_value(formatters::s2v_f32_percentage())
+                .with_smoother(SmoothingStyle::Linear(20.0)),
+
+            bypass: BoolParam::new("Bypass", false).make_bypass(),
+
             master: FloatParam::new(
                 "Master",
                 util::db_to_gain(-6.0),
@@ -165,9 +186,9 @@ impl Plugin for RayDrone {
     const EMAIL: &'static str = "noreply@example.com";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-    // Instrument: no audio input, stereo output.
+    // Effect: stereo in (the "scene" / dry signal), stereo out.
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
-        main_input_channels: None,
+        main_input_channels: NonZeroU32::new(2),
         main_output_channels: NonZeroU32::new(2),
         aux_input_ports: &[],
         aux_output_ports: &[],
@@ -212,6 +233,18 @@ impl Plugin for RayDrone {
 
         // Restore a persisted scene (DAW project recall), or fall back to a
         // built-in so the plugin makes sound out of the box.
+        {
+            let path = self.params.sample_path.lock().unwrap().clone();
+            // Live-input mode was saved with the project.
+            if matches!(path.as_deref(), Some("live")) {
+                self.engine.begin_live_capture(6.0);
+                if let Ok(mut v) = self.viz.lock() {
+                    v.wave = Vec::new();
+                }
+                *self.sample_name.lock().unwrap() = "live input".to_string();
+                return true;
+            }
+        }
         if self.engine.is_empty() {
             let path = self.params.sample_path.lock().unwrap().clone();
             let (data, sr, name): (Vec<f32>, f32, String) = match path {
@@ -257,11 +290,18 @@ impl Plugin for RayDrone {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        // Pick up a freshly-loaded sample from the GUI thread (rare event).
+        // Pick up a scene change from the GUI thread (rare event).
         if let Ok(mut slot) = self.pending.try_lock() {
-            if let Some((data, sr)) = slot.take() {
-                self.engine.load(data, sr);
+            match slot.take() {
+                Some(SceneCmd::Wav(data, sr)) => self.engine.load(data, sr),
+                Some(SceneCmd::Live(secs)) => self.engine.begin_live_capture(secs),
+                None => {}
             }
+        }
+
+        // Bypass: pass the input straight through, untouched.
+        if self.params.bypass.value() {
+            return ProcessStatus::Normal;
         }
 
         // Push current parameter values to the engine.
@@ -274,13 +314,27 @@ impl Plugin for RayDrone {
 
         for mut frame in buffer.iter_samples() {
             self.engine.set_master(self.params.master.smoothed.next());
-            let (l, r) = self.engine.tick();
+            let mix = self.params.mix.smoothed.next();
+
+            // Read the dry input (the "scene") before overwriting it.
             let mut ch = frame.iter_mut();
-            if let Some(s) = ch.next() {
-                *s = l;
+            let c0 = ch.next();
+            let c1 = ch.next();
+            let il = c0.as_deref().copied().unwrap_or(0.0);
+            let ir = c1.as_deref().copied().unwrap_or(il);
+
+            // Feed the input into the live-capture buffer, then render one frame.
+            self.engine.push_input(0.5 * (il + ir));
+            let (dl, dr) = self.engine.tick();
+
+            // Dry/Wet blend: the rays modify the original into an ambient texture.
+            let ol = (1.0 - mix) * il + mix * dl;
+            let or_ = (1.0 - mix) * ir + mix * dr;
+            if let Some(s) = c0 {
+                *s = ol;
             }
-            if let Some(s) = ch.next() {
-                *s = r;
+            if let Some(s) = c1 {
+                *s = or_;
             }
         }
 
@@ -323,6 +377,22 @@ fn draw_ui(
                 egui::RichText::new("RAYDRONE").strong().color(egui::Color32::WHITE).size(22.0),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Bypass toggle.
+                let by = params.bypass.value();
+                let btn = egui::Button::new(
+                    egui::RichText::new(if by { "BYPASSED" } else { "BYPASS" })
+                        .size(11.0)
+                        .strong()
+                        .color(if by { BG0 } else { egui::Color32::from_gray(200) }),
+                )
+                .fill(if by { ACCENT } else { BG1 })
+                .corner_radius(6)
+                .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(70)));
+                if ui.add(btn).clicked() {
+                    setter.begin_set_parameter(&params.bypass);
+                    setter.set_parameter(&params.bypass, !by);
+                    setter.end_set_parameter(&params.bypass);
+                }
                 ui.label(
                     egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
                         .small()
@@ -338,11 +408,14 @@ fn draw_ui(
         );
         ui.add_space(8.0);
 
+        // Scrollable body so no control is ever cut off by the host window size.
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+
         // ── Ray visualizer (shows the live render + autoevolution) ───────────
         draw_visualizer(ui, viz, params.focus.value(), params.evolve.value());
         ui.add_space(10.0);
 
-        // ── SOURCE menu: pick a built-in scene or load a WAV ─────────────────
+        // ── SOURCE menu: live input, a built-in scene, or a WAV ──────────────
         ui.horizontal(|ui| {
             ui.label(menu_tag("SOURCE"));
             let current = sample_name.lock().unwrap().clone();
@@ -350,6 +423,16 @@ fn draw_ui(
                 .selected_text(egui::RichText::new(current).color(CYAN))
                 .width(168.0)
                 .show_ui(ui, |ui| {
+                    // Live input: process the track audio into an ambient texture.
+                    if ui.selectable_label(false, "◉  Live input (FX)").clicked() {
+                        *sample_name.lock().unwrap() = "live input".to_string();
+                        *params.sample_path.lock().unwrap() = Some("live".to_string());
+                        if let Ok(mut v) = viz.lock() {
+                            v.wave = Vec::new();
+                        }
+                        *pending.lock().unwrap() = Some(SceneCmd::Live(6.0));
+                    }
+                    ui.separator();
                     for &(label, scene) in &[
                         ("Pad", Scene::Pad),
                         ("Choir", Scene::Choir),
@@ -411,8 +494,20 @@ fn draw_ui(
         section_header(ui, "SPACE & OUTPUT");
         ui.horizontal(|ui| {
             knob(ui, &params.reverb, setter, "REVERB", ACCENT);
+            knob(ui, &params.mix, setter, "MIX", CYAN);
             knob(ui, &params.master, setter, "MASTER", ACCENT);
         });
+
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(
+                "FX on a track: pick SOURCE ▸ Live input, then set MIX (dry↔drone).\n\
+                 Or use a built-in scene / WAV as a pure instrument.",
+            )
+            .size(10.0)
+            .color(egui::Color32::from_gray(120)),
+        );
+        }); // ScrollArea
     });
 }
 
@@ -737,7 +832,7 @@ fn load_scene(
     if let Ok(mut v) = viz.lock() {
         v.wave = peaks;
     }
-    *pending.lock().unwrap() = Some((data, sr));
+    *pending.lock().unwrap() = Some(SceneCmd::Wav(data, sr));
 }
 
 /// Small left-hand tag for a menu row.
@@ -859,7 +954,7 @@ fn spawn_wav_dialog(
                     if let Ok(mut v) = viz.lock() {
                         v.wave = peaks;
                     }
-                    *pending.lock().unwrap() = Some((data, sr));
+                    *pending.lock().unwrap() = Some(SceneCmd::Wav(data, sr));
                 }
                 Err(e) => {
                     *sample_name.lock().unwrap() = format!("error: {e}");
@@ -943,12 +1038,12 @@ fn file_label(path: &str) -> String {
 impl ClapPlugin for RayDrone {
     const CLAP_ID: &'static str = "com.raydrone.simple";
     const CLAP_DESCRIPTION: Option<&'static str> =
-        Some("Stochastic ray-traced granular drone from a WAV scene");
+        Some("Stochastic ray-traced granular ambient processor / drone");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[
-        ClapFeature::Instrument,
-        ClapFeature::Synthesizer,
+        ClapFeature::AudioEffect,
+        ClapFeature::Reverb,
         ClapFeature::Stereo,
     ];
 }
@@ -956,7 +1051,7 @@ impl ClapPlugin for RayDrone {
 impl Vst3Plugin for RayDrone {
     const VST3_CLASS_ID: [u8; 16] = *b"RayDroneSimplVST";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
-        &[Vst3SubCategory::Instrument, Vst3SubCategory::Synth];
+        &[Vst3SubCategory::Fx, Vst3SubCategory::Reverb];
 }
 
 nih_export_clap!(RayDrone);
