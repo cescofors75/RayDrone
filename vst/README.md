@@ -30,6 +30,7 @@ is a per-instance port of `wasm/raydrone.rs` in [`src/engine.rs`](src/engine.rs)
 | **Shimmer** | Octave transport | Probability a grain reads an octave up → airy, bright sheen |
 | **Bounce** | Recursive transport depth | How many times a dying grain relaunches a child grain (Russian-roulette bounces — recursive rays) |
 | **Reflect** | Path survival probability | Probability each bounce survives → tail energy & length (the Neumann series) |
+| **Keys** | — | How much played notes (MIDI / piano / computer keys) reshape the drone. The drone glides to the note (portamento). 0 = ignore keys, 100 = fully follow |
 | **Mix** | — | Dry/Wet: blend of the original signal and the rendered drone |
 | **Master** | — | Output level |
 

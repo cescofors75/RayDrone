@@ -177,7 +177,7 @@ impl Default for RayDroneParams {
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
 
-            keymix: FloatParam::new("Keys", 0.6, FloatRange::Linear { min: 0.0, max: 1.0 })
+            keymix: FloatParam::new("Keys", 0.85, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit(" %")
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),

@@ -112,9 +112,13 @@ pub struct Engine {
     // (the plugin works as an ambient effect on a track instead of an instrument).
     live: bool,
     cap_w: usize,
-    // Held-note pitch ratios (MIDI / on-screen piano). Empty = unison drone;
-    // otherwise each grain picks one → play the drone as chords.
-    key_ratios: Vec<f32>,
+    // Playing: the drone glides toward the held note(s). `keys_target` is the
+    // destination ratio (1.0 = natural drone, set from MIDI / the piano), and
+    // `keys_cur` slides toward it each sample (portamento) so the drone morphs
+    // to your notes smoothly instead of jumping.
+    keys_target: f32,
+    keys_cur: f32,
+    glide_coeff: f32,
     voices: Vec<Voice>,
     active: Vec<usize>,
     free: Vec<usize>,
@@ -180,7 +184,9 @@ impl Engine {
             strat_i: 0,
             live: false,
             cap_w: 0,
-            key_ratios: Vec::with_capacity(128),
+            keys_target: 1.0,
+            keys_cur: 1.0,
+            glide_coeff: 0.0,
             voices: vec![Voice::default(); MAX_VOICES],
             active: vec![0usize; MAX_VOICES],
             free: (0..MAX_VOICES).map(|i| MAX_VOICES - 1 - i).collect(),
@@ -319,16 +325,22 @@ impl Engine {
         self.key_mix = clampf(m, 0.0, 1.0);
     }
 
-    /// Set the currently held notes (128-entry mask). `root` is the note that
-    /// plays the scene at its natural pitch (unison). Empty mask = unison drone.
+    /// Set the currently held notes (128-entry mask). `root` plays the scene at
+    /// its natural pitch (unison). The drone glides toward the lowest held note
+    /// (root-priority); with no notes held it glides back to the natural pitch.
     pub fn set_keys(&mut self, mask: &[bool; 128], root: u8) {
-        self.key_ratios.clear();
+        let mut target = 1.0f32;
+        let mut found = false;
         for (n, &on) in mask.iter().enumerate() {
             if on {
-                let semis = n as f32 - root as f32;
-                self.key_ratios.push(2.0f32.powf(semis / 12.0));
+                let r = 2.0f32.powf((n as f32 - root as f32) / 12.0);
+                if !found || r < target {
+                    target = r;
+                }
+                found = true;
             }
         }
+        self.keys_target = target;
     }
 
     // ── Visualization getters (read by the GUI thread) ──────────────────────
@@ -351,6 +363,8 @@ impl Engine {
     fn update_coeffs(&mut self) {
         let tp = 2.0 * PI;
         self.dc_r = clampf(1.0 - tp * 10.0 / self.host_sr, 0.9, 0.99999);
+        // Portamento: ~60 ms one-pole glide toward the played note.
+        self.glide_coeff = clampf(1.0 - (-1.0 / (0.06 * self.host_sr)).exp(), 0.0, 1.0);
         // Rebuild reverb delay lines scaled to host SR (keeps the same tail time).
         let k = self.host_sr / 44100.0;
         let mk = |base: usize| -> Vec<f32> {
@@ -430,15 +444,10 @@ impl Engine {
         // Read speed: sample-rate ratio keeps pitch correct across host SR.
         // Shimmer: some grains read an octave up (×2) for a bright, airy sheen.
         let oct = if self.rng01() < self.octave { 2.0 } else { 1.0 };
-        // Play ON TOP of the drone: when notes are held, only a fraction of grains
-        // (key_mix) follow a held note; the rest keep the base drone alive, so
-        // playing layers pitched voices instead of replacing the texture.
-        let key = if self.key_ratios.is_empty() || self.rng01() >= self.key_mix {
-            1.0
-        } else {
-            let idx = (self.rng01() * self.key_ratios.len() as f32) as usize;
-            self.key_ratios[idx.min(self.key_ratios.len() - 1)]
-        };
+        // The drone morphs to the played note: a fraction (key_mix) of grains
+        // follow the glided pitch (keys_cur, which is 1.0 when idle and slides
+        // to/from the note), the rest keep some natural drone body underneath.
+        let key = if self.rng01() < self.key_mix { self.keys_cur } else { 1.0 };
         let step = key * oct * (self.samp_sr / self.host_sr) * detune;
         let pan = (self.rng01() * 2.0 - 1.0) * WIDTH;
         let panl = ((1.0 - pan) * 0.5).sqrt(); // equal-power
@@ -492,6 +501,9 @@ impl Engine {
         if self.sample.len() < 2 {
             return (0.0, 0.0);
         }
+        // Portamento: slide the current pitch toward the played note.
+        self.keys_cur += (self.keys_target - self.keys_cur) * self.glide_coeff;
+
         let rate_ps = self.grain_rate / self.host_sr;
         self.spawn_acc += rate_ps;
         while self.spawn_acc >= 1.0 {
