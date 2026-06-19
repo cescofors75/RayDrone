@@ -127,7 +127,7 @@ impl Default for RayDrone {
 impl Default for RayDroneParams {
     fn default() -> Self {
         Self {
-            editor_state: EguiState::from_size(760, 520),
+            editor_state: EguiState::from_size(760, 580),
             sample_path: Arc::new(Mutex::new(None)),
 
             density: FloatParam::new(
@@ -540,8 +540,27 @@ fn draw_ui(
         });
 
         ui.add_space(8.0);
-        section_header(ui, "PLAY  ·  computer keys (A W S E D…), mouse or MIDI pitch the drone");
-        draw_piano(ui, keys);
+        // PLAY header with octave shift (affects the piano + computer-keyboard row).
+        let oct_id = egui::Id::new("raydrone_octave");
+        let mut octave: i32 = ui.ctx().data(|d| d.get_temp(oct_id)).unwrap_or(0);
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new("PLAY  ·  keys / mouse / MIDI")
+                    .size(10.0)
+                    .strong()
+                    .color(egui::Color32::from_rgb(150, 150, 175)),
+            );
+            ui.add_space(8.0);
+            if ui.add(egui::Button::new("  OCT −  ").fill(BG1).corner_radius(6)).clicked() {
+                octave = (octave - 1).max(-3);
+            }
+            ui.label(egui::RichText::new(format!("{octave:+}")).color(CYAN).strong());
+            if ui.add(egui::Button::new("  OCT +  ").fill(BG1).corner_radius(6)).clicked() {
+                octave = (octave + 1).min(3);
+            }
+        });
+        ui.ctx().data_mut(|d| d.insert_temp(oct_id, octave));
+        draw_piano(ui, keys, octave);
 
         ui.add_space(6.0);
         ui.label(
@@ -884,23 +903,6 @@ fn menu_tag(text: &str) -> egui::RichText {
     egui::RichText::new(text).size(10.0).strong().color(egui::Color32::from_gray(120))
 }
 
-/// Section divider: an uppercase label with a thin rule to its right.
-fn section_header(ui: &mut egui::Ui, text: &str) {
-    ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(text).size(10.0).strong().color(egui::Color32::from_rgb(150, 150, 175)),
-        );
-        let r = ui.available_rect_before_wrap();
-        let y = r.center().y;
-        ui.painter().line_segment(
-            [egui::pos2(r.left() + 6.0, y), egui::pos2(r.right(), y)],
-            egui::Stroke::new(1.0, egui::Color32::from_gray(36)),
-        );
-    });
-    ui.add_space(4.0);
-}
-
 /// Polyline arc helper (egui has no arc primitive).
 fn paint_arc(p: &egui::Painter, c: egui::Pos2, r: f32, a0: f32, a1: f32, stroke: egui::Stroke) {
     const STEPS: usize = 40;
@@ -998,16 +1000,18 @@ fn knob_group(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
 /// On-screen piano. Plays via three inputs at once: the computer keyboard
 /// (A,W,S,E,D,F,T,G,Y,H,U,J,K… from C4), mouse clicks, and incoming MIDI. The
 /// resulting note mask is shared with the audio thread, which pitches the rays.
-fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>) {
-    const LO: i32 = 48; // C3
-    const HI: i32 = 76; // exclusive (E5)
-    let h = 58.0;
+fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>, octave: i32) {
+    // The visible range and the computer-keyboard base both shift with `octave`.
+    let lo = (48 + octave * 12).clamp(0, 100); // C3 at octave 0
+    let hi = (lo + 28).min(127); // ~2⅓ octaves
+    let kb_base = (60 + octave * 12).clamp(0, 115); // C4 at octave 0
+    let h = 78.0;
     let (rect, resp) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), h), egui::Sense::click_and_drag());
     let p = ui.painter_at(rect);
 
     let is_black = |n: i32| matches!(((n % 12) + 12) % 12, 1 | 3 | 6 | 8 | 10);
-    let whites: Vec<i32> = (LO..HI).filter(|&n| !is_black(n)).collect();
+    let whites: Vec<i32> = (lo..hi).filter(|&n| !is_black(n)).collect();
     let ww = rect.width() / whites.len().max(1) as f32;
     let white_rect = |i: usize| {
         egui::Rect::from_min_size(
@@ -1018,13 +1022,18 @@ fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>) {
     let black_rect = |i: usize| {
         egui::Rect::from_min_size(
             egui::pos2(rect.left() + (i as f32 + 1.0) * ww - ww * 0.3, rect.top()),
-            egui::vec2(ww * 0.6, h * 0.6),
+            egui::vec2(ww * 0.6, h * 0.58),
         )
     };
 
     let mut mask = [false; 128];
+    let mut set = |n: i32| {
+        if (0..128).contains(&n) {
+            mask[n as usize] = true;
+        }
+    };
 
-    // Computer keyboard → notes (base C4 = MIDI 60).
+    // Computer keyboard → notes (row from C, base follows the octave).
     const KB: &[(egui::Key, i32)] = &[
         (egui::Key::A, 0), (egui::Key::W, 1), (egui::Key::S, 2), (egui::Key::E, 3),
         (egui::Key::D, 4), (egui::Key::F, 5), (egui::Key::T, 6), (egui::Key::G, 7),
@@ -1034,10 +1043,7 @@ fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>) {
     ui.input(|i| {
         for &(k, off) in KB {
             if i.key_down(k) {
-                let n = 60 + off;
-                if (0..128).contains(&n) {
-                    mask[n as usize] = true;
-                }
+                set(kb_base + off);
             }
         }
     });
@@ -1061,24 +1067,27 @@ fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>) {
                 }
             }
             if let Some(n) = hit {
-                if (0..128).contains(&n) {
-                    mask[n as usize] = true;
-                }
+                set(n);
             }
         }
     }
 
-    // Draw white keys, then black keys on top.
+    // Draw white keys (label every C), then black keys on top.
     let low = egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 };
     for (i, &n) in whites.iter().enumerate() {
+        let r = white_rect(i);
         let col = if mask[n as usize] { CYAN } else { egui::Color32::from_gray(232) };
-        p.rect_filled(white_rect(i), low, col);
-        p.rect_stroke(
-            white_rect(i),
-            low,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(40)),
-            egui::StrokeKind::Inside,
-        );
+        p.rect_filled(r, low, col);
+        p.rect_stroke(r, low, egui::Stroke::new(1.0, egui::Color32::from_gray(40)), egui::StrokeKind::Inside);
+        if n % 12 == 0 {
+            p.text(
+                egui::pos2(r.center().x, r.bottom() - 3.0),
+                egui::Align2::CENTER_BOTTOM,
+                format!("C{}", n / 12 - 1),
+                egui::FontId::proportional(9.0),
+                egui::Color32::from_gray(90),
+            );
+        }
     }
     for (i, &n) in whites.iter().enumerate() {
         if is_black(n + 1) {
