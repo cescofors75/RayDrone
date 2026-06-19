@@ -21,19 +21,10 @@ use std::f32::consts::PI;
 // truth). `tri_inv` stays local here because the VST uses the hardware sqrt while
 // the WASM build uses a no_std Newton approximation; unifying them would change
 // the render.
-use raydrone_core::{clampf, sample_at, soft, win_at};
+use raydrone_core::{clampf, sample_at, soft, win_at, DcBlocker, Reverb};
 
 const WIN: usize = 2048;
 const MAX_VOICES: usize = 512;
-
-// Reverb (Freeverb-lite): 4 combs + 2 allpass per channel, lengths @44.1k.
-const NC: usize = 4;
-const NA: usize = 2;
-const CLEN_L: [usize; NC] = [1557, 1617, 1491, 1422];
-const CLEN_R: [usize; NC] = [1580, 1640, 1514, 1445]; // +stereo spread
-const ALEN: [usize; NA] = [556, 441];
-const REV_ROOM: f32 = 0.84;
-const REV_DAMP: f32 = 0.5;
 
 const GOLDEN: f32 = 0.618_034;
 const STRATA: u32 = 17;
@@ -88,7 +79,6 @@ pub struct Engine {
     aperture_ms: f32, // dispersion width
     grain_rate: f32,  // grains per second (density / "N rays")
     master: f32,      // output gain (linear)
-    reverb_wet: f32,
     feedback: f32,    // autoevolution amount (recursive feedback)
     octave: f32,      // probability a grain plays an octave up (shimmer)
     bounces: u32,     // recursive ray bounces (Russian-roulette depth)
@@ -125,24 +115,11 @@ pub struct Engine {
     nactive: usize,
     nfree: usize,
 
-    // Reverb state.
-    combl: Vec<Vec<f32>>,
-    combr: Vec<Vec<f32>>,
-    combl_i: [usize; NC],
-    combr_i: [usize; NC],
-    combl_s: [f32; NC],
-    combr_s: [f32; NC],
-    apl: Vec<Vec<f32>>,
-    apr: Vec<Vec<f32>>,
-    apl_i: [usize; NA],
-    apr_i: [usize; NA],
-
-    // DC blocker (one-pole highpass ~10 Hz).
-    dc_r: f32,
-    dc_xl: f32,
-    dc_yl: f32,
-    dc_xr: f32,
-    dc_yr: f32,
+    // Reverb + DC blocker, both from the shared kernel (same code the WASM engine
+    // links). Boxed so the reverb's fixed delay-line buffers live on the heap
+    // (like the old Vecs) instead of inline in the plugin struct.
+    reverb: Box<Reverb>,
+    dc: DcBlocker,
 }
 
 impl Engine {
@@ -164,7 +141,6 @@ impl Engine {
             aperture_ms: 100.0,
             grain_rate: 200.0,
             master: 0.5,
-            reverb_wet: 0.2,
             feedback: 0.3,
             octave: 0.0,
             bounces: 0,
@@ -189,22 +165,10 @@ impl Engine {
             free: (0..MAX_VOICES).map(|i| MAX_VOICES - 1 - i).collect(),
             nactive: 0,
             nfree: MAX_VOICES,
-            combl: Vec::new(),
-            combr: Vec::new(),
-            combl_i: [0; NC],
-            combr_i: [0; NC],
-            combl_s: [0.0; NC],
-            combr_s: [0.0; NC],
-            apl: Vec::new(),
-            apr: Vec::new(),
-            apl_i: [0; NA],
-            apr_i: [0; NA],
-            dc_r: 0.998_575,
-            dc_xl: 0.0,
-            dc_yl: 0.0,
-            dc_xr: 0.0,
-            dc_yr: 0.0,
+            reverb: Box::new(Reverb::new()),
+            dc: DcBlocker::new(),
         };
+        e.reverb.set_wet(0.2); // VST default wet mix
         e.update_coeffs();
         e
     }
@@ -262,32 +226,8 @@ impl Engine {
             *v = 0.5;
         }
         self.vlog_w = 0;
-        self.dc_xl = 0.0;
-        self.dc_yl = 0.0;
-        self.dc_xr = 0.0;
-        self.dc_yr = 0.0;
-        for c in 0..NC {
-            for v in self.combl[c].iter_mut() {
-                *v = 0.0;
-            }
-            for v in self.combr[c].iter_mut() {
-                *v = 0.0;
-            }
-            self.combl_i[c] = 0;
-            self.combr_i[c] = 0;
-            self.combl_s[c] = 0.0;
-            self.combr_s[c] = 0.0;
-        }
-        for a in 0..NA {
-            for v in self.apl[a].iter_mut() {
-                *v = 0.0;
-            }
-            for v in self.apr[a].iter_mut() {
-                *v = 0.0;
-            }
-            self.apl_i[a] = 0;
-            self.apr_i[a] = 0;
-        }
+        self.dc.reset();
+        self.reverb.reset();
     }
 
     // ── Setters from the plugin ─────────────────────────────────────────────
@@ -301,7 +241,7 @@ impl Engine {
         self.focus01 = clampf(f01, 0.0, 1.0);
     }
     pub fn set_reverb(&mut self, wet: f32) {
-        self.reverb_wet = clampf(wet, 0.0, 1.0);
+        self.reverb.set_wet(wet);
     }
     pub fn set_master(&mut self, gain: f32) {
         self.master = gain.max(0.0);
@@ -349,24 +289,11 @@ impl Engine {
     }
 
     fn update_coeffs(&mut self) {
-        let tp = 2.0 * PI;
-        self.dc_r = clampf(1.0 - tp * 10.0 / self.host_sr, 0.9, 0.99999);
-        // Rebuild reverb delay lines scaled to host SR (keeps the same tail time).
-        let k = self.host_sr / 44100.0;
-        let mk = |base: usize| -> Vec<f32> {
-            let n = ((base as f32) * k) as usize;
-            vec![0.0; n.max(4)]
-        };
-        self.combl = CLEN_L.iter().map(|&b| mk(b)).collect();
-        self.combr = CLEN_R.iter().map(|&b| mk(b)).collect();
-        self.apl = ALEN.iter().map(|&b| mk(b)).collect();
-        self.apr = ALEN.iter().map(|&b| mk(b)).collect();
-        self.combl_i = [0; NC];
-        self.combr_i = [0; NC];
-        self.combl_s = [0.0; NC];
-        self.combr_s = [0.0; NC];
-        self.apl_i = [0; NA];
-        self.apr_i = [0; NA];
+        self.dc.set_sample_rate(self.host_sr);
+        // Scale the reverb delay lines to the host SR (keeps the tail time) and
+        // clear them — mirrors the old "rebuild the buffers" behaviour.
+        self.reverb.set_sample_rate(self.host_sr);
+        self.reverb.reset();
     }
 
     #[inline]
@@ -527,14 +454,8 @@ impl Engine {
             k += 1;
         }
 
-        let (rl, rr) = self.reverb(accl * self.master, accr * self.master);
-        // DC blocker (one-pole highpass): y = x - x1 + R·y1
-        let yl = rl - self.dc_xl + self.dc_r * self.dc_yl;
-        self.dc_xl = rl;
-        self.dc_yl = yl;
-        let yr = rr - self.dc_xr + self.dc_r * self.dc_yr;
-        self.dc_xr = rr;
-        self.dc_yr = yr;
+        let (rl, rr) = self.reverb.process(accl * self.master, accr * self.master);
+        let (yl, yr) = self.dc.process(rl, rr);
         let ol = soft(yl);
         let orr = soft(yr);
 
@@ -556,61 +477,6 @@ impl Engine {
             }
         }
         (ol, orr)
-    }
-
-    // Stereo Freeverb-lite (4 combs + 2 allpass per channel).
-    #[inline]
-    fn reverb(&mut self, inl: f32, inr: f32) -> (f32, f32) {
-        if self.reverb_wet <= 0.0 {
-            return (inl, inr);
-        }
-        let fb = 0.7 + REV_ROOM * 0.28;
-        let il_in = (inl * 0.85 + inr * 0.15) * 0.015;
-        let ir_in = (inr * 0.85 + inl * 0.15) * 0.015;
-        let mut ol = 0.0f32;
-        let mut orr = 0.0f32;
-        for c in 0..NC {
-            let il = self.combl_i[c];
-            let yl = self.combl[c][il];
-            self.combl_s[c] = yl * (1.0 - REV_DAMP) + self.combl_s[c] * REV_DAMP;
-            self.combl[c][il] = il_in + self.combl_s[c] * fb;
-            self.combl_i[c] = il + 1;
-            if self.combl_i[c] >= self.combl[c].len() {
-                self.combl_i[c] = 0;
-            }
-            ol += yl;
-            let ir = self.combr_i[c];
-            let yr = self.combr[c][ir];
-            self.combr_s[c] = yr * (1.0 - REV_DAMP) + self.combr_s[c] * REV_DAMP;
-            self.combr[c][ir] = ir_in + self.combr_s[c] * fb;
-            self.combr_i[c] = ir + 1;
-            if self.combr_i[c] >= self.combr[c].len() {
-                self.combr_i[c] = 0;
-            }
-            orr += yr;
-        }
-        for a in 0..NA {
-            let il = self.apl_i[a];
-            let bl = self.apl[a][il];
-            let yl = -ol + bl;
-            self.apl[a][il] = ol + bl * 0.5;
-            self.apl_i[a] = il + 1;
-            if self.apl_i[a] >= self.apl[a].len() {
-                self.apl_i[a] = 0;
-            }
-            ol = yl;
-            let ir = self.apr_i[a];
-            let br = self.apr[a][ir];
-            let yr = -orr + br;
-            self.apr[a][ir] = orr + br * 0.5;
-            self.apr_i[a] = ir + 1;
-            if self.apr_i[a] >= self.apr[a].len() {
-                self.apr_i[a] = 0;
-            }
-            orr = yr;
-        }
-        let w = self.reverb_wet;
-        (inl * (1.0 - w * 0.5) + ol * w * 3.0, inr * (1.0 - w * 0.5) + orr * w * 3.0)
     }
 }
 

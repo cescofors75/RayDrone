@@ -15,7 +15,9 @@
 // Primitivas DSP compartidas con el motor del VST (un único sitio donde viven).
 // El crate es no_std y sin deps, así que el build de `rustc` crudo (sin Cargo) lo
 // enlaza vía `--extern raydrone_core=...` — ver build.sh. No toca crates.io.
-use raydrone_core::{clampf, sample_at as core_sample_at, soft, win_at as core_win_at};
+use raydrone_core::{
+    clampf, sample_at as core_sample_at, soft, win_at as core_win_at, DcBlocker, Reverb,
+};
 
 use core::panic::PanicInfo;
 
@@ -111,41 +113,10 @@ static mut AMB_RATE: f32 = 0.4;    // nacimientos de focos por segundo
 static mut AMB_DIRTY: bool = true; // recolocar semillas
 static mut FOCI_ACC: f32 = 0.0;    // acumulador de nacimientos
 
-// ── Reverb (Freeverb-lite): 4 combs + 2 allpass por canal, estéreo ──────────
-const NC: usize = 4;
-const NA: usize = 2;
-// Capacidad para hasta 96 kHz (las longitudes base están en muestras @44.1k).
-const CMAX: usize = 3600;
-const AMAX: usize = 1280;
-const CLEN_L: [usize; NC] = [1557, 1617, 1491, 1422]; // @44100
-const CLEN_R: [usize; NC] = [1580, 1640, 1514, 1445]; // +stereo spread
-const ALEN: [usize; NA] = [556, 441];
-// Longitudes efectivas escaladas al SR real (update_coeffs) → mismo tiempo de
-// reverb a 44.1k, 48k o 96k.
-static mut CLEN_L_RT: [usize; NC] = [1557, 1617, 1491, 1422];
-static mut CLEN_R_RT: [usize; NC] = [1580, 1640, 1514, 1445];
-static mut ALEN_RT: [usize; NA] = [556, 441];
-const REV_ROOM: f32 = 0.84; // tamaño/feedback fijo
-const REV_DAMP: f32 = 0.5;  // amortiguación de agudos
-static mut COMBL: [[f32; CMAX]; NC] = [[0.0; CMAX]; NC];
-static mut COMBR: [[f32; CMAX]; NC] = [[0.0; CMAX]; NC];
-static mut COMBL_I: [usize; NC] = [0; NC];
-static mut COMBR_I: [usize; NC] = [0; NC];
-static mut COMBL_S: [f32; NC] = [0.0; NC];
-static mut COMBR_S: [f32; NC] = [0.0; NC];
-static mut APL: [[f32; AMAX]; NA] = [[0.0; AMAX]; NA];
-static mut APR: [[f32; AMAX]; NA] = [[0.0; AMAX]; NA];
-static mut APL_I: [usize; NA] = [0; NA];
-static mut APR_I: [usize; NA] = [0; NA];
-static mut REV_WET: f32 = 0.0; // mezcla de reverb (0 = seco)
-
-// DC blocker a la salida (one-pole highpass ~10 Hz) — quita offset/retumbe acumulado.
-// El coeficiente se recalcula con el SR real en update_coeffs().
-static mut DC_R: f32 = 0.998_575;
-static mut DC_XL: f32 = 0.0;
-static mut DC_YL: f32 = 0.0;
-static mut DC_XR: f32 = 0.0;
-static mut DC_YR: f32 = 0.0;
+// Reverb (Freeverb-lite) y DC blocker viven en el kernel compartido `raydrone_core`
+// (el mismo código que enlaza el VST). Una sola instancia estática de cada uno.
+static mut REVERB: Reverb = Reverb::new();
+static mut DC: DcBlocker = DcBlocker::new();
 
 // Micro-detune por grano (±0.25% ≈ ±4 cents): batidos entre granos → drone lush, no estático.
 const DETUNE: f32 = 0.005;
@@ -287,33 +258,9 @@ fn update_coeffs() {
         let tp = 6.283_185_5f32;
         A_LOW = clampf(tp * 500.0 / SR, 0.0, 0.99);
         A_HIGH = clampf(tp * 2500.0 / SR, 0.0, 0.99);
-        // DC blocker ~10 Hz al SR real
-        DC_R = clampf(1.0 - tp * 10.0 / SR, 0.9, 0.99999);
-        // Reverb: longitudes en muestras escaladas para mantener el mismo
-        // tiempo de cola a cualquier SR (las bases están en @44.1k).
-        let k = SR / 44100.0;
-        for c in 0..NC {
-            let l = ((CLEN_L[c] as f32) * k) as usize;
-            let r = ((CLEN_R[c] as f32) * k) as usize;
-            CLEN_L_RT[c] = if l < 4 { 4 } else if l > CMAX { CMAX } else { l };
-            CLEN_R_RT[c] = if r < 4 { 4 } else if r > CMAX { CMAX } else { r };
-            if COMBL_I[c] >= CLEN_L_RT[c] {
-                COMBL_I[c] = 0;
-            }
-            if COMBR_I[c] >= CLEN_R_RT[c] {
-                COMBR_I[c] = 0;
-            }
-        }
-        for a in 0..NA {
-            let l = ((ALEN[a] as f32) * k) as usize;
-            ALEN_RT[a] = if l < 4 { 4 } else if l > AMAX { AMAX } else { l };
-            if APL_I[a] >= ALEN_RT[a] {
-                APL_I[a] = 0;
-            }
-            if APR_I[a] >= ALEN_RT[a] {
-                APR_I[a] = 0;
-            }
-        }
+        // DC blocker (~10 Hz) y longitudes de reverb escaladas al SR real.
+        DC.set_sample_rate(SR);
+        REVERB.set_sample_rate(SR);
     }
 }
 
@@ -442,66 +389,7 @@ pub extern "C" fn set_smart(on: u32) {
 #[no_mangle]
 pub extern "C" fn set_reverb(wet: f32) {
     unsafe {
-        REV_WET = clampf(wet, 0.0, 1.0);
-    }
-}
-
-// Reverb estéreo Freeverb-lite (4 combs + 2 allpass por canal).
-#[inline]
-fn reverb(inl: f32, inr: f32) -> (f32, f32) {
-    unsafe {
-        if REV_WET <= 0.0 {
-            return (inl, inr);
-        }
-        let fb = 0.7 + REV_ROOM * 0.28;
-        // Alimentar cada canal por separado (con un poco de cross-feed) preserva el
-        // ancho estéreo en la cola, en vez de colapsar la reverb a mono.
-        let il_in = (inl * 0.85 + inr * 0.15) * 0.015;
-        let ir_in = (inr * 0.85 + inl * 0.15) * 0.015;
-        let mut ol = 0.0f32;
-        let mut orr = 0.0f32;
-        for c in 0..NC {
-            let il = COMBL_I[c];
-            let yl = COMBL[c][il];
-            COMBL_S[c] = yl * (1.0 - REV_DAMP) + COMBL_S[c] * REV_DAMP;
-            COMBL[c][il] = il_in + COMBL_S[c] * fb;
-            COMBL_I[c] = il + 1;
-            if COMBL_I[c] >= CLEN_L_RT[c] {
-                COMBL_I[c] = 0;
-            }
-            ol += yl;
-            let ir = COMBR_I[c];
-            let yr = COMBR[c][ir];
-            COMBR_S[c] = yr * (1.0 - REV_DAMP) + COMBR_S[c] * REV_DAMP;
-            COMBR[c][ir] = ir_in + COMBR_S[c] * fb;
-            COMBR_I[c] = ir + 1;
-            if COMBR_I[c] >= CLEN_R_RT[c] {
-                COMBR_I[c] = 0;
-            }
-            orr += yr;
-        }
-        for a in 0..NA {
-            let il = APL_I[a];
-            let bl = APL[a][il];
-            let yl = -ol + bl;
-            APL[a][il] = ol + bl * 0.5;
-            APL_I[a] = il + 1;
-            if APL_I[a] >= ALEN_RT[a] {
-                APL_I[a] = 0;
-            }
-            ol = yl;
-            let ir = APR_I[a];
-            let br = APR[a][ir];
-            let yr = -orr + br;
-            APR[a][ir] = orr + br * 0.5;
-            APR_I[a] = ir + 1;
-            if APR_I[a] >= ALEN_RT[a] {
-                APR_I[a] = 0;
-            }
-            orr = yr;
-        }
-        let w = REV_WET;
-        (inl * (1.0 - w * 0.5) + ol * w * 3.0, inr * (1.0 - w * 0.5) + orr * w * 3.0)
+        REVERB.set_wet(wet);
     }
 }
 
@@ -1259,14 +1147,8 @@ pub extern "C" fn process(frames: usize) {
                 VOICES[i].age += 1.0;
                 k += 1;
             }
-            let (rl, rr) = reverb(accl * MASTER, accr * MASTER);
-            // DC blocker (one-pole highpass): y = x - x1 + R·y1
-            let yl = rl - DC_XL + DC_R * DC_YL;
-            DC_XL = rl;
-            DC_YL = yl;
-            let yr = rr - DC_XR + DC_R * DC_YR;
-            DC_XR = rr;
-            DC_YR = yr;
+            let (rl, rr) = REVERB.process(accl * MASTER, accr * MASTER);
+            let (yl, yr) = DC.process(rl, rr);
             OUTL[f] = soft(yl);
             OUTR[f] = soft(yr);
         }
