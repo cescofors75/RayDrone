@@ -1051,19 +1051,13 @@
     let meterShown = 0;
     let zoomPeaks = null, zoomKey = '';
     const MM_H = 18; // alto de la tira-minimapa (solo visible con zoom)
-    // Estado del "modo live": estelas, beat-bloom, espectro FFT, modo radial, HUD.
-    let liveTrails = false, liveBeat = false, liveSpectrum = false, liveRadial = false;
-    let hudShown = true, levelAvg = 0, beatFlash = 0;
+    // Estado del "modo live": espectro FFT, modo radial, HUD (oculto por defecto).
+    let liveSpectrum = false, liveRadial = false, hudShown = false;
 
     function frame() {
         const W = waveCanvas.width, H = waveCanvas.height;
-        if (liveTrails) {
-            // Afterglow: un velo translúcido en vez de limpiar → los rayos dejan estela.
-            wctx.fillStyle = 'rgba(7,8,14,0.20)'; wctx.fillRect(0, 0, W, H);
-        } else {
-            wctx.clearRect(0, 0, W, H);
-            wctx.fillStyle = '#07080e'; wctx.fillRect(0, 0, W, H);
-        }
+        wctx.clearRect(0, 0, W, H);
+        wctx.fillStyle = '#07080e'; wctx.fillRect(0, 0, W, H);
 
         const dur = Math.max(duration, 0.001);
         const { t0, winDur, z } = zoomWindow();
@@ -1072,19 +1066,7 @@
         const mid = top + (H - top) / 2;
         const t1 = t0 + winDur;
         const focusX = (focusSec - t0) / winDur * W;
-        let glow = 0.4 + Math.min(1, meterShown / 70) * 0.6; // los visuales pulsan con el nivel
-        // Beat-bloom: detecta transitorios sobre la media móvil → flash que decae
-        // (sube el glow) + un leve zoom-punch del conjunto vía CSS transform.
-        levelAvg += (meterShown - levelAvg) * 0.05;
-        if (liveBeat) {
-            const d = meterShown - levelAvg * 1.25;
-            if (d > 0) beatFlash = Math.min(1, beatFlash + d * 0.05);
-            beatFlash *= 0.90;
-            glow = Math.min(1.5, glow + beatFlash * 0.8);
-            vizWrap.style.transform = `scale(${(1 + beatFlash * 0.02).toFixed(4)})`;
-        } else if (beatFlash !== 0 || vizWrap.style.transform) {
-            beatFlash = 0; vizWrap.style.transform = '';
-        }
+        const glow = 0.4 + Math.min(1, meterShown / 70) * 0.6; // los visuales pulsan con el nivel
 
         // Picos de la ventana visible (cache: solo recalcula al mover foco/zoom/sample).
         // A ×1 la ventana es el archivo entero → la vista global de siempre.
@@ -1134,17 +1116,15 @@
             for (let x = W - 1; x >= 0; x--) wctx.lineTo(x, mid + zoomPeaks[x] * amp);
             wctx.closePath();
             wctx.fill();
-            // contorno (arriba y espejo abajo) con glow reactivo
-            wctx.save();
-            wctx.shadowColor = '#ff355e'; wctx.shadowBlur = 3 + glow * 14;
-            wctx.strokeStyle = `rgba(255,160,185,${0.45 + glow * 0.45})`;
+            // contorno (arriba y espejo abajo); sin shadowBlur (carísimo a alta
+            // resolución) — el glow lo da el relleno aditivo y el grosor reactivo.
+            wctx.strokeStyle = `rgba(255,170,195,${0.5 + glow * 0.4})`;
             wctx.lineWidth = 1.1 + glow * 0.8;
             for (const sign of [-1, 1]) {
                 wctx.beginPath();
                 for (let x = 0; x < W; x++) { const y = mid + sign * zoomPeaks[x] * amp; x ? wctx.lineTo(x, y) : wctx.moveTo(x, y); }
                 wctx.stroke();
             }
-            wctx.restore();
         }
 
         // Rayos: cada grano sale de su offset (spread vertical) y converge al foco
@@ -1654,18 +1634,22 @@
     function updateHud() {
         hudScenes.innerHTML = presets.map((b, i) =>
             `${hudKey(i + 1, b.classList.contains('active'))} ${b.textContent.split('(')[0].trim()}`).join('  ·  ');
-        hudTags.innerHTML = `${hudKey('T', liveTrails)} estelas · ${hudKey('B', liveBeat)} beat · `
-            + `${hudKey('S', liveSpectrum)} espectro · ${hudKey('R', liveRadial)} radial · `
+        hudTags.innerHTML = `${hudKey('S', liveSpectrum)} espectro · ${hudKey('R', liveRadial)} radial · `
             + `<b style="color:#6a6a78">H</b> ocultar · <b style="color:#6a6a78">⛶/F</b> pantalla`;
     }
     updateHud();
+    hud.style.display = 'none'; // oculta por defecto; se muestra sola en pantalla completa
+    function syncHudToFs() {
+        hudShown = (document.fullscreenElement || document.webkitFullscreenElement) === vizWrap;
+        hud.style.display = hudShown ? '' : 'none';
+    }
+    document.addEventListener('fullscreenchange', syncHudToFs);
+    document.addEventListener('webkitfullscreenchange', syncHudToFs);
     presets.forEach((b) => b.addEventListener('click', () => setTimeout(updateHud, 0)));
     document.addEventListener('keydown', (e) => {
         if (e.target.matches && e.target.matches('input, select, textarea')) return;
         const k = e.key.toLowerCase();
         if (k >= '1' && k <= '9') { const i = +k - 1; if (presets[i]) presets[i].click(); }
-        else if (k === 't') { liveTrails = !liveTrails; updateHud(); }
-        else if (k === 'b') { liveBeat = !liveBeat; updateHud(); }
         else if (k === 's') { liveSpectrum = !liveSpectrum; updateHud(); }
         else if (k === 'r') { liveRadial = !liveRadial; updateHud(); }
         else if (k === 'h') { hudShown = !hudShown; hud.style.display = hudShown ? '' : 'none'; }
