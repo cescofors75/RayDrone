@@ -104,8 +104,8 @@ export function rmsError(est, tgt) {
 // and offsets live in storage; no atomics needed (each n is independent).
 
 const WGSL = /* wgsl */`
-struct P { f0: i32, rays: u32, D: u32, bufLen: u32 };
-@group(0) @binding(0) var<uniform> P: P;
+struct Params { f0: i32, rays: u32, D: u32, bufLen: u32 };
+@group(0) @binding(0) var<uniform> P: Params;
 @group(0) @binding(1) var<storage, read> buf: array<f32>;
 @group(0) @binding(2) var<storage, read> offs: array<i32>;
 @group(0) @binding(3) var<storage, read> win: array<f32>;
