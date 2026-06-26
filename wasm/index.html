@@ -920,8 +920,11 @@
             // Tope de resolución: ~2200px en el lado largo (misma proporción que la
             // pantalla → sin estirar). A 4K serían 8M píxeles/cuadro = lento; esto
             // baja a ~3M manteniéndolo nítido.
+            // El 2D con glow/gradientes cuesta por píxel; renderizamos a una
+            // resolución modesta y dejamos que el CSS la escale a la pantalla
+            // (el glow disimula el suavizado). ~1280px en el lado largo.
             const cw = vizWrap.clientWidth, ch = vizWrap.clientHeight;
-            const s = Math.min(1, 2200 / Math.max(1, cw));
+            const s = Math.min(1, 1280 / Math.max(1, cw));
             w = Math.max(700, Math.round(cw * s));
             h = Math.max(150, Math.round(ch * s));
         }
@@ -1104,9 +1107,10 @@
         }
         wctx.globalCompositeOperation = 'source-over';
 
-        // Ejes de foco (líneas finas; en ambient una por foco, opacidad ∝ peso)
+        // Ejes de foco (líneas finas; en ambient una por foco, opacidad ∝ peso).
+        // Sin shadowBlur: a alta resolución (fullscreen) el desenfoque por sombra
+        // es carísimo; el bloom radial del foco ya aporta el glow.
         wctx.save();
-        wctx.shadowColor = '#ff355e'; wctx.shadowBlur = 6 + glow * 16;
         if (ambFoci) {
             for (let i = 0; i < ambFoci.length; i += 2) {
                 const fx = (ambFoci[i] - t0) / winDur * W;
