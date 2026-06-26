@@ -1087,14 +1087,32 @@
             wctx.fillRect(focusX - apX, top, apX * 2, H - top);
         }
 
-        // Onda (de la ventana visible)
+        // Onda (de la ventana visible): cuerpo relleno con gradiente vertical +
+        // espejo + contorno luminoso que pulsa con el nivel de salida.
         if (zoomPeaks) {
-            wctx.strokeStyle = 'rgba(255,53,94,0.26)'; wctx.beginPath();
-            for (let x = 0; x < W; x++) {
-                const a = zoomPeaks[x] * ((H - top) * 0.45);
-                wctx.moveTo(x, mid - a); wctx.lineTo(x, mid + a);
+            const amp = (H - top) * 0.46;
+            const grd = wctx.createLinearGradient(0, mid - amp, 0, mid + amp);
+            grd.addColorStop(0.0, 'rgba(255,120,150,0.04)');
+            grd.addColorStop(0.5, `rgba(255,53,94,${0.20 + glow * 0.18})`);
+            grd.addColorStop(1.0, 'rgba(255,120,150,0.04)');
+            wctx.fillStyle = grd;
+            wctx.beginPath();
+            wctx.moveTo(0, mid - zoomPeaks[0] * amp);
+            for (let x = 1; x < W; x++) wctx.lineTo(x, mid - zoomPeaks[x] * amp);
+            for (let x = W - 1; x >= 0; x--) wctx.lineTo(x, mid + zoomPeaks[x] * amp);
+            wctx.closePath();
+            wctx.fill();
+            // contorno (arriba y espejo abajo) con glow reactivo
+            wctx.save();
+            wctx.shadowColor = '#ff355e'; wctx.shadowBlur = 3 + glow * 14;
+            wctx.strokeStyle = `rgba(255,160,185,${0.45 + glow * 0.45})`;
+            wctx.lineWidth = 1.1 + glow * 0.8;
+            for (const sign of [-1, 1]) {
+                wctx.beginPath();
+                for (let x = 0; x < W; x++) { const y = mid + sign * zoomPeaks[x] * amp; x ? wctx.lineTo(x, y) : wctx.moveTo(x, y); }
+                wctx.stroke();
             }
-            wctx.stroke();
+            wctx.restore();
         }
 
         // Rayos: cada grano sale de su offset (spread vertical) y converge al foco
