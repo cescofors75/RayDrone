@@ -177,9 +177,13 @@
                 <div id="perf" class="status" style="text-align:left; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,53,94,0.12); line-height:1.6;">CPU audio — · rayos/bloque — · granos/s —<br>latencia: base — · salida —</div>
             </section>
 
+            <!-- Botón para revelar/ocultar las secciones avanzadas (abajo, .adv) -->
+            <div style="text-align:center; margin:4px 0 2px;">
+                <button class="preset" id="adv-toggle" aria-expanded="false">⚙ Mostrar avanzado</button>
+            </div>
+
             <!-- ── AMBIENT (focos múltiples recursivos) ── -->
-            <!-- Oculta por ahora (sin utilidad inmediata). Para mostrarla: quita style="display:none". -->
-            <section class="panel p-ambient" style="display:none">
+            <section class="panel p-ambient adv">
                 <div class="panel-title"><span>🌌 Ambient · focos recursivos</span><span>varios puntos focales auto-similares sobre la onda</span></div>
                 <div class="ctl row" style="margin-bottom:14px;">
                     <label style="margin:0;">Activar tema ambient <span class="v" id="ambient-v">OFF</span></label>
@@ -211,8 +215,7 @@
             </section>
 
             <!-- ── MICROTONAL ── -->
-            <!-- Oculta por ahora (sin utilidad inmediata). Para mostrarla: quita style="display:none". -->
-            <section class="panel p-micro" style="display:none">
+            <section class="panel p-micro adv">
                 <div class="panel-title"><span>♪ Microtonal</span><span>retícula en cents · cada rayo en su grado</span></div>
                 <div class="micro-grid">
                     <div>
@@ -246,8 +249,7 @@
             </section>
 
             <!-- ── PAD: VOICING AFINADO + FILTRO ── -->
-            <!-- Oculta por ahora (sin utilidad inmediata). Para mostrarla: quita style="display:none". -->
-            <section class="panel" style="display:none">
+            <section class="panel adv">
                 <div class="panel-title"><span>🎹 Tonalidad &amp; Filtro</span><span>pad afinado · filtro con LFO a tempo</span></div>
                 <div class="ctl">
                     <label>Voicing (acorde afinado · core::music) <span class="v" id="voicing-v">Ninguno</span></label>
@@ -295,7 +297,7 @@
             </section>
 
             <!-- ── ANALYSIS / CONVERGENCE LAB ── -->
-            <section class="panel lab">
+            <section class="panel lab adv">
                 <div class="panel-title"><span>⚗ Convergence Lab</span><span>error RMS vs N · 1/√N · wasm</span></div>
                 <div class="sub" style="margin:0 0 10px; text-align:left;">Prueba empírica con el motor real (Rust→wasm en un Worker, semilla fija → reproducible): el render converge al objetivo con error ~ 1/√N.</div>
                 <canvas id="lab-canvas" width="700" height="240"></canvas>
@@ -693,6 +695,18 @@
     volSlider.addEventListener('input', () => {
         volV.innerText = `${volSlider.value} %`;
         if (jsGain) jsGain.gain.value = parseFloat(volSlider.value) / 100;
+    });
+
+    // ── Secciones avanzadas: ocultas por defecto, reveladas con el botón ──────
+    // (Ambient · Microtonal · Tonalidad/Filtro · Convergence Lab, en ese orden.)
+    const advSections = document.querySelectorAll('.adv');
+    advSections.forEach((el) => { el.style.display = 'none'; });
+    const advToggle = $('adv-toggle');
+    advToggle.addEventListener('click', () => {
+        const show = advToggle.getAttribute('aria-expanded') !== 'true';
+        advToggle.setAttribute('aria-expanded', show ? 'true' : 'false');
+        advToggle.textContent = show ? '⚙ Ocultar avanzado' : '⚙ Mostrar avanzado';
+        advSections.forEach((el) => { el.style.display = show ? '' : 'none'; });
     });
 
     smoothChk.addEventListener('change', () => {
