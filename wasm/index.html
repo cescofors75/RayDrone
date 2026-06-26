@@ -94,7 +94,11 @@
                 <label class="file-label" id="file-label" for="file">📁 Cargar WAV / MP3</label>
                 <input type="file" id="file" accept="audio/*">
 
-                <canvas id="wave" width="700" height="150"></canvas>
+                <div style="position:relative;">
+                    <canvas id="wave" width="700" height="150"></canvas>
+                    <!-- Capa WebGL para los rayos (glow aditivo en GPU); transparente, encima del 2D. -->
+                    <canvas id="wave-gl" width="700" height="150" style="position:absolute; left:0; top:0; width:100%; height:150px; pointer-events:none;"></canvas>
+                </div>
                 <div class="ctl" style="margin:0 0 10px;">
                     <label>Zoom (rueda / pellizco · ampliado: click fino, minimapa salta) <span class="v" id="zoom-v">×1</span></label>
                     <input type="range" id="zoom" min="1" max="64" value="1" step="0.1">
@@ -173,6 +177,10 @@
                 <div class="ctl row">
                     <label style="margin:0;">Rayos inteligentes (trazado inverso) <span class="v" id="smart-v">OFF</span></label>
                     <input type="checkbox" id="smart">
+                </div>
+                <div class="ctl row">
+                    <label style="margin:0;">Rayos por GPU (WebGL) <span class="v" id="gpu-v">—</span></label>
+                    <input type="checkbox" id="gpu" checked>
                 </div>
                 <div id="perf" class="status" style="text-align:left; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,53,94,0.12); line-height:1.6;">CPU audio — · rayos/bloque — · granos/s —<br>latencia: base — · salida —</div>
             </section>
@@ -335,6 +343,7 @@
     const lfodivSel = $('lfodiv'), lfodivV = $('lfodiv-v');
     const lfodepthSlider = $('lfodepth'), lfodepthV = $('lfodepth-v');
     const smartChk = $('smart'), smartV = $('smart-v');
+    const gpuChk = $('gpu'), gpuV = $('gpu-v');
     const ambientChk = $('ambient'), ambientV = $('ambient-v');
     const aseedsS = $('aseeds'), adepthS = $('adepth'), aspreadS = $('aspread'), adriftS = $('adrift'), arateS = $('arate');
     const meterFill = $('meter-fill');
@@ -781,6 +790,17 @@
         sendSmart();
     });
 
+    // GPU (rayos por WebGL): si no hay WebGL2, deshabilitar y caer al 2D.
+    if (glRays.active) {
+        gpuV.innerText = gpuChk.checked ? 'ON' : 'OFF';
+    } else {
+        gpuChk.checked = false; gpuChk.disabled = true; gpuV.innerText = 'no disp.';
+    }
+    gpuChk.addEventListener('change', () => {
+        gpuV.innerText = gpuChk.checked ? 'ON' : 'OFF';
+        if (!gpuChk.checked) { const c = $('wave-gl'); c.width = c.width; } // limpia la capa GL
+    });
+
     ambientChk.addEventListener('change', () => {
         ambientV.innerText = ambientChk.checked ? 'ON' : 'OFF';
         if (!ambientChk.checked) latestFoci = null; // volver al foco único en el dibujo
@@ -890,6 +910,102 @@
     // Color por banda: grave=naranja, medio=rojo, agudo=rosa claro (se ve la aberración)
     const BAND_RGB = [[255, 138, 61], [255, 53, 94], [255, 190, 215]];
 
+    // ── Rayos en GPU (WebGL2): mismas posiciones (CPU) pero el glow aditivo lo
+    // rasteriza la GPU — cientos de sprites grandes con solape sin coste de CPU.
+    // Si WebGL2 o los shaders fallan, .active = false → la visual cae al 2D.
+    const glRays = (() => {
+        const cv = $('wave-gl');
+        let gl = null;
+        try { gl = cv.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: true }); } catch (e) {}
+        if (!gl) return { active: false };
+
+        const sh = (type, src) => {
+            const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.warn('RayDrone GL shader:', gl.getShaderInfoLog(s)); return null; }
+            return s;
+        };
+        const prog = (vsrc, fsrc) => {
+            const vs = sh(gl.VERTEX_SHADER, vsrc), fs = sh(gl.FRAGMENT_SHADER, fsrc);
+            if (!vs || !fs) return null;
+            const p = gl.createProgram(); gl.attachShader(p, vs); gl.attachShader(p, fs); gl.linkProgram(p);
+            if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { console.warn('RayDrone GL link:', gl.getProgramInfoLog(p)); return null; }
+            return p;
+        };
+        const V = `#version 300 es
+            precision highp float;
+            layout(location=0) in vec2 a_pos; layout(location=1) in float a_size; layout(location=2) in vec4 a_col;
+            uniform vec2 u_res; out vec4 v_col;
+            void main(){ gl_Position = vec4(a_pos.x/u_res.x*2.0-1.0, 1.0-a_pos.y/u_res.y*2.0, 0.0, 1.0); gl_PointSize = a_size; v_col = a_col; }`;
+        const Fp = `#version 300 es
+            precision highp float; in vec4 v_col; out vec4 o;
+            void main(){
+                vec2 pc = gl_PointCoord*2.0-1.0; float d = length(pc); if (d>1.0) discard;
+                float halo = pow(1.0-d, 2.0); float core = smoothstep(0.35, 0.0, d);
+                vec3 col = v_col.rgb*halo + vec3(1.0,0.92,0.94)*core*0.9;
+                float inten = (halo*0.7 + core) * v_col.a;
+                o = vec4(col*inten, inten);
+            }`;
+        const Lv = `#version 300 es
+            precision highp float; layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_col;
+            uniform vec2 u_res; out vec4 v_col;
+            void main(){ gl_Position = vec4(a_pos.x/u_res.x*2.0-1.0, 1.0-a_pos.y/u_res.y*2.0, 0.0, 1.0); v_col = a_col; }`;
+        const Lf = `#version 300 es
+            precision highp float; in vec4 v_col; out vec4 o;
+            void main(){ o = vec4(v_col.rgb*v_col.a, v_col.a); }`;
+        const pPts = prog(V, Fp), pLin = prog(Lv, Lf);
+        if (!pPts || !pLin) return { active: false };
+
+        const uResP = gl.getUniformLocation(pPts, 'u_res');
+        const uResL = gl.getUniformLocation(pLin, 'u_res');
+        const MAX = 460;
+        const pts = new Float32Array(MAX * 7);   // x,y,size,r,g,b,a
+        const lin = new Float32Array(MAX * 12);  // 2 vértices × (x,y,r,g,b,a)
+        let np = 0, nl = 0, W = 700, H = 150;
+        const vboP = gl.createBuffer(), vboL = gl.createBuffer();
+
+        function begin(w, h) {
+            W = w; H = h;
+            if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+            gl.viewport(0, 0, w, h);
+            gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+            np = 0; nl = 0;
+        }
+        function add(hx, hy, tx, ty, c, a) {
+            if (np >= MAX) return;
+            const r = c[0] / 255, g = c[1] / 255, b = c[2] / 255;
+            const o = np * 7;
+            pts[o] = hx; pts[o + 1] = hy; pts[o + 2] = Math.min(60, 9 + 34 * a);
+            pts[o + 3] = r; pts[o + 4] = g; pts[o + 5] = b; pts[o + 6] = a;
+            const lo = nl * 12, la = a * 0.28;
+            lin[lo] = tx; lin[lo + 1] = ty; lin[lo + 2] = r; lin[lo + 3] = g; lin[lo + 4] = b; lin[lo + 5] = la;
+            lin[lo + 6] = hx; lin[lo + 7] = hy; lin[lo + 8] = r; lin[lo + 9] = g; lin[lo + 10] = b; lin[lo + 11] = la;
+            np++; nl++;
+        }
+        function flush() {
+            gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); // aditivo (premultiplicado)
+            // estelas (líneas)
+            if (nl > 0) {
+                gl.useProgram(pLin); gl.uniform2f(uResL, W, H);
+                gl.bindBuffer(gl.ARRAY_BUFFER, vboL);
+                gl.bufferData(gl.ARRAY_BUFFER, lin.subarray(0, nl * 12), gl.DYNAMIC_DRAW);
+                gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 24, 0);
+                gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 24, 8);
+                gl.drawArrays(gl.LINES, 0, nl * 2);
+            }
+            // cabezas (puntos)
+            if (np > 0) {
+                gl.useProgram(pPts); gl.uniform2f(uResP, W, H);
+                gl.bindBuffer(gl.ARRAY_BUFFER, vboP);
+                gl.bufferData(gl.ARRAY_BUFFER, pts.subarray(0, np * 7), gl.DYNAMIC_DRAW);
+                gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 28, 0);
+                gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 28, 8);
+                gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 28, 12);
+                gl.drawArrays(gl.POINTS, 0, np);
+            }
+        }
+        return { active: true, begin, add, flush };
+    })();
+
     let meterShown = 0;
     let zoomPeaks = null, zoomKey = '';
     const MM_H = 18; // alto de la tira-minimapa (solo visible con zoom)
@@ -954,7 +1070,8 @@
         // Rayos: cada grano sale de su offset (spread vertical) y converge al foco
         // por un arco mientras se desvanece. Mezcla aditiva → glow real al solaparse.
         // La vida decae siempre; solo se dibujan los que caen dentro de la ventana.
-        wctx.globalCompositeOperation = 'lighter';
+        const useGL = glRays && glRays.active && gpuChk.checked;
+        if (useGL) glRays.begin(W, H); else wctx.globalCompositeOperation = 'lighter';
         const spread = (H - top) * 0.42;
         for (let i = visRays.length - 1; i >= 0; i--) {
             const r = visRays[i];
@@ -975,6 +1092,10 @@
             const ty = mid + arc * (1 - easeT);
             const c = BAND_RGB[r.band] || BAND_RGB[1];
             const a = r.life * glow;
+            if (useGL) {
+                glRays.add(hx, hy, tx, ty, c, a); // misma geometría, rasterizada en GPU
+                continue;
+            }
             // estela
             wctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.28})`;
             wctx.lineWidth = 1;
@@ -985,6 +1106,7 @@
             wctx.fillStyle = `rgba(255,235,240,${a * 0.5})`;
             wctx.beginPath(); wctx.arc(hx, hy, 1.1, 0, 6.283); wctx.fill();
         }
+        if (useGL) glRays.flush();
 
         // Focos: en ambient, la constelación entera (cada foco con su peso);
         // si no, el foco único de siempre. Bloom radial aditivo + eje.
