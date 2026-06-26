@@ -922,7 +922,7 @@
     const glRays = (() => {
         const cv = $('wave-gl');
         let gl = null;
-        try { gl = cv.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: true }); } catch (e) {}
+        try { gl = cv.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false }); } catch (e) {}
         if (!gl) return { active: false };
 
         const sh = (type, src) => {
@@ -1031,9 +1031,13 @@
         const fs = (document.fullscreenElement || document.webkitFullscreenElement) === vizWrap;
         let w = 700, h = 150;
         if (fs) {
-            const dpr = Math.min(window.devicePixelRatio || 1, 2);
-            w = Math.max(700, Math.floor(vizWrap.clientWidth * dpr));
-            h = Math.max(150, Math.floor(vizWrap.clientHeight * dpr));
+            // Tope de resolución: ~2200px en el lado largo (misma proporción que la
+            // pantalla → sin estirar). A 4K serían 8M píxeles/cuadro = lento; esto
+            // baja a ~3M manteniéndolo nítido.
+            const cw = vizWrap.clientWidth, ch = vizWrap.clientHeight;
+            const s = Math.min(1, 2200 / Math.max(1, cw));
+            w = Math.max(700, Math.round(cw * s));
+            h = Math.max(150, Math.round(ch * s));
         }
         if (waveCanvas.width !== w || waveCanvas.height !== h) {
             waveCanvas.width = w; waveCanvas.height = h;
