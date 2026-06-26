@@ -365,6 +365,7 @@
     const latCanvas = $('lattice'), lctx = latCanvas.getContext('2d');
 
     let ctx = null, jsGain = null, node = null, wasmBytes = null;
+    let analyser = null, freqData = null; // espectro FFT para el modo live
     let sampleData = null, sampleRate = 44100, duration = 0;
     let focusSec = 0, mode = 'drone', isPlaying = false, drySource = null;
     let wavePeaks = null;   // pico por pixel (precalculado al cargar)
@@ -536,6 +537,12 @@
             jsGain = ctx.createGain();
             jsGain.gain.value = parseFloat(volSlider.value) / 100;
             jsGain.connect(ctx.destination);
+            // Tap pasivo para el espectro FFT (no altera la salida).
+            analyser = ctx.createAnalyser();
+            analyser.fftSize = 1024;
+            analyser.smoothingTimeConstant = 0.8;
+            freqData = new Uint8Array(analyser.frequencyBinCount);
+            jsGain.connect(analyser);
         }
         // OJO iOS: resume() fuera de un gesto directo del usuario (p.ej. el
         // 'change' del selector de archivos) deja la promesa pendiente para
@@ -1044,8 +1051,9 @@
     let meterShown = 0;
     let zoomPeaks = null, zoomKey = '';
     const MM_H = 18; // alto de la tira-minimapa (solo visible con zoom)
-    // Estado del "modo live": estelas (afterglow), beat-bloom, HUD.
-    let liveTrails = false, liveBeat = false, hudShown = true, levelAvg = 0, beatFlash = 0;
+    // Estado del "modo live": estelas, beat-bloom, espectro FFT, modo radial, HUD.
+    let liveTrails = false, liveBeat = false, liveSpectrum = false, liveRadial = false;
+    let hudShown = true, levelAvg = 0, beatFlash = 0;
 
     function frame() {
         const W = waveCanvas.width, H = waveCanvas.height;
@@ -1113,7 +1121,7 @@
 
         // Onda (de la ventana visible): cuerpo relleno con gradiente vertical +
         // espejo + contorno luminoso que pulsa con el nivel de salida.
-        if (zoomPeaks) {
+        if (zoomPeaks && !liveRadial) {
             const amp = (H - top) * 0.46;
             const grd = wctx.createLinearGradient(0, mid - amp, 0, mid + amp);
             grd.addColorStop(0.0, 'rgba(255,120,150,0.04)');
@@ -1155,13 +1163,25 @@
             const ease = p * p * (3 - 2 * p);           // smoothstep: acelera hacia el foco
             const bx = (tsec - t0) / winDur * W;
             const arc = (r.seed * 2 - 1) * spread;      // altura de salida (determinista)
-            const hx = bx + (focusX - bx) * ease;
-            const hy = mid + arc * (1 - ease);
-            // cola (un pelín por detrás) para dar sensación de trazo
             const pe = p > 0.1 ? p - 0.1 : 0;
             const easeT = pe * pe * (3 - 2 * pe);
-            const tx = bx + (focusX - bx) * easeT;
-            const ty = mid + arc * (1 - easeT);
+            let hx, hy, tx, ty;
+            if (liveRadial) {
+                // Modo radial: cada rayo entra por un ángulo fijo y converge al
+                // centro mientras se desvanece (lo mismo, en polar).
+                const cx = W / 2, cy = top + (H - top) / 2;
+                const ang = r.seed * 6.2831853;
+                const R0 = Math.min(W, H - top) * 0.47;
+                hx = cx + Math.cos(ang) * R0 * (1 - ease);
+                hy = cy + Math.sin(ang) * R0 * (1 - ease);
+                tx = cx + Math.cos(ang) * R0 * (1 - easeT);
+                ty = cy + Math.sin(ang) * R0 * (1 - easeT);
+            } else {
+                hx = bx + (focusX - bx) * ease;
+                hy = mid + arc * (1 - ease);
+                tx = bx + (focusX - bx) * easeT;
+                ty = mid + arc * (1 - easeT);
+            }
             const c = BAND_RGB[r.band] || BAND_RGB[1];
             const a = r.life * glow;
             if (useGL) {
@@ -1179,6 +1199,22 @@
             wctx.beginPath(); wctx.arc(hx, hy, 1.1, 0, 6.283); wctx.fill();
         }
         if (useGL) glRays.flush();
+
+        // Espectro FFT (modo live): barras log-espaciadas reactivas en la base.
+        if (liveSpectrum && analyser) {
+            analyser.getByteFrequencyData(freqData);
+            const bars = 72, bw = W / bars, base = H - 2;
+            wctx.globalCompositeOperation = 'lighter';
+            for (let i = 0; i < bars; i++) {
+                const bin = Math.min(freqData.length - 1, Math.floor(Math.pow(i / bars, 2) * freqData.length));
+                const v = freqData[bin] / 255;
+                const bh = v * v * (H - top) * 0.55;
+                const hue = 340 - (i / bars) * 70; // rosa → naranja
+                wctx.fillStyle = `hsla(${hue}, 90%, ${42 + v * 28}%, ${0.22 + v * 0.5})`;
+                wctx.fillRect(i * bw, base - bh, bw * 0.78, bh);
+            }
+            wctx.globalCompositeOperation = 'source-over';
+        }
 
         // Focos: en ambient, la constelación entera (cada foco con su peso);
         // si no, el foco único de siempre. Bloom radial aditivo + eje.
@@ -1619,6 +1655,7 @@
         hudScenes.innerHTML = presets.map((b, i) =>
             `${hudKey(i + 1, b.classList.contains('active'))} ${b.textContent.split('(')[0].trim()}`).join('  ·  ');
         hudTags.innerHTML = `${hudKey('T', liveTrails)} estelas · ${hudKey('B', liveBeat)} beat · `
+            + `${hudKey('S', liveSpectrum)} espectro · ${hudKey('R', liveRadial)} radial · `
             + `<b style="color:#6a6a78">H</b> ocultar · <b style="color:#6a6a78">⛶/F</b> pantalla`;
     }
     updateHud();
@@ -1629,6 +1666,8 @@
         if (k >= '1' && k <= '9') { const i = +k - 1; if (presets[i]) presets[i].click(); }
         else if (k === 't') { liveTrails = !liveTrails; updateHud(); }
         else if (k === 'b') { liveBeat = !liveBeat; updateHud(); }
+        else if (k === 's') { liveSpectrum = !liveSpectrum; updateHud(); }
+        else if (k === 'r') { liveRadial = !liveRadial; updateHud(); }
         else if (k === 'h') { hudShown = !hudShown; hud.style.display = hudShown ? '' : 'none'; }
         else if (k === 'f') { fsBtn.click(); }
         else return;
