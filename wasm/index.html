@@ -65,6 +65,10 @@
                  border-radius:8px; padding:9px 8px; font-family:monospace; font-size:0.8rem; cursor:pointer; }
         select:focus { outline:none; border-color:var(--accent); }
         #wave { height:150px; touch-action:pan-y; }
+        /* Pantalla completa de la sección gráfica + rayos */
+        #viz-wrap:fullscreen, #viz-wrap:-webkit-full-screen { width:100vw; height:100vh; background:#07080e; }
+        #viz-wrap:fullscreen canvas, #viz-wrap:-webkit-full-screen canvas { height:100% !important; border-radius:0; }
+        #fs-btn { position:absolute; right:8px; top:8px; z-index:3; padding:3px 9px; font-size:14px; line-height:1.2; }
         .micro-grid { display:grid; gap:16px; grid-template-columns:1fr; align-items:start; }
         .ambient-grid { display:grid; gap:14px; grid-template-columns:1fr 1fr; }
         #lattice { height:180px; cursor:default; margin:0; }
@@ -94,10 +98,11 @@
                 <label class="file-label" id="file-label" for="file">📁 Cargar WAV / MP3</label>
                 <input type="file" id="file" accept="audio/*">
 
-                <div style="position:relative;">
+                <div id="viz-wrap" style="position:relative;">
                     <canvas id="wave" width="700" height="150"></canvas>
                     <!-- Capa WebGL para los rayos (glow aditivo en GPU); transparente, encima del 2D. -->
                     <canvas id="wave-gl" width="700" height="150" style="position:absolute; left:0; top:0; width:100%; height:150px; pointer-events:none; background:transparent;"></canvas>
+                    <button class="preset" id="fs-btn" title="Pantalla completa (onda + rayos)">⛶</button>
                 </div>
                 <div class="ctl" style="margin:0 0 10px;">
                     <label>Zoom (rueda / pellizco · ampliado: click fino, minimapa salta) <span class="v" id="zoom-v">×1</span></label>
@@ -1005,6 +1010,31 @@
         gpuV.innerText = gpuChk.checked ? 'ON' : 'OFF';
         if (!gpuChk.checked) { const c = $('wave-gl'); c.width = c.width; } // limpia la capa GL
     });
+
+    // ── Pantalla completa de la onda + rayos ─────────────────────────────────
+    // frame() lee waveCanvas.width/height en cada cuadro, así que basta con subir
+    // el buffer a la resolución de pantalla (no se estira; se redibuja nítido).
+    const vizWrap = $('viz-wrap'), fsBtn = $('fs-btn');
+    function resizeViz() {
+        const fs = (document.fullscreenElement || document.webkitFullscreenElement) === vizWrap;
+        let w = 700, h = 150;
+        if (fs) {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            w = Math.max(700, Math.floor(vizWrap.clientWidth * dpr));
+            h = Math.max(150, Math.floor(vizWrap.clientHeight * dpr));
+        }
+        if (waveCanvas.width !== w || waveCanvas.height !== h) {
+            waveCanvas.width = w; waveCanvas.height = h;
+            zoomKey = ''; // fuerza recálculo de los picos a la nueva anchura
+        }
+    }
+    fsBtn.addEventListener('click', () => {
+        const cur = document.fullscreenElement || document.webkitFullscreenElement;
+        if (cur === vizWrap) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
+        else { (vizWrap.requestFullscreen || vizWrap.webkitRequestFullscreen).call(vizWrap); }
+    });
+    document.addEventListener('fullscreenchange', resizeViz);
+    document.addEventListener('webkitfullscreenchange', resizeViz);
 
     let meterShown = 0;
     let zoomPeaks = null, zoomKey = '';
