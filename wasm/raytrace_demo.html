@@ -26,7 +26,7 @@
   <div class="card">
     <div class="row"><input type="file" id="file" accept="audio/*"><span id="fname" class="pill">sin audio</span></div>
     <label>Foco (posición en el buffer) <input type="range" id="focus" min="0" max="1000" value="300"><span id="focus-v" class="pill">30%</span></label>
-    <label>Apertura (dispersión, muestras) <input type="range" id="ap" min="50" max="8000" value="1500"><span id="ap-v" class="pill">1500</span></label>
+    <label>Apertura (dispersión, muestras) <input type="range" id="ap" min="50" max="8000" value="400"><span id="ap-v" class="pill">400</span></label>
     <label>Grano D (muestras) <input type="range" id="D" min="512" max="8192" value="2048" step="512"><span id="D-v" class="pill">2048</span></label>
     <label>Rayos N <input type="range" id="N" min="4" max="65536" value="1024" step="4"><span id="N-v" class="pill">1024</span></label>
     <div class="row">
@@ -76,10 +76,18 @@ $('N').oninput = () => $('N-v').textContent = (+$('N').value>=1000?(+$('N').valu
 function draw(est, tgt) {
   const cv = $('cv'), g = cv.getContext('2d'), W = cv.width, H = cv.height, mid = H/2;
   g.fillStyle = '#05060b'; g.fillRect(0,0,W,H);
+  // El render convergente puede tener amplitud minúscula (cancelación por fase a
+  // apertura grande). Normalizamos al pico para que SIEMPRE se vea la forma.
+  let peak = 1e-12;
+  for (let i = 0; i < est.length; i++) { peak = Math.max(peak, Math.abs(est[i]), tgt ? Math.abs(tgt[i]) : 0); }
+  const sc = mid * 0.9 / peak;
   const plot = (arr, style, w) => { g.strokeStyle = style; g.lineWidth = w; g.beginPath();
-    for (let x = 0; x < W; x++) { const i = Math.floor(x/W*arr.length); const y = mid - arr[i]*mid*0.95; x?g.lineTo(x,y):g.moveTo(x,y); } g.stroke(); };
+    for (let x = 0; x < W; x++) { const i = Math.floor(x/W*arr.length); const y = mid - arr[i]*sc; x?g.lineTo(x,y):g.moveTo(x,y); } g.stroke(); };
+  g.strokeStyle = 'rgba(255,255,255,.08)'; g.beginPath(); g.moveTo(0,mid); g.lineTo(W,mid); g.stroke();
   if (tgt) plot(tgt, 'rgba(120,180,255,.5)', 1);   // objetivo analítico
   plot(est, 'rgba(255,53,94,.95)', 1.2);            // estimación por rayos
+  g.fillStyle = '#8a8a9a'; g.font = '11px monospace';
+  g.fillText(`pico ${peak.toExponential(1)} (vista normalizada)`, 8, 14);
 }
 
 async function doRender(N) {
@@ -106,12 +114,19 @@ $('render').onclick = () => doRender(P().N);
 $('play').onclick = () => {
   if (!est) return;
   audioCtx = audioCtx || new AudioContext();
-  const b = audioCtx.createBuffer(1, est.length, sr);
-  b.copyToChannel(est, 0);
+  // El grano convergente es de amplitud baja; lo reconstruimos por overlap-add
+  // (Hann al 50% suma a constante → tono continuo, sin pulsos) y normalizamos.
+  const D = est.length, hop = D >> 1, reps = 24, outLen = hop * (reps + 1);
+  const out = new Float32Array(outLen);
+  for (let r = 0; r < reps; r++) { const o = r * hop; for (let n = 0; n < D; n++) out[o + n] += est[n]; }
+  let pk = 1e-12; for (let i = 0; i < outLen; i++) pk = Math.max(pk, Math.abs(out[i]));
+  const gnorm = 0.7 / pk; for (let i = 0; i < outLen; i++) out[i] *= gnorm;
+  const b = audioCtx.createBuffer(1, outLen, sr); b.copyToChannel(out, 0);
   const src = audioCtx.createBufferSource(); src.buffer = b; src.loop = true;
-  const g = audioCtx.createGain(); g.gain.value = 3.0; // los granos quedan bajos tras el promedio
+  src.loopStart = hop / sr; src.loopEnd = (outLen - hop) / sr; // evita los bordes con menos solape
+  const g = audioCtx.createGain(); g.gain.value = 0.9;
   src.connect(g).connect(audioCtx.destination);
-  src.start(); setTimeout(() => src.stop(), 2000);
+  src.start(); setTimeout(() => { try { src.stop(); } catch (e) {} }, 2500);
 };
 
 $('sweep').onclick = async () => {
