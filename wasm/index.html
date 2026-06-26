@@ -790,17 +790,6 @@
         sendSmart();
     });
 
-    // GPU (rayos por WebGL): si no hay WebGL2, deshabilitar y caer al 2D.
-    if (glRays.active) {
-        gpuV.innerText = gpuChk.checked ? 'ON' : 'OFF';
-    } else {
-        gpuChk.checked = false; gpuChk.disabled = true; gpuV.innerText = 'no disp.';
-    }
-    gpuChk.addEventListener('change', () => {
-        gpuV.innerText = gpuChk.checked ? 'ON' : 'OFF';
-        if (!gpuChk.checked) { const c = $('wave-gl'); c.width = c.width; } // limpia la capa GL
-    });
-
     ambientChk.addEventListener('change', () => {
         ambientV.innerText = ambientChk.checked ? 'ON' : 'OFF';
         if (!ambientChk.checked) latestFoci = null; // volver al foco único en el dibujo
@@ -1005,6 +994,17 @@
         }
         return { active: true, begin, add, flush };
     })();
+
+    // GPU (rayos por WebGL): si no hay WebGL2, deshabilitar y caer al 2D.
+    if (glRays.active) {
+        gpuV.innerText = gpuChk.checked ? 'ON' : 'OFF';
+    } else {
+        gpuChk.checked = false; gpuChk.disabled = true; gpuV.innerText = 'no disp.';
+    }
+    gpuChk.addEventListener('change', () => {
+        gpuV.innerText = gpuChk.checked ? 'ON' : 'OFF';
+        if (!gpuChk.checked) { const c = $('wave-gl'); c.width = c.width; } // limpia la capa GL
+    });
 
     let meterShown = 0;
     let zoomPeaks = null, zoomKey = '';
