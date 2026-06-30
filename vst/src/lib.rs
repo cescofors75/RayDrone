@@ -14,7 +14,7 @@ use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, egui, EguiState};
 
 mod engine;
-use engine::{Engine, VLOG};
+use engine::{Engine, OUT_RING, VLOG};
 
 /// Source samples + native sample-rate waiting to be picked up by the audio thread.
 /// A scene-change command handed from the GUI thread to the audio thread.
@@ -47,6 +47,10 @@ struct VizState {
     rays: Vec<f32>, // ring buffer of normalized ray positions, length VLOG
     ray_w: usize,
     wave: Vec<f32>, // downsampled |peaks| of the scene, 0..1
+    /// The actual rendered output (post-mix, post-reverb), oldest-first,
+    /// length `OUT_RING` — what the oscilloscope/spectrum panel draws. Not to
+    /// be confused with `wave`, which is the *source* scene's peak envelope.
+    out_wave: Vec<f32>,
 }
 
 impl Default for VizState {
@@ -58,6 +62,7 @@ impl Default for VizState {
             rays: vec![0.5; VLOG],
             ray_w: 0,
             wave: Vec::new(),
+            out_wave: vec![0.0; OUT_RING],
         }
     }
 }
@@ -434,6 +439,10 @@ impl Plugin for RayDrone {
             v.aperture = self.engine.viz_aperture();
             v.ray_w = self.engine.ray_write();
             v.rays.copy_from_slice(self.engine.ray_buffer());
+            // Oldest-first snapshot of the actual output, for the GUI's
+            // oscilloscope/spectrum panel. A reorder + copy, no allocation —
+            // the FFT itself only ever runs on the GUI thread.
+            engine::ring_ordered(self.engine.out_buffer(), self.engine.out_write(), &mut v.out_wave);
         }
 
         ProcessStatus::Normal
@@ -511,6 +520,11 @@ fn draw_ui(
 
         // ── Ray visualizer (shows the live render + autoevolution) ───────────
         draw_visualizer(ui, viz, params.focus.value(), params.evolve.value());
+        ui.add_space(6.0);
+
+        // ── Output (the rendered signal — what you actually hear) ────────────
+        section_header(ui, "OUTPUT  ·  oscilloscope + spectrum of the rendered signal");
+        draw_output_panel(ui, viz);
         ui.add_space(10.0);
 
         // ── Source / character menus (one wide row) ──────────────────────────
@@ -762,6 +776,79 @@ fn draw_visualizer(ui: &mut egui::Ui, viz: &Viz, base_focus: f32, evolve: f32) {
         egui::CornerRadius::same(2),
         CYAN,
     );
+}
+
+/// What you actually hear: an oscilloscope (top half) over a spectrum (bottom
+/// half) of the engine's real output — post-mix, post-reverb, post-soft-clip.
+/// Complements `draw_visualizer`, which shows where the rays land on the
+/// *source* scene, not what comes out the other end.
+fn draw_output_panel(ui: &mut egui::Ui, viz: &Viz) {
+    let desired = egui::vec2(ui.available_width(), 90.0);
+    let (rect, _resp) = ui.allocate_exact_size(desired, egui::Sense::hover());
+    let p = ui.painter_at(rect);
+
+    let rounding = egui::CornerRadius::same(8);
+    p.rect_filled(rect, rounding, BG1);
+    p.rect_stroke(
+        rect,
+        rounding,
+        egui::Stroke::new(1.0, egui::Color32::from_gray(34)),
+        egui::StrokeKind::Inside,
+    );
+
+    let snap = viz.lock().map(|v| v.out_wave.clone()).unwrap_or_default();
+    let n = snap.len();
+    if n != OUT_RING {
+        return; // engine hasn't produced a full ring yet (e.g. first frame)
+    }
+
+    let pad = 8.0;
+    let left = rect.left() + pad;
+    let width = (rect.width() - 2.0 * pad).max(1.0);
+    let spec_top = rect.top() + rect.height() * 0.46;
+    let scope_mid = rect.top() + (spec_top - rect.top()) * 0.5;
+    let scope_amp = (spec_top - rect.top()) * 0.42;
+
+    // Oscilloscope (top half): the actual waveform, thinned to ~512 points —
+    // plenty of detail for a panel this size, far cheaper to stroke.
+    let stride = (n / 512).max(1);
+    let pts: Vec<egui::Pos2> = (0..n)
+        .step_by(stride)
+        .map(|i| {
+            let x = left + (i as f32 / (n - 1) as f32) * width;
+            let y = scope_mid - snap[i].clamp(-1.0, 1.0) * scope_amp;
+            egui::pos2(x, y)
+        })
+        .collect();
+    p.add(egui::Shape::line(pts, egui::Stroke::new(1.2, CYAN)));
+    p.line_segment(
+        [egui::pos2(left, spec_top), egui::pos2(left + width, spec_top)],
+        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(40, 230, 220, 30)),
+    );
+
+    // Spectrum (bottom half): Hann-windowed FFT magnitude, log-spaced bars —
+    // not real-time-critical (this runs on the GUI thread, not the audio one).
+    let mut mag = vec![0.0f32; n / 2];
+    engine::magnitude_spectrum(&snap, &mut mag);
+    let peak = mag.iter().cloned().fold(1e-6f32, f32::max);
+    let bars = 64;
+    let bw = width / bars as f32;
+    let spec_h = rect.bottom() - spec_top;
+    for i in 0..bars {
+        let bin = (((i as f32 / bars as f32).powi(2)) * (mag.len() - 1) as f32) as usize;
+        let v = (mag[bin] / peak).clamp(0.0, 1.0);
+        let bh = v * v * spec_h;
+        let col = lerp_color(ACCENT, CYAN, i as f32 / bars as f32);
+        let alpha = (60.0 + v * 160.0) as u8;
+        p.rect_filled(
+            egui::Rect::from_min_size(
+                egui::pos2(left + i as f32 * bw, rect.bottom() - bh),
+                egui::vec2(bw * 0.82, bh),
+            ),
+            egui::CornerRadius::same(0),
+            egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), alpha),
+        );
+    }
 }
 
 fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {

@@ -67,6 +67,10 @@ rays brightest, colored from accent (near focus) to cyan (far). The whole field
 glows with the output level and **drifts with Evolve** — you can see the
 autoevolution sweeping the focus and breathing the aperture.
 
+Right below it, the **Output** panel shows what you actually *hear*: an
+oscilloscope over the rendered signal's spectrum (post-mix, post-reverb,
+post-soft-clip) — the convergence of the rays, not just where they land.
+
 ## What it keeps vs. drops
 
 **Keeps** the core methodology: continuous grain cloud, golden-ratio

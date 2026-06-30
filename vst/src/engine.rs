@@ -34,6 +34,11 @@ const STRATA: u32 = 17;
 // Ring buffer of recent ray landing positions (normalized 0..1) for the visualizer.
 pub const VLOG: usize = 128;
 
+// Ring buffer of recent output samples (post-mix, post-reverb — what actually
+// plays), for the GUI's oscilloscope/spectrum view. Power of two: `spectrum()`
+// FFTs it directly. Same size the WASM demo's AnalyserNode uses (fftSize).
+pub const OUT_RING: usize = 1024;
+
 // Per-grain micro-detune (±0.25%): beats between grains → lush, non-static drone.
 const DETUNE: f32 = 0.005;
 // Fixed grain shape / level / spread for the simplified build.
@@ -98,6 +103,11 @@ pub struct Engine {
     vlog_w: usize,
     viz_focus: f32, // effective focus, normalized 0..1
     viz_ap: f32,    // effective aperture as a fraction of the scene span, 0..1
+    // Mono mix of the actual output, one ring buffer entry per `tick()`. Cheap
+    // (fixed-size array write, no allocation) — the audio thread fills it; the
+    // GUI thread reorders + FFTs a snapshot for the oscilloscope/spectrum view.
+    out_ring: [f32; OUT_RING],
+    out_w: usize,
 
     // Runtime.
     spawn_acc: f32,
@@ -155,6 +165,8 @@ impl Engine {
             vlog_w: 0,
             viz_focus: 0.3,
             viz_ap: 0.1,
+            out_ring: [0.0; OUT_RING],
+            out_w: 0,
             spawn_acc: 0.0,
             rng: 0x1234_5678,
             qmc: 0.5,
@@ -240,6 +252,8 @@ impl Engine {
             *v = 0.5;
         }
         self.vlog_w = 0;
+        self.out_ring = [0.0; OUT_RING];
+        self.out_w = 0;
         self.dc.reset();
         self.reverb.reset();
     }
@@ -300,6 +314,14 @@ impl Engine {
     }
     pub fn ray_write(&self) -> usize {
         self.vlog_w
+    }
+    /// Ring buffer of the actual output (mono mix, post-reverb/soft-clip), most
+    /// recent sample at index `out_write() - 1` (mod the buffer length).
+    pub fn out_buffer(&self) -> &[f32] {
+        &self.out_ring
+    }
+    pub fn out_write(&self) -> usize {
+        self.out_w
     }
 
     fn update_coeffs(&mut self) {
@@ -473,6 +495,13 @@ impl Engine {
         let ol = soft(yl);
         let orr = soft(yr);
 
+        // Log the actual output (post-everything) for the GUI's scope/spectrum.
+        self.out_ring[self.out_w] = (ol + orr) * 0.5;
+        self.out_w += 1;
+        if self.out_w >= OUT_RING {
+            self.out_w = 0;
+        }
+
         // Recursive autoevolution: follow the output level (ENV) and advance the
         // self-sweep (EVO). ENV widens the aperture; EVO drifts the focus — both
         // gated by `feedback`. Per-sample coefficients ≈ the WASM per-block ones.
@@ -497,6 +526,92 @@ impl Engine {
 // The whole DSP kernel — clampf, soft, sqrtf, tri_inv, sample_at, win_at, rng,
 // Reverb, DcBlocker — now lives in `raydrone_core`, shared verbatim with the
 // WASM engine. Nothing engine-specific left to define here.
+
+// ── Output scope/spectrum (GUI thread only) ─────────────────────────────────
+// The audio thread only ever writes `out_ring` (see `tick()`); everything below
+// reads a *snapshot* of it and is only ever called from the GUI thread when
+// painting the "what you actually hear" panel. None of this is real-time-safe
+// (the FFT allocates two scratch Vecs) and none of it needs to be.
+
+/// Reorder a ring buffer (oldest sample first) starting from `write` into
+/// `out`. `out.len()` must equal `ring.len()`.
+pub fn ring_ordered(ring: &[f32], write: usize, out: &mut [f32]) {
+    let n = ring.len();
+    debug_assert_eq!(out.len(), n);
+    for i in 0..n {
+        out[i] = ring[(write + i) % n];
+    }
+}
+
+/// In-place iterative radix-2 Cooley-Tukey FFT. `re`/`im` must be the same
+/// power-of-two length.
+fn fft_radix2(re: &mut [f32], im: &mut [f32]) {
+    let n = re.len();
+    debug_assert!(n.is_power_of_two() && n == im.len());
+
+    // Bit-reversal permutation.
+    let mut j = 0usize;
+    for i in 1..n {
+        let mut bit = n >> 1;
+        while j & bit != 0 {
+            j &= !bit;
+            bit >>= 1;
+        }
+        j |= bit;
+        if i < j {
+            re.swap(i, j);
+            im.swap(i, j);
+        }
+    }
+
+    // Iterative Cooley-Tukey, butterfly stage by stage.
+    let mut len = 2;
+    while len <= n {
+        let ang = -2.0 * PI / (len as f32);
+        let (wr, wi) = (ang.cos(), ang.sin());
+        let mut i = 0;
+        while i < n {
+            let (mut cwr, mut cwi) = (1.0f32, 0.0f32);
+            for k in 0..len / 2 {
+                let (ur, ui) = (re[i + k], im[i + k]);
+                let (xr, xi) = (re[i + k + len / 2], im[i + k + len / 2]);
+                let vr = xr * cwr - xi * cwi;
+                let vi = xr * cwi + xi * cwr;
+                re[i + k] = ur + vr;
+                im[i + k] = ui + vi;
+                re[i + k + len / 2] = ur - vr;
+                im[i + k + len / 2] = ui - vi;
+                let (ncwr, ncwi) = (cwr * wr - cwi * wi, cwr * wi + cwi * wr);
+                cwr = ncwr;
+                cwi = ncwi;
+            }
+            i += len;
+        }
+        len <<= 1;
+    }
+}
+
+/// Hann-windowed magnitude spectrum of `samples` (length a power of two,
+/// oldest-first — pass it through `ring_ordered` first). Fills `mag_out`
+/// (length `samples.len() / 2`) with bins 0..Nyquist.
+pub fn magnitude_spectrum(samples: &[f32], mag_out: &mut [f32]) {
+    let n = samples.len();
+    debug_assert!(n.is_power_of_two());
+    debug_assert_eq!(mag_out.len(), n / 2);
+    let mut re: Vec<f32> = samples
+        .iter()
+        .enumerate()
+        .map(|(i, &s)| {
+            let w = 0.5 - 0.5 * (2.0 * PI * i as f32 / (n - 1) as f32).cos(); // Hann
+            s * w
+        })
+        .collect();
+    let mut im = vec![0.0f32; n];
+    fft_radix2(&mut re, &mut im);
+    for (k, m) in mag_out.iter_mut().enumerate() {
+        *m = (re[k] * re[k] + im[k] * im[k]).sqrt();
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -604,5 +719,54 @@ mod tests {
         // Right after reset no grain has had time to ramp up through the Hann
         // window, so the very next frame must be silent.
         assert_eq!(e.tick(), (0.0, 0.0));
+    }
+
+    #[test]
+    fn out_ring_fills_and_wraps_with_finite_audio() {
+        let mut e = Engine::new(44100.0);
+        let _ = e.load(sine_scene(8192, 220.0, 44100.0), 44100.0);
+        e.set_density(2000.0);
+        e.set_master(1.0);
+        for _ in 0..(OUT_RING * 2 + 17) {
+            e.tick();
+        }
+        assert_eq!(e.out_write(), 17, "write pointer should have wrapped exactly twice plus 17");
+        assert!(e.out_buffer().iter().all(|s| s.is_finite()));
+        assert!(e.out_buffer().iter().any(|&s| s.abs() > 1e-4), "ring never captured audible output");
+    }
+
+    #[test]
+    fn ring_ordered_reorders_oldest_first() {
+        let ring = [4.0, 5.0, 0.0, 1.0, 2.0, 3.0]; // write pointer at 2: oldest..newest = 0..5
+        let mut out = [0.0; 6];
+        ring_ordered(&ring, 2, &mut out);
+        assert_eq!(out, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+
+    #[test]
+    fn magnitude_spectrum_concentrates_energy_at_the_tone_bin() {
+        const N: usize = 1024;
+        let k0 = 50; // bin the test tone should land in
+        let samples: Vec<f32> =
+            (0..N).map(|i| (2.0 * PI * k0 as f32 * i as f32 / N as f32).sin()).collect();
+        let mut mag = [0.0f32; N / 2];
+        magnitude_spectrum(&samples, &mut mag);
+        assert!(mag.iter().all(|m| m.is_finite()));
+        let (peak_bin, &peak) =
+            mag.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap();
+        assert_eq!(peak_bin, k0, "energy should peak at the tone's own bin");
+        // Window leakage spreads some energy to neighbours, but the peak bin
+        // should still dominate by a wide margin over a distant, empty bin.
+        assert!(peak > mag[k0 + 100] * 10.0);
+    }
+
+    #[test]
+    fn magnitude_spectrum_dc_input_peaks_at_bin_zero() {
+        const N: usize = 256;
+        let samples = [0.5f32; N];
+        let mut mag = [0.0f32; N / 2];
+        magnitude_spectrum(&samples, &mut mag);
+        let (peak_bin, _) = mag.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap();
+        assert_eq!(peak_bin, 0);
     }
 }
