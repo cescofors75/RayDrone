@@ -29,8 +29,11 @@ standalone = ["nih_plug/standalone", "jack/dynamic_loading"]
 [dependencies]
 # Shared DSP kernel (same code the WASM engine links). Path dep, no crates.io.
 raydrone_core = { path = "../core" }
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
-nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+# Pinned to the exact commit already locked in Cargo.lock, so an incidental
+# `cargo update` can't silently move both crates to a different upstream
+# revision out from under the lockfile.
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "f36931f7af4646065488a9845d8f8c2f95252c23" }
+nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "f36931f7af4646065488a9845d8f8c2f95252c23" }
 hound = "3.5"
 rfd = "0.14"
 jack = { version = "0.11.4", optional = true, default-features = false }

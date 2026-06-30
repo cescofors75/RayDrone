@@ -52,6 +52,9 @@ pub fn chord_ratios(preset: u32) -> &'static [f32] {
 /// drone to a track's key by ear. `2^(semitones/12)`, computed without `std`
 /// (the WASM build has no `powf`): exact integer-octave factor times a 12th-root
 /// lookup for the remainder.
+// The table's 7th entry (2^(6/12), the tritone) genuinely equals sqrt(2) —
+// that's the equal-tempered table being correct, not a typo'd constant.
+#[allow(clippy::approx_constant)]
 pub fn semitone_ratio(semitones: i32) -> f32 {
     // 2^(1/12) .. 2^(11/12)
     const ET: [f32; 12] = [

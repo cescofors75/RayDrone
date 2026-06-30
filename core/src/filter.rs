@@ -162,7 +162,10 @@ impl Default for Filter {
 }
 
 // 2^x for x >= 0, no_std: 2^floor(x) times a small-poly fractional part.
+// The 0.693_147 coefficient is intentionally ln(2) (the minimax poly's leading
+// term) — not a typo'd PI/E/SQRT_2, so silence clippy's approx-constant lint.
 #[inline]
+#[allow(clippy::approx_constant)]
 fn pow2(x: f32) -> f32 {
     let i = x as u32;
     let f = x - i as f32; // 0..1
