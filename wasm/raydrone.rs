@@ -416,7 +416,7 @@ pub extern "C" fn set_mode(m: u32) {
 pub extern "C" fn set_fx(aber: f32, bounces: u32, refl: f32, feedback: f32) {
     unsafe {
         ABER = clampf(aber, 0.0, 1.0);
-        BOUNCES = bounces;
+        BOUNCES = bounces.min(6); // same cap as the VST engine's set_bounce
         REFL = clampf(refl, 0.0, 1.0);
         FEEDBACK = clampf(feedback, 0.0, 1.0);
         update_coeffs();

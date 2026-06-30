@@ -21,7 +21,9 @@ use std::f32::consts::PI;
 // truth). `tri_inv` stays local here because the VST uses the hardware sqrt while
 // the WASM build uses a no_std Newton approximation; unifying them would change
 // the render.
-use raydrone_core::{clampf, sample_at, soft, sqrtf, tri_inv, win_at, DcBlocker, Reverb};
+use raydrone_core::{
+    clampf, music::semitone_ratio, sample_at, soft, sqrtf, tri_inv, win_at, DcBlocker, Reverb,
+};
 
 const WIN: usize = 2048;
 const MAX_VOICES: usize = 512;
@@ -182,22 +184,34 @@ impl Engine {
         self.update_coeffs();
     }
 
-    pub fn load(&mut self, sample: Vec<f32>, sr: f32) {
+    /// Replace the scene. Returns the buffer it replaced instead of dropping it
+    /// here: this can run on the audio thread (a scene change handed over from
+    /// the GUI), and freeing a multi-megabyte `Vec` there is as real-time-unsafe
+    /// as allocating one. The caller is responsible for dropping the returned
+    /// buffer somewhere that isn't the audio callback.
+    #[must_use]
+    pub fn load(&mut self, sample: Vec<f32>, sr: f32) -> Vec<f32> {
         self.live = false;
-        self.sample = sample;
+        let old = std::mem::replace(&mut self.sample, sample);
         self.samp_sr = if sr > 1.0 { sr } else { 44100.0 };
         self.reset();
+        old
     }
 
-    /// Switch to live-input mode: `sample` becomes a rolling buffer of the last
-    /// `secs` seconds of host audio, which the rays render into an ambient cloud.
-    pub fn begin_live_capture(&mut self, secs: f32) {
-        let len = ((secs * self.host_sr) as usize).max(2);
-        self.sample = vec![0.0; len];
-        self.samp_sr = self.host_sr; // captured at the host's rate
+    /// Switch to live-input mode: `sample` becomes a rolling buffer fed by
+    /// `push_input`, which the rays render into an ambient cloud. Takes an
+    /// already-allocated, zeroed buffer (`buf`) — sized for the desired capture
+    /// duration at `sr` — instead of a duration, so this never allocates: building
+    /// the buffer is the caller's job, same real-time-safety reasoning as `load`.
+    /// Returns the previous sample buffer for the caller to free off-thread.
+    #[must_use]
+    pub fn begin_live_capture(&mut self, buf: Vec<f32>, sr: f32) -> Vec<f32> {
+        let old = std::mem::replace(&mut self.sample, buf);
+        self.samp_sr = if sr > 1.0 { sr } else { 44100.0 };
         self.cap_w = 0;
         self.live = true;
         self.reset();
+        old
     }
 
     /// Feed one input sample into the rolling capture buffer (no-op unless live).
@@ -265,8 +279,8 @@ impl Engine {
         self.key_ratios.clear();
         for (n, &on) in mask.iter().enumerate() {
             if on {
-                let semis = n as f32 - root as f32;
-                self.key_ratios.push(2.0f32.powf(semis / 12.0));
+                let semis = n as i32 - root as i32;
+                self.key_ratios.push(semitone_ratio(semis));
             }
         }
     }
@@ -483,3 +497,112 @@ impl Engine {
 // The whole DSP kernel — clampf, soft, sqrtf, tri_inv, sample_at, win_at, rng,
 // Reverb, DcBlocker — now lives in `raydrone_core`, shared verbatim with the
 // WASM engine. Nothing engine-specific left to define here.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sine_scene(n: usize, freq: f32, sr: f32) -> Vec<f32> {
+        (0..n).map(|i| (2.0 * PI * freq * i as f32 / sr).sin()).collect()
+    }
+
+    #[test]
+    fn empty_engine_is_silent() {
+        let mut e = Engine::new(44100.0);
+        assert!(e.is_empty());
+        assert_eq!(e.tick(), (0.0, 0.0));
+    }
+
+    #[test]
+    fn load_returns_previous_buffer_and_engine_becomes_audible() {
+        let mut e = Engine::new(44100.0);
+        let first = sine_scene(4096, 220.0, 44100.0);
+        let old = e.load(first.clone(), 44100.0);
+        assert!(old.is_empty(), "fresh engine should have had no prior sample");
+        assert!(!e.is_empty());
+
+        e.set_density(2000.0); // dense enough to hear quickly
+        e.set_master(1.0);
+        let mut heard = false;
+        for _ in 0..20_000 {
+            let (l, r) = e.tick();
+            assert!(l.is_finite() && r.is_finite());
+            if l.abs() > 1e-4 || r.abs() > 1e-4 {
+                heard = true;
+            }
+        }
+        assert!(heard, "engine produced no audible output after loading a scene");
+
+        let second = sine_scene(2048, 440.0, 44100.0);
+        let replaced = e.load(second, 44100.0);
+        assert_eq!(replaced.len(), first.len(), "load() must hand back the buffer it replaced");
+    }
+
+    #[test]
+    fn live_capture_takes_the_callers_buffer_and_renders_it() {
+        let mut e = Engine::new(48000.0);
+        let mut buf = vec![0.0f32; 48000 * 2]; // 2 s, pre-built by the caller
+        for (i, s) in buf.iter_mut().enumerate() {
+            *s = (2.0 * PI * 220.0 * i as f32 / 48000.0).sin();
+        }
+        let old = e.begin_live_capture(buf, 48000.0);
+        assert!(old.is_empty());
+        assert!(!e.is_empty());
+
+        e.set_density(2000.0);
+        e.set_master(1.0);
+        let mut heard = false;
+        for _ in 0..10_000 {
+            let (l, r) = e.tick();
+            assert!(l.is_finite() && r.is_finite());
+            if l.abs() > 1e-4 || r.abs() > 1e-4 {
+                heard = true;
+            }
+        }
+        assert!(heard, "live-captured scene produced no audible output");
+    }
+
+    #[test]
+    fn voice_pool_handles_oversubscription_without_panicking() {
+        // Push density far past MAX_VOICES so alloc_voice() must steal slots.
+        let mut e = Engine::new(44100.0);
+        let _ = e.load(sine_scene(8192, 110.0, 44100.0), 44100.0);
+        e.set_density(50_000.0); // way more than 512 grains can sustain at once
+        e.set_master(1.0);
+        for _ in 0..10_000 {
+            let (l, r) = e.tick();
+            assert!(l.is_finite() && r.is_finite());
+        }
+    }
+
+    #[test]
+    fn set_keys_spans_the_midi_range_without_panicking() {
+        let mut e = Engine::new(44100.0);
+        let _ = e.load(sine_scene(4096, 220.0, 44100.0), 44100.0);
+        let mut mask = [false; 128];
+        mask[0] = true; // 60 semitones below root
+        mask[127] = true; // 67 semitones above root
+        e.set_keys(&mask, 60);
+        e.set_density(1000.0);
+        e.set_master(1.0);
+        for _ in 0..2000 {
+            let (l, r) = e.tick();
+            assert!(l.is_finite() && r.is_finite());
+        }
+    }
+
+    #[test]
+    fn reset_clears_voices_and_silences_the_engine() {
+        let mut e = Engine::new(44100.0);
+        let _ = e.load(sine_scene(4096, 220.0, 44100.0), 44100.0);
+        e.set_density(2000.0);
+        e.set_master(1.0);
+        for _ in 0..1000 {
+            e.tick();
+        }
+        e.reset();
+        // Right after reset no grain has had time to ramp up through the Hann
+        // window, so the very next frame must be silent.
+        assert_eq!(e.tick(), (0.0, 0.0));
+    }
+}

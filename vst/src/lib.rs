@@ -7,6 +7,7 @@
 // Built with nih-plug (Rust). The DSP lives in `engine.rs`.
 
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nih_plug::prelude::*;
@@ -20,10 +21,21 @@ use engine::{Engine, VLOG};
 enum SceneCmd {
     /// Replace the scene with decoded audio (samples, sample_rate).
     Wav(Vec<f32>, f32),
-    /// Switch to live-input capture of the last N seconds of host audio.
-    Live(f32),
+    /// Switch to live-input capture: a pre-zeroed rolling buffer (sized for the
+    /// requested duration at the host rate) plus that rate. Built on the GUI
+    /// thread — see `live_capture_buffer` — so `process()` never allocates to
+    /// start capturing.
+    Live(Vec<f32>, f32),
 }
 type PendingSample = Arc<Mutex<Option<SceneCmd>>>;
+
+/// Build a zeroed rolling-capture buffer of `secs` seconds at `sr`. Kept off
+/// the audio thread: callers are the GUI thread (`draw_ui`) and `initialize()`
+/// (which runs before the audio stream starts), never `process()`.
+fn live_capture_buffer(secs: f32, sr: f32) -> Vec<f32> {
+    let len = ((secs * sr) as usize).max(2);
+    vec![0.0; len]
+}
 
 /// Snapshot of the engine state for the visualizer. The audio thread writes it
 /// (try-lock, once per block); the GUI thread reads it each frame.
@@ -65,6 +77,16 @@ pub struct RayDrone {
     midi_held: [bool; 128],
     /// Notes currently pressed on the on-screen piano (shared with the editor).
     keys: Arc<Mutex<[bool; 128]>>,
+    /// Host sample rate, mirrored here so the GUI thread can size a live-capture
+    /// buffer (`live_capture_buffer`) without reaching into the audio thread's
+    /// `Engine`.
+    host_sr: Arc<AtomicU32>,
+    /// Scene buffers `process()` has swapped out (old WAV / capture data). It
+    /// stashes them here instead of dropping them in place — freeing a
+    /// multi-megabyte `Vec` on the audio callback is as real-time-unsafe as
+    /// allocating one — and the GUI thread drains it every frame (`draw_ui`),
+    /// which is where the actual deallocation happens.
+    trash: Arc<Mutex<Vec<Vec<f32>>>>,
 }
 
 #[derive(Params)]
@@ -120,6 +142,11 @@ impl Default for RayDrone {
             viz: Arc::new(Mutex::new(VizState::default())),
             midi_held: [false; 128],
             keys: Arc::new(Mutex::new([false; 128])),
+            host_sr: Arc::new(AtomicU32::new(44100.0f32.to_bits())),
+            // Scene changes are a rare, user-paced event and `draw_ui` drains
+            // this every GUI frame, so a handful of slots is ample headroom —
+            // it should practically never sit at more than 0-1 entries.
+            trash: Arc::new(Mutex::new(Vec::with_capacity(8))),
         }
     }
 }
@@ -233,6 +260,8 @@ impl Plugin for RayDrone {
         let sample_name = self.sample_name.clone();
         let viz = self.viz.clone();
         let keys = self.keys.clone();
+        let host_sr = self.host_sr.clone();
+        let trash = self.trash.clone();
         let egui_state = self.params.editor_state.clone();
 
         create_egui_editor(
@@ -240,7 +269,9 @@ impl Plugin for RayDrone {
             (),
             |_, _| {},
             move |ctx, setter, _state| {
-                draw_ui(ctx, setter, &params, &pending, &sample_name, &viz, &keys);
+                draw_ui(
+                    ctx, setter, &params, &pending, &sample_name, &viz, &keys, &host_sr, &trash,
+                );
             },
         )
     }
@@ -252,6 +283,7 @@ impl Plugin for RayDrone {
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         self.engine.set_sample_rate(buffer_config.sample_rate);
+        self.host_sr.store(buffer_config.sample_rate.to_bits(), Ordering::Relaxed);
 
         // Restore a persisted scene (DAW project recall), or fall back to a
         // built-in so the plugin makes sound out of the box.
@@ -259,7 +291,9 @@ impl Plugin for RayDrone {
             let path = self.params.sample_path.lock().unwrap().clone();
             // Live-input mode was saved with the project.
             if matches!(path.as_deref(), Some("live")) {
-                self.engine.begin_live_capture(6.0);
+                // Not real-time here — initialize() runs before the stream starts.
+                let buf = live_capture_buffer(6.0, buffer_config.sample_rate);
+                let _ = self.engine.begin_live_capture(buf, buffer_config.sample_rate);
                 if let Ok(mut v) = self.viz.lock() {
                     v.wave = Vec::new();
                 }
@@ -293,7 +327,7 @@ impl Plugin for RayDrone {
                 }
             };
             let peaks = wave_peaks(&data, 256);
-            self.engine.load(data, sr);
+            let _ = self.engine.load(data, sr); // not real-time: still in initialize()
             if let Ok(mut v) = self.viz.lock() {
                 v.wave = peaks;
             }
@@ -312,12 +346,25 @@ impl Plugin for RayDrone {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        // Pick up a scene change from the GUI thread (rare event).
+        // Pick up a scene change from the GUI thread (rare event). The buffer
+        // it replaces is stashed in `trash` instead of being dropped right
+        // here — freeing memory on the audio callback is just as real-time-
+        // unsafe as allocating it. `draw_ui` (GUI thread) drains `trash` every
+        // frame, which is where the actual deallocation happens.
         if let Ok(mut slot) = self.pending.try_lock() {
-            match slot.take() {
-                Some(SceneCmd::Wav(data, sr)) => self.engine.load(data, sr),
-                Some(SceneCmd::Live(secs)) => self.engine.begin_live_capture(secs),
-                None => {}
+            if let Some(cmd) = slot.take() {
+                let old = match cmd {
+                    SceneCmd::Wav(data, sr) => self.engine.load(data, sr),
+                    SceneCmd::Live(buf, sr) => self.engine.begin_live_capture(buf, sr),
+                };
+                if let Ok(mut trash) = self.trash.try_lock() {
+                    if trash.len() < trash.capacity() {
+                        trash.push(old);
+                    }
+                    // Capacity exhausted (shouldn't happen — see the field doc):
+                    // fall through and let `old` drop here as a last resort
+                    // rather than leaking it.
+                }
             }
         }
 
@@ -407,7 +454,15 @@ fn draw_ui(
     sample_name: &Arc<Mutex<String>>,
     viz: &Viz,
     keys: &Arc<Mutex<[bool; 128]>>,
+    host_sr: &Arc<AtomicU32>,
+    trash: &Arc<Mutex<Vec<Vec<f32>>>>,
 ) {
+    // Actually free the scene buffers the audio thread swapped out — off the
+    // real-time callback, here on the GUI thread.
+    if let Ok(mut t) = trash.try_lock() {
+        t.clear();
+    }
+
     let frame = egui::Frame::new().fill(BG0).inner_margin(egui::Margin::same(14));
     egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
         ui.visuals_mut().override_text_color = Some(egui::Color32::from_gray(225));
@@ -473,7 +528,11 @@ fn draw_ui(
                         if let Ok(mut v) = viz.lock() {
                             v.wave = Vec::new();
                         }
-                        *pending.lock().unwrap() = Some(SceneCmd::Live(6.0));
+                        // Build the (zeroed) capture buffer here, on the GUI
+                        // thread, so process() only ever has to move it in.
+                        let sr = f32::from_bits(host_sr.load(Ordering::Relaxed));
+                        *pending.lock().unwrap() =
+                            Some(SceneCmd::Live(live_capture_buffer(6.0, sr), sr));
                     }
                     ui.separator();
                     for &(label, scene) in &[
