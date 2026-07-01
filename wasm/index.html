@@ -28,8 +28,9 @@
             .p-space  { grid-column:3; grid-row:1; }
             .p-engine { grid-column:3; grid-row:2; }
             .p-ambient { grid-column:1 / -1; grid-row:3; }
-            .p-micro { grid-column:1 / -1; grid-row:4; }
-            .lab    { grid-column:1 / -1; grid-row:5; }
+            .p-tonal { grid-column:1 / -1; grid-row:4; }
+            .p-micro { grid-column:1 / -1; grid-row:5; }
+            .lab    { grid-column:1 / -1; grid-row:6; }
             .micro-grid { grid-template-columns:300px 1fr; }
             .ambient-grid { grid-template-columns:repeat(5,1fr); }
         }
@@ -39,6 +40,21 @@
         .panel-title { font-family:monospace; font-size:0.66rem; letter-spacing:2px; text-transform:uppercase;
                        color:var(--accent-dim); margin-bottom:12px; padding-bottom:8px;
                        border-bottom:1px solid rgba(255,53,94,0.12); display:flex; justify-content:space-between; }
+
+        /* ── Info badge: small "i" next to each section title, tooltip on hover/focus ── */
+        .info-badge { position:relative; display:inline-flex; align-items:center; justify-content:center;
+                      width:13px; height:13px; margin-left:6px; border-radius:50%;
+                      border:1px solid rgba(255,53,94,0.45); color:var(--accent-dim);
+                      font-size:9px; font-style:normal; font-weight:bold; cursor:help;
+                      vertical-align:middle; user-select:none; }
+        .info-badge:hover, .info-badge:focus { color:var(--accent); border-color:var(--accent); outline:none; }
+        .info-tip { position:absolute; left:0; top:19px; z-index:20; width:230px; max-width:55vw;
+                    background:#160d10; border:1px solid rgba(255,53,94,0.35); border-radius:8px;
+                    padding:9px 11px; font-family:'Segoe UI',Tahoma,sans-serif; font-size:0.72rem;
+                    font-weight:normal; letter-spacing:normal; text-transform:none; color:#e7dde2;
+                    line-height:1.4; box-shadow:0 10px 30px rgba(0,0,0,0.5);
+                    opacity:0; pointer-events:none; transition:opacity .12s; }
+        .info-badge:hover .info-tip, .info-badge:focus .info-tip { opacity:1; }
 
         .file-label { display:block; text-align:center; background:rgba(255,53,94,0.1); border:1px dashed var(--accent);
                       padding:12px; border-radius:8px; cursor:pointer; color:var(--accent); font-weight:600; }
@@ -94,7 +110,7 @@
         <div class="deck">
             <!-- ── SCENE / TRANSPORT ── -->
             <section class="panel scene">
-                <div class="panel-title"><span>Scene</span><span>Source · Rays · Output</span></div>
+                <div class="panel-title"><span>Scene<span class="info-badge" tabindex="0">i<span class="info-tip">Carga el WAV/MP3 que los rayos van a granular. Arriba: dónde caen los rayos sobre la onda de origen. Abajo: la señal que realmente suena (osciloscopio + espectro).</span></span></span><span>Source · Rays · Output</span></div>
 
                 <label class="file-label" id="file-label" for="file">📁 Cargar WAV / MP3</label>
                 <input type="file" id="file" accept="audio/*">
@@ -132,7 +148,7 @@
 
             <!-- ── SHAPE ── -->
             <section class="panel p-shape">
-                <div class="panel-title"><span>Shape</span></div>
+                <div class="panel-title"><span>Shape<span class="info-badge" tabindex="0">i<span class="info-tip">Carácter mueve a la vez apertura, duración y densidad de grano (Tonal → Textura → Drone). Volumen es solo la ganancia de escucha: no toca el motor.</span></span></span></div>
                 <div class="ctl">
                     <label>Carácter (Tonal → Drone) <span class="v" id="char-v">—</span></label>
                     <input type="range" id="char" min="0" max="100" value="35">
@@ -145,7 +161,7 @@
 
             <!-- ── OPTICS ── -->
             <section class="panel p-optics">
-                <div class="panel-title"><span>Optics</span></div>
+                <div class="panel-title"><span>Optics<span class="info-badge" tabindex="0">i<span class="info-tip">Aberración separa graves/agudos en bandas con filtrado propio (efecto "lente"). Cola/Rebotes hace que un grano al morir relance un hijo cerca de donde cayó, N veces. Pitch transpone toda la nube en semitonos.</span></span></span></div>
                 <div class="ctl">
                     <label>Aberración (graves anchos / agudos finos) <span class="v" id="aber-v">0 %</span></label>
                     <input type="range" id="aber" min="0" max="100" value="0">
@@ -162,7 +178,7 @@
 
             <!-- ── SPACE ── -->
             <section class="panel p-space">
-                <div class="panel-title"><span>Space</span></div>
+                <div class="panel-title"><span>Space<span class="info-badge" tabindex="0">i<span class="info-tip">Estéreo dispersa el paneo de cada grano. Octava/Shimmer hace que algunos granos suenen una octava arriba. Reverb añade cola del Freeverb-lite del motor.</span></span></span></div>
                 <div class="ctl">
                     <label>Estéreo (Width) <span class="v" id="width-v">0 %</span></label>
                     <input type="range" id="width" min="0" max="100" value="0">
@@ -179,7 +195,7 @@
 
             <!-- ── ENGINE ── -->
             <section class="panel p-engine">
-                <div class="panel-title"><span>Engine</span></div>
+                <div class="panel-title"><span>Engine<span class="info-badge" tabindex="0">i<span class="info-tip">Autoevolución: el nivel de salida realimenta el foco y la apertura, el render deriva solo. Muestreo suave (QMC) reparte los rayos en baja discrepancia en vez de al azar. Rayos inteligentes priorizan donde el sample tiene más energía.</span></span></span></div>
                 <div class="ctl">
                     <label>Autoevolución (recursiva) <span class="v" id="evo-v">0 %</span></label>
                     <input type="range" id="evo" min="0" max="100" value="0">
@@ -202,7 +218,7 @@
 
             <!-- ── AMBIENT (focos múltiples recursivos) ── -->
             <section class="panel p-ambient adv">
-                <div class="panel-title"><span>🌌 Ambient · focos recursivos</span><span>varios puntos focales auto-similares sobre la onda</span></div>
+                <div class="panel-title"><span>🌌 Ambient · focos recursivos<span class="info-badge" tabindex="0">i<span class="info-tip">Sustituye el foco único por una constelación de focos que derivan solos y engendran focos hijo más discretos → estructura auto-similar. Semillas = focos base · Recursión = niveles de hijos · Dispersión = distancia hijo↔padre · Deriva = velocidad · Nacimientos = focos nuevos/seg.</span></span></span><span>varios puntos focales auto-similares sobre la onda</span></div>
                 <div class="ctl row" style="margin-bottom:14px;">
                     <label style="margin:0;">Activar tema ambient <span class="v" id="ambient-v">OFF</span></label>
                     <input type="checkbox" id="ambient">
@@ -232,43 +248,9 @@
                 <div class="sub" style="text-align:left; margin:6px 0 0;">Las semillas se reparten en baja discrepancia (golden ratio) y derivan solas; cada foco engendra focos hijo más breves y cercanos → estructura auto-similar (la misma ley QMC a escala de sección, frase y grano). Súbele a Reverb y grano largo para drone. Combínalo con autoevolución y rebotes.</div>
             </section>
 
-            <!-- ── MICROTONAL ── -->
-            <section class="panel p-micro adv">
-                <div class="panel-title"><span>♪ Microtonal</span><span>retícula en cents · cada rayo en su grado</span></div>
-                <div class="micro-grid">
-                    <div>
-                        <div class="ctl">
-                            <label>Escala (textura microtonal) <span class="v" id="scale-v">Libre</span></label>
-                            <select id="scale">
-                                <option value="off" selected>Libre (pitch continuo)</option>
-                                <option value="12edo">12-EDO · cromática</option>
-                                <option value="24edo">24-EDO · cuartos de tono</option>
-                                <option value="22edo">22-EDO · shruti</option>
-                                <option value="19edo">19-EDO</option>
-                                <option value="ji7">Justa entonación · 7 grados</option>
-                                <option value="bp">Bohlen–Pierce · 13 ÷ tritava</option>
-                            </select>
-                        </div>
-                        <div class="ctl">
-                            <label>Acorde (grados activos) <span class="v" id="chord-v">—</span></label>
-                            <select id="chord">
-                                <option value="cluster" selected>Cluster · todos los grados</option>
-                                <option value="tonic">Tónica (drone)</option>
-                                <option value="fifth">Tónica + quinta</option>
-                                <option value="triad">Tríada · 4:5:6</option>
-                                <option value="tetrad">Tétrada armónica · 4:5:6:7</option>
-                                <option value="penta">Pentatónica · 5 grados</option>
-                            </select>
-                        </div>
-                        <div class="sub" style="text-align:left; margin:0;">Con acorde, cada temperamento afina los mismos intervalos a su manera (tercera: 400¢ en 12-EDO, 379¢ en 19-EDO, 386¢ justa). Granos largos = retícula más nítida.</div>
-                    </div>
-                    <canvas id="lattice" width="800" height="180"></canvas>
-                </div>
-            </section>
-
             <!-- ── PAD: VOICING AFINADO + FILTRO ── -->
-            <section class="panel adv">
-                <div class="panel-title"><span>🎹 Tonalidad &amp; Filtro</span><span>pad afinado · filtro con LFO a tempo</span></div>
+            <section class="panel p-tonal adv">
+                <div class="panel-title"><span>🎹 Tonalidad &amp; Filtro<span class="info-badge" tabindex="0">i<span class="info-tip">Voicing apila la nube en un acorde afinado en entonación justa (anula la retícula Microtonal mientras esté activo). El filtro resonante se puede barrer con un LFO sincronizado al BPM.</span></span></span><span>pad afinado · filtro con LFO a tempo</span></div>
                 <div class="ctl">
                     <label>Voicing (acorde afinado · core::music) <span class="v" id="voicing-v">Ninguno</span></label>
                     <select id="voicing">
@@ -311,12 +293,46 @@
                     <label>LFO de filtro · profundidad <span class="v" id="lfodepth-v">0 oct</span></label>
                     <input type="range" id="lfodepth" min="0" max="100" value="0">
                 </div>
-                <div class="sub" style="text-align:left; margin:6px 0 0;">El voicing reparte cada rayo por los grados de un acorde en entonación justa → pad afinado y consonante (anula la rejilla Microtonal mientras esté activo). Ajusta la afinación con el slider <b>Pitch</b> para meterlo en tu tonalidad. El barrido del filtro va sincronizado al BPM.</div>
+                <div class="sub" style="text-align:left; margin:6px 0 0;">El voicing reparte cada rayo por los grados de un acorde en entonación justa → pad afinado y consonante (anula la rejilla Microtonal mientras esté activo). Ajusta la afinación con el slider <b>Pitch</b> para meterlo en tu tonalidad. El barrido del filtro va sincronizado al BPM y tiene recorrido aunque dejes el Cutoff totalmente abierto.</div>
+            </section>
+
+            <!-- ── MICROTONAL ── -->
+            <section class="panel p-micro adv">
+                <div class="panel-title"><span>♪ Microtonal<span class="info-badge" tabindex="0">i<span class="info-tip">Cada rayo elige un grado de una retícula de afinación (12/19/22/24-EDO, justa o Bohlen–Pierce) en vez de un pitch continuo. El Acorde restringe qué grados suenan, para notar la diferencia entre temperamentos.</span></span></span><span>retícula en cents · cada rayo en su grado</span></div>
+                <div class="micro-grid">
+                    <div>
+                        <div class="ctl">
+                            <label>Escala (textura microtonal) <span class="v" id="scale-v">Libre</span></label>
+                            <select id="scale">
+                                <option value="off" selected>Libre (pitch continuo)</option>
+                                <option value="12edo">12-EDO · cromática</option>
+                                <option value="24edo">24-EDO · cuartos de tono</option>
+                                <option value="22edo">22-EDO · shruti</option>
+                                <option value="19edo">19-EDO</option>
+                                <option value="ji7">Justa entonación · 7 grados</option>
+                                <option value="bp">Bohlen–Pierce · 13 ÷ tritava</option>
+                            </select>
+                        </div>
+                        <div class="ctl">
+                            <label>Acorde (grados activos) <span class="v" id="chord-v">—</span></label>
+                            <select id="chord">
+                                <option value="cluster" selected>Cluster · todos los grados</option>
+                                <option value="tonic">Tónica (drone)</option>
+                                <option value="fifth">Tónica + quinta</option>
+                                <option value="triad">Tríada · 4:5:6</option>
+                                <option value="tetrad">Tétrada armónica · 4:5:6:7</option>
+                                <option value="penta">Pentatónica · 5 grados</option>
+                            </select>
+                        </div>
+                        <div class="sub" style="text-align:left; margin:0;">Con acorde, cada temperamento afina los mismos intervalos a su manera (tercera: 400¢ en 12-EDO, 379¢ en 19-EDO, 386¢ justa). Granos largos = retícula más nítida.</div>
+                    </div>
+                    <canvas id="lattice" width="800" height="180"></canvas>
+                </div>
             </section>
 
             <!-- ── ANALYSIS / CONVERGENCE LAB ── -->
             <section class="panel lab adv">
-                <div class="panel-title"><span>⚗ Convergence Lab</span><span>error RMS vs N · 1/√N · wasm</span></div>
+                <div class="panel-title"><span>⚗ Convergence Lab<span class="info-badge" tabindex="0">i<span class="info-tip">Banco de pruebas offline (mismo motor Rust→wasm, en un Worker aparte): compara cómo cae el error de un grano estimado según el método de muestreo (aleatorio, estratificado, QMC, importance, reverse) al crecer N. No toca el render en vivo.</span></span></span><span>error RMS vs N · 1/√N · wasm</span></div>
                 <div class="sub" style="margin:0 0 10px; text-align:left;">Prueba empírica con el motor real (Rust→wasm en un Worker, semilla fija → reproducible): el render converge al objetivo con error ~ 1/√N.</div>
                 <canvas id="lab-canvas" width="700" height="240"></canvas>
                 <button class="btn btn-play" id="lab-run">▶ Correr test de convergencia</button>
@@ -725,7 +741,7 @@
     });
 
     // ── Secciones avanzadas: ocultas por defecto, reveladas con el botón ──────
-    // (Ambient · Microtonal · Tonalidad/Filtro · Convergence Lab, en ese orden.)
+    // (Ambient · Tonalidad/Filtro · Microtonal · Convergence Lab, en ese orden.)
     const advSections = document.querySelectorAll('.adv');
     advSections.forEach((el) => { el.style.display = 'none'; });
     const advToggle = $('adv-toggle');
