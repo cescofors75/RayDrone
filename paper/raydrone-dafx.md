@@ -86,8 +86,9 @@ A cloud of N grains is precisely the **Monte Carlo estimator** of this integral:
 ĝ_N[n] = w[n] · (1/N) Σ_{i=1}^{N} s[f + τ_i + n] ,     τ_i ~ p
 ```
 
-By the central limit theorem the per-sample error is unbiased with variance σ²/N,
-so the RMS error over the grain converges as
+The estimator is unbiased by linearity of expectation (`E[ĝ_N] = g` for every
+N), with per-sample variance σ²/N; the central limit theorem then gives the
+convergence rate, so the RMS error over the grain falls as
 
 ```
 ‖ ĝ_N − g ‖ ∝ σ / √N .
@@ -128,9 +129,16 @@ Draw `τ ∝ q(τ)` where `q` follows local source energy, and **reweight by
 concentrating samples where the integrand is large.
 
 ### 4.4 Russian roulette (bounces / tail)
-When a grain ends, spawn a child with survival probability `ρ` and compensate —
-an unbiased way to extend the Neumann series (the "tail"/reverberant transport)
-without unbounded recursion.
+When a grain ends, spawn a child with survival probability `ρ` **at constant
+gain** — the *analog Monte Carlo* absorption scheme of particle transport
+(terminate with probability = absorption, no reweighting): the bounce chain is
+then an unbiased sample of the Neumann series of a medium whose reflection
+coefficient *is* `ρ`, extended without unbounded recursion. We deliberately do
+**not** apply the graphics-style `1/ρ` compensation: compensated roulette is
+unbiased for a series with *fixed* per-order weights, but the compensation
+injects gain spikes on surviving paths — musically unacceptable — whereas the
+analog scheme keeps `ρ` itself as the "reflect" control (tail length ↔ energy),
+exactly as a physical absorption coefficient would.
 
 💡 nota: Fig. 2 = las distribuciones de puntos de las 4 estrategias sobre la
 apertura (un panel cada una). Es muy visual y barato de generar.
@@ -157,14 +165,31 @@ línea ideal 1/√N. Hay que correr el Lab sobre 2–3 samples distintos (un baj
 
 ### 5.3 Reverse tracing is biased — and that is the point
 Rejection sampling proportional to source energy *without* reweighting does **not**
-estimate `g[n]`; it estimates a different, energy-weighted target. Hence its error
-curve **plateaus** (it does not converge to `g`) even though it sounds fuller. We
-present this as a worked example of bias vs. variance, and argue it is a *timbral*
-choice, not a quality improvement.
+estimate `g[n]`; it estimates a different, energy-weighted target. The estimator's
+error therefore decomposes as `RMS² = bias² + variance/N`, and the data shows both
+regimes:
 
-💡 nota: Fig. 4 = curva "Reverse" que se aplana junto a "Importance" que baja.
-Esto es lo que demostramos con el sample de bajo. Es el detalle que da
-credibilidad: distinguimos "converge mejor" de "suena distinto".
+- **On quasi-uniform musical material** (runs 1–4), the energy inside the aperture
+  varies little, so the bias term is *below the estimator's noise floor* across the
+  measured range: reverse simply tracks random (mean slope −0.496 vs −0.490) and
+  gains **nothing** from the variance-reduction budget it spends. Already a negative
+  result worth stating: the tempting "smart" sampler buys no convergence.
+- **On strongly structured material** (run 5: a source whose aperture straddles a
+  loud/near-silent boundary), the bias term dominates at large N and the curve
+  **plateaus** at the bias level (~2.8·10⁻³): between N = 8192 and 32768 reverse's
+  local slope collapses to ≈ −0.08 while random continues at ≈ −0.45 and *crosses
+  below it*, and reweighted importance reaches 1.1·10⁻⁵ — 260× lower. This is the
+  bias made visible.
+
+We present the pair as a worked example of bias vs. variance, and argue reverse
+tracing is a *timbral* choice (it renders the energy-weighted texture, which can
+sound fuller), not a quality improvement.
+
+💡 nota: Fig. 4 = `figures/run5-bias-ap91-foc2.0.png` (reverse se aplana, random
+lo cruza por debajo, importance se hunde). El run es sintético y reproducible con
+`node paper/make_bias_run.mjs` — en los runs 1–4 (música real) el sesgo queda bajo
+el ruido y reverse ≈ random, que es el otro régimen y también se cuenta. Es el
+detalle que da credibilidad: distinguimos "converge mejor" de "suena distinto".
 
 ---
 
@@ -177,7 +202,18 @@ credibilidad: distinguimos "converge mejor" de "suena distinto".
   per-grain micro-detune, Freeverb-lite stereo reverb, output DC blocker.
 - In-browser Convergence Lab reproduces all figures; performance diagnostics
   (audio-thread CPU, active voices, grains/s, latency).
-- Open source, non-commercial.
+- **Lab vs. live instrument — an honest distinction.** The Lab measures the
+  *canonical* forms of each sampler: N-strata stratification, f64 golden-ratio
+  Kronecker sequence with Cranley–Patterson rotation, and reweighted (`p/q`,
+  unbiased) importance sampling. The real-time instrument ships cheaper
+  *streaming* variants of the first two — an iterative f32 golden recurrence
+  without rotation, and a fixed 17-stratum round-robin (which improves the
+  constant but is asymptotically slope −0.5) — and its "smart rays" mode is
+  precisely the **biased reverse** sampler of Sec. 5.3, not the unbiased
+  importance sampler. All convergence figures characterise the canonical forms;
+  the streaming variants inherit the qualitative behaviour at musical densities
+  but not the asymptotic slopes.
+- Open source (MIT license).
 
 💡 nota: esto es la sección de "reproducibilidad" que a los revisores les encanta:
 todo corre en el navegador y el código está publicado.

@@ -205,5 +205,21 @@ ex.lab_estimate(50000, 4000, 4096, 2, 1);
 const errHigh = ex.lab_rms();
 check('estimator converges (more rays → less error)', errHigh < errLow, `err: ${errLow.toExponential(2)} (64) → ${errHigh.toExponential(2)} (4096)`);
 
+// Regression: the importance estimator (method 3) used to NaN at large N — the
+// f32 stratified u could round to 1.0 (or land past the f32 cumulative-sum CDF
+// maximum), the binary search then returned the aperture's edge bin where the
+// triangular kernel is exactly 0, and PM/QM = 0/0 = NaN poisoned the whole
+// estimate. Must stay finite for any seed at the largest N the paper needs.
+ex.lab_imp_build(50000, 4000);
+let impFiniteOk = true;
+let impErr = 0;
+for (const sd of [1, 0x9e3779b9, 0xdeadbeef]) {
+    ex.lab_estimate(50000, 4000, 65536, 3, sd);
+    const e = ex.lab_rms();
+    if (!Number.isFinite(e)) impFiniteOk = false;
+    impErr = e;
+}
+check('importance stays finite at N=65536 (edge-bin 0/0 regression)', impFiniteOk, `err=${impErr.toExponential(2)}`);
+
 console.log(`\n${failures === 0 ? '✅ ALL PASSED' : '❌ ' + failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

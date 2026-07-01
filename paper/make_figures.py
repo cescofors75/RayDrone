@@ -97,8 +97,15 @@ def main():
                                                 for k in SERIES]
         table.append(row)
 
-    # Figura resumen: las 4 curvas, mostrando consistencia
-    fig, axes = plt.subplots(2, 2, figsize=(9.5, 7))
+    # Figura resumen: todas las curvas, mostrando consistencia. El grid se
+    # dimensiona al nº de runs (antes era 2×2 fijo y un 5º run se caía en
+    # silencio del resumen).
+    ncols = 2
+    nrows = (len(runs) + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(9.5, 3.5 * nrows))
+    axes = np.atleast_2d(axes)
+    for ax in axes.ravel()[len(runs):]:
+        ax.set_visible(False)  # celdas sobrantes del grid
     for ax, (name, meta, cols) in zip(axes.ravel(), runs):
         N = cols["N"]
         anchor = cols["random"][0]
@@ -110,7 +117,7 @@ def main():
                      fontsize=8.5)
         ax.grid(True, which="both", alpha=0.2)
     axes[0, 0].legend(fontsize=7, ncol=2)
-    fig.suptitle("RayDrone — Monte Carlo convergence on real audio (4 runs)", fontsize=11)
+    fig.suptitle(f"RayDrone — Monte Carlo convergence ({len(runs)} runs)", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     fig.savefig(os.path.join(FIGS, "summary-grid.png"), dpi=150)
     plt.close(fig)

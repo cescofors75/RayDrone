@@ -153,7 +153,15 @@ static mut SLOG_W: u32 = 0;
 // Diagnóstico de rendimiento
 static mut SPAWN_COUNT: u32 = 0; // total de granos disparados (para granos/seg)
 
-// ── Convergence Lab: el MISMO estimador del motor, medible offline.
+// ── Convergence Lab: el mismo ESTIMADOR del motor (mismo kernel triangular,
+// mismo objetivo g[n]), medible offline. Ojo con el matiz para el paper: los
+// MUESTREADORES del Lab son las formas canónicas — estratificado de N estratos,
+// Kronecker áureo en f64 con rotación Cranley–Patterson, e importance
+// reponderado p/q (insesgado) — mientras que el motor en vivo usa variantes
+// streaming: recurrencia áurea iterativa en f32 sin rotación, 17 estratos
+// fijos round-robin, y los "rayos inteligentes" son exactamente el método
+// reverse (rejection sin reponderar, sesgado). Las curvas medidas aquí
+// caracterizan las formas canónicas, no las variantes en vivo.
 // Corre en una instancia aparte de este módulo dentro de un Web Worker (no toca
 // el hilo de audio). Acumuladores en f64 para que el suelo de error medido sea
 // del estimador, no de la precisión de la suma. RNG sembrable → reproducible.
@@ -961,8 +969,19 @@ pub extern "C" fn lab_estimate(f0: i32, a: i32, n_rays: u32, method: u32, sd: u3
             for i in 0..n {
                 let u = ((i as f32) + rng01()) / (n as f32);
                 let idx = lab_cum_search(len, u);
+                // Borde f32: con N grande, u puede redondear a 1.0 (o superar el
+                // máximo de la CDF, que es una suma acumulada en f32) y la
+                // búsqueda devuelve el bin extremo de la apertura, donde el
+                // kernel triangular vale exactamente 0 → p = q = 0 y 0/0 = NaN
+                // envenenaría la estimación entera. Un bin de masa nula no
+                // debería poder salir elegido: su peso correcto es 0, así que
+                // se descarta la muestra (equivale a wi = 0, sin sesgo).
+                let qm = LAB_QM[idx];
+                if qm <= 0.0 {
+                    continue;
+                }
                 let k = idx as i32 - a;
-                let wi = (LAB_PM[idx] / LAB_QM[idx]) as f64;
+                let wi = (LAB_PM[idx] / qm) as f64;
                 ws += wi;
                 let b = f0 as i64 + k as i64;
                 for m in 0..LAB_D {

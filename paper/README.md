@@ -34,16 +34,23 @@ demuestra que entendemos la diferencia entre converger mejor y sonar distinto.
 - *Computer Music Journal* (MIT Press) para versión extendida.
 
 ## Qué falta (checklist)
-- [ ] **Export CSV del Convergence Lab** (curvas RMS vs N por estrategia) para
-      generar las figuras del paper de forma reproducible.
-- [ ] Correr el Lab sobre 2–3 samples distintos (bajo 303, pad, percusión) y
-      tabular las pendientes ajustadas.
+- [x] **Export CSV del Convergence Lab** (botón ⬇ CSV en la página) — los runs
+      1–4 de `data/` salieron de ahí.
+- [x] Correr el Lab sobre samples distintos y tabular pendientes → `RESULTS.md`.
 - [ ] Fig. 1: diagrama píxel/rayo ↔ foco/grano (ya tenemos el texto "genesis").
 - [ ] Fig. 2: distribuciones de puntos de las 4 estrategias sobre la apertura.
-- [ ] Fig. 3: gráfica log-log de convergencia con la línea ideal 1/√N.
-- [ ] Fig. 4: Reverse (se aplana) vs Importance (converge) → sesgo.
+- [x] Fig. 3: gráfica log-log de convergencia con la línea ideal 1/√N
+      (`figures/run1…run4*.png`, vía `make_figures.py`).
+- [x] Fig. 4: Reverse (se aplana) vs Importance (converge) → sesgo. Hecho con el
+      run 5 sintético (`node paper/make_bias_run.mjs` →
+      `figures/run5-bias-ap91-foc2.0.png`). Ojo al matiz honesto: en música real
+      (runs 1–4) el sesgo queda bajo el ruido y reverse ≈ random; los dos
+      regímenes están redactados en el §5.3.
 - [ ] Redactar Sec. 3 (núcleo matemático) en limpio.
 - [ ] Pasar a plantilla LaTeX de DAFx cuando el contenido esté cerrado.
+- [ ] Más trials (16–32) en los runs 1–4 y confianza sobre la pendiente ajustada
+      (el NaN del estimador importance a N grande ya está arreglado; se puede
+      subir N sin miedo).
 
 > Sin prisa y con rigor. El código y el Lab ya son nuestra "sección de
 > reproducibilidad"; el resto es contar bien lo que ya hicimos.
