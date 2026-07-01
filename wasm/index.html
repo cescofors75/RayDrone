@@ -1780,6 +1780,15 @@
 
     document.addEventListener('keydown', (e) => {
         if (isTextEntryTarget(e.target)) return;
+        // Espacio = Play/Pause explícito (convención de cualquier reproductor),
+        // en vez de depender de que el botón se quedara con el foco (por eso
+        // antes a veces "funcionaba" sin querer, y ahora que eso está arreglado
+        // no hacía nada en absoluto).
+        if (e.code === 'Space' || e.key === ' ') {
+            if (!playBtn.disabled) playBtn.click();
+            e.preventDefault();
+            return;
+        }
         const k = e.key.toLowerCase();
         if (k >= '1' && k <= '9') { const i = +k - 1; if (presets[i]) presets[i].click(); }
         else if (k === 's') { liveSpectrum = !liveSpectrum; updateHud(); }
