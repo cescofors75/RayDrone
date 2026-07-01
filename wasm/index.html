@@ -594,10 +594,16 @@
             throw new Error(`AudioWorklet no disponible en ${location.origin}: hace falta HTTPS o localhost.`);
         }
         if (!wasmBytes) {
+            // Cache-bust ambos: raydrone.wasm es un binario que recompilas en
+            // local (wasm/build.sh) y no está versionado en git, así que el
+            // navegador puede estar sirviendo una copia vieja aunque el HTML
+            // ya esté al día — un `git pull` nunca invalida la caché HTTP. La
+            // marca de tiempo obliga a pedirlos de red cada carga de página.
+            const bust = `?v=${Date.now()}`;
             // No compilamos aquí: Safari no puede clonar un WebAssembly.Module
             // hacia el worklet (DataCloneError); le pasamos los bytes y compila él.
-            wasmBytes = await fetch('raydrone.wasm').then(r => r.arrayBuffer());
-            await ctx.audioWorklet.addModule('processor.js');
+            wasmBytes = await fetch('raydrone.wasm' + bust, { cache: 'no-store' }).then(r => r.arrayBuffer());
+            await ctx.audioWorklet.addModule('processor.js' + bust);
         }
         if (!node) {
             node = new AudioWorkletNode(ctx, 'raydrone', {
