@@ -88,6 +88,19 @@ static mut SCALE_I: u32 = 0; // estratificado: round-robin por grados
 static mut QMC_P: f32 = 0.5; // QMC pitch (componente R2)
 const R2_ALPHA: f32 = 0.754_877_7; // 1/φ₂, φ₂ = constante plástica ≈ 1.324718
 
+// ── Teclas pulsadas (piano por teclado/ratón/táctil) ────────────────────────
+// Ratios de las notas actualmente sostenidas (2^(semitono/12) respecto a la
+// raíz), enviados por la UI cada vez que cambia el conjunto de teclas. No
+// vacío = cada grano nuevo coge una nota sostenida (así se tocan acordes);
+// vacío = se cae al comportamiento de siempre (Microtonal/Voicing o pitch
+// continuo). Mismo mecanismo de muestreo por grado que la escala microtonal,
+// con su propio acumulador QMC para no correlacionar ambos ejes.
+const KEYS_CAP: usize = 16;
+static mut KEYS: [f32; KEYS_CAP] = [1.0; KEYS_CAP];
+static mut KEYS_LEN: usize = 0;
+static mut KEYS_I: u32 = 0; // estratificado: round-robin por nota sostenida
+static mut QMC_KEY: f32 = 0.5; // QMC teclas (componente R2, propio)
+
 // ── Ambient: focos múltiples autónomos + árbol recursivo de focos ───────────
 // Modo ambient (AMB_ON=1): en vez de un único FOCUS, una constelación de focos.
 // Las SEMILLAS se colocan en baja discrepancia (golden ratio) a lo largo del
@@ -504,6 +517,55 @@ fn scale_ratio() -> f32 {
             _ => (rng01() * (n as f32)) as usize,
         };
         SCALE[if idx >= n { n - 1 } else { idx }]
+    }
+}
+
+// ── Teclas pulsadas (piano) ──
+#[no_mangle]
+pub extern "C" fn keys_ptr() -> *mut f32 {
+    unsafe { KEYS.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn keys_capacity() -> usize {
+    KEYS_CAP
+}
+// La UI llama a esto cada vez que cambia el conjunto de teclas sostenidas
+// (teclado, ratón o táctil), con los ratios ya escritos en `keys_ptr()`.
+// len=0 = ninguna tecla pulsada → se cae a Microtonal/Voicing o pitch continuo.
+#[no_mangle]
+pub extern "C" fn set_keys(len: usize) {
+    unsafe {
+        KEYS_LEN = if len > KEYS_CAP { KEYS_CAP } else { len };
+        KEYS_I = 0;
+    }
+}
+
+// Nota para el grano nuevo, elegida entre las teclas sostenidas — mismo
+// mecanismo de muestreo por grado que `scale_ratio`, con su propio
+// acumulador QMC para no correlacionar los dos ejes de "grado".
+#[inline]
+fn key_ratio() -> f32 {
+    unsafe {
+        if KEYS_LEN == 0 {
+            return 1.0;
+        }
+        let n = KEYS_LEN;
+        let idx = match MODE {
+            1 => {
+                QMC_KEY += R2_ALPHA;
+                if QMC_KEY >= 1.0 {
+                    QMC_KEY -= 1.0;
+                }
+                (QMC_KEY * (n as f32)) as usize
+            }
+            2 => {
+                let i = (KEYS_I as usize) % n;
+                KEYS_I = KEYS_I.wrapping_add(1);
+                i
+            }
+            _ => (rng01() * (n as f32)) as usize,
+        };
+        KEYS[if idx >= n { n - 1 } else { idx }]
     }
 }
 
@@ -1039,9 +1101,12 @@ fn place(pos: f32, band: u8, depth: u32) {
             return;
         }
         let detune = 1.0 + (rng01() - 0.5) * DETUNE; // micro-detune lush (batidos entre granos)
-        // octava × transposición × grado microtonal × detune: la retícula exacta
-        // de la escala + el detune ⇒ enjambre alrededor de cada grado, no comb estático.
-        let ratio = scale_ratio();
+        // octava × transposición × grado microtonal/tecla × detune: la retícula
+        // exacta + el detune ⇒ enjambre alrededor de cada grado, no comb estático.
+        // Las teclas sostenidas (piano) tienen prioridad: mientras haya alguna
+        // pulsada, cada grano toca una de esas notas en vez del grado de
+        // Microtonal/Voicing — igual que en el VST, tocar anula la textura fija.
+        let ratio = if KEYS_LEN > 0 { key_ratio() } else { scale_ratio() };
         let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * ratio * detune;
         let pan = (rng01() * 2.0 - 1.0) * WIDTH; // paneo aleatorio según el ancho
         let panl = sqrtf((1.0 - pan) * 0.5); // equal-power

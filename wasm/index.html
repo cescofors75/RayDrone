@@ -27,10 +27,11 @@
             .p-optics { grid-column:2; grid-row:2; }
             .p-space  { grid-column:3; grid-row:1; }
             .p-engine { grid-column:3; grid-row:2; }
-            .p-ambient { grid-column:1 / -1; grid-row:3; }
-            .p-tonal { grid-column:1 / -1; grid-row:4; }
-            .p-micro { grid-column:1 / -1; grid-row:5; }
-            .lab    { grid-column:1 / -1; grid-row:6; }
+            .p-play { grid-column:1 / -1; grid-row:3; }
+            .p-ambient { grid-column:1 / -1; grid-row:4; }
+            .p-tonal { grid-column:1 / -1; grid-row:5; }
+            .p-micro { grid-column:1 / -1; grid-row:6; }
+            .lab    { grid-column:1 / -1; grid-row:7; }
             .micro-grid { grid-template-columns:300px 1fr; }
             .ambient-grid { grid-template-columns:repeat(5,1fr); }
         }
@@ -82,6 +83,15 @@
         select:focus { outline:none; border-color:var(--accent); }
         #wave { height:150px; touch-action:pan-y; }
         #outwave { height:84px; cursor:default; margin:0 0 14px; }
+
+        /* ── Piano: teclado / ratón / táctil ── */
+        #piano { position:relative; height:76px; margin:0; touch-action:none;
+                 border:1px solid rgba(255,53,94,0.18); border-radius:8px; overflow:hidden; background:#07080e; }
+        .piano-key { position:absolute; top:0; box-sizing:border-box; cursor:pointer; transition:background .05s; }
+        .piano-key.white { height:100%; background:#e6e6ea; border:1px solid rgba(0,0,0,0.4); border-radius:0 0 5px 5px; z-index:1; }
+        .piano-key.white.on { background:var(--accent); }
+        .piano-key.black { height:60%; background:#161018; border:1px solid rgba(0,0,0,0.6); border-radius:0 0 4px 4px; z-index:2; }
+        .piano-key.black.on { background:var(--accent-dim); box-shadow:0 0 10px var(--accent); }
         /* Pantalla completa de la sección gráfica + rayos */
         #viz-wrap:fullscreen, #viz-wrap:-webkit-full-screen { width:100vw; height:100vh; background:#07080e; }
         #viz-wrap:fullscreen canvas, #viz-wrap:-webkit-full-screen canvas { height:100% !important; border-radius:0; }
@@ -211,6 +221,18 @@
                 <div id="perf" class="status" style="text-align:left; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,53,94,0.12); line-height:1.6;">CPU audio — · rayos/bloque — · granos/s —<br>latencia: base — · salida —</div>
             </section>
 
+            <!-- ── PLAY: piano por teclado / ratón / táctil ── -->
+            <section class="panel p-play">
+                <div class="panel-title"><span>🎹 Play<span class="info-badge" tabindex="0">i<span class="info-tip">Teclado A W S E D F T G Y U J K O L (desde C4) · clic/táctil sobre el piano · mantén varias a la vez para tocar acordes. D, F y A solo se tocan con clic/táctil (S/F/H ya son atajos de esta página). Mientras haya alguna nota sostenida, anula Microtonal y Voicing.</span></span></span><span>teclado · ratón · táctil</span></div>
+                <div class="ctl row" style="justify-content:flex-start; gap:14px; margin-bottom:10px;">
+                    <button class="preset" id="poct-down" style="padding:6px 12px;">OCT −</button>
+                    <span class="v" id="poct-v">+0</span>
+                    <button class="preset" id="poct-up" style="padding:6px 12px;">OCT +</button>
+                </div>
+                <div id="piano"></div>
+                <div class="sub" style="text-align:left; margin-top:8px;">Teclado: <b>A W S E D F T G Y U J K O L</b> desde C4 (D, F y A solo por clic/táctil — S/F/H son atajos de espectro/pantalla completa/HUD). Suelta todas las teclas para volver a Microtonal/Voicing o al pitch continuo.</div>
+            </section>
+
             <!-- Botón para revelar/ocultar las secciones avanzadas (abajo, .adv) -->
             <div style="text-align:center; margin:4px 0 2px;">
                 <button class="preset" id="adv-toggle" aria-expanded="false">⚙ Mostrar avanzado</button>
@@ -250,7 +272,7 @@
 
             <!-- ── PAD: VOICING AFINADO + FILTRO ── -->
             <section class="panel p-tonal adv">
-                <div class="panel-title"><span>🎹 Tonalidad &amp; Filtro<span class="info-badge" tabindex="0">i<span class="info-tip">Voicing apila la nube en un acorde afinado en entonación justa (anula la retícula Microtonal mientras esté activo). El filtro resonante se puede barrer con un LFO sincronizado al BPM.</span></span></span><span>pad afinado · filtro con LFO a tempo</span></div>
+                <div class="panel-title"><span>🎹 Tonalidad &amp; Filtro<span class="info-badge" tabindex="0">i<span class="info-tip">Voicing apila la nube en un acorde afinado en entonación justa (anula la retícula Microtonal mientras esté activo). El filtro resonante se puede barrer con un LFO sincronizado al BPM. Tocar el piano (sección Play) anula tanto Voicing como Microtonal mientras haya notas sostenidas.</span></span></span><span>pad afinado · filtro con LFO a tempo</span></div>
                 <div class="ctl">
                     <label>Voicing (acorde afinado · core::music) <span class="v" id="voicing-v">Ninguno</span></label>
                     <select id="voicing">
@@ -298,7 +320,7 @@
 
             <!-- ── MICROTONAL ── -->
             <section class="panel p-micro adv">
-                <div class="panel-title"><span>♪ Microtonal<span class="info-badge" tabindex="0">i<span class="info-tip">Cada rayo elige un grado de una retícula de afinación (12/19/22/24-EDO, justa o Bohlen–Pierce) en vez de un pitch continuo. El Acorde restringe qué grados suenan, para notar la diferencia entre temperamentos.</span></span></span><span>retícula en cents · cada rayo en su grado</span></div>
+                <div class="panel-title"><span>♪ Microtonal<span class="info-badge" tabindex="0">i<span class="info-tip">Cada rayo elige un grado de una retícula de afinación (12/19/22/24-EDO, justa o Bohlen–Pierce) en vez de un pitch continuo. El Acorde restringe qué grados suenan, para notar la diferencia entre temperamentos. Tocar el piano (sección Play) tiene prioridad mientras haya notas sostenidas.</span></span></span><span>retícula en cents · cada rayo en su grado</span></div>
                 <div class="micro-grid">
                     <div>
                         <div class="ctl">
@@ -1601,6 +1623,130 @@
     document.addEventListener('fullscreenchange', syncHudToFs);
     document.addEventListener('webkitfullscreenchange', syncHudToFs);
     presets.forEach((b) => b.addEventListener('click', () => setTimeout(updateHud, 0)));
+
+    // ── Piano: teclado / ratón / táctil (toca acordes: varias notas a la vez) ──
+    const PIANO_LO = 48, PIANO_HI = 76; // C3..D#5 (igual rango que el piano del VST)
+    const isBlackKey = (n) => [1, 3, 6, 8, 10].includes(((n % 12) + 12) % 12);
+    const pianoEl = $('piano');
+    const poctDownBtn = $('poct-down'), poctUpBtn = $('poct-up'), poctV = $('poct-v');
+    let playOctave = 0;
+
+    // Tecla física (minúscula) -> semitono desde C4 (MIDI 60), como el piano del VST.
+    // 's' (D4), 'f' (F4) y 'h' (A4) quedan fuera del teclado: esas letras ya son
+    // atajos de esta página (espectro, pantalla completa, HUD) — se tocan con
+    // clic/táctil directamente sobre el piano.
+    const KB_MAP = {
+        a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7,
+        y: 8, u: 10, j: 11, k: 12, o: 13, l: 14, h: 9,
+    };
+    const KB_RESERVED = new Set(['s', 'f', 'h']);
+
+    const heldKeyboard = new Set();   // notas MIDI sostenidas desde el teclado físico
+    const heldPointer = new Set();    // notas MIDI sostenidas desde ratón/táctil
+    const kbActiveNote = new Map();   // tecla física -> nota que encendió (evita notas "pegadas" si cambias de octava a media pulsación)
+    const pointerActiveNote = new Map(); // pointerId -> nota (soporta multi-touch para acordes con los dedos)
+
+    function sendKeys() {
+        if (!node) return;
+        const held = new Set([...heldKeyboard, ...heldPointer]);
+        const ratios = [...held].sort((a, b) => a - b).map((n) => Math.pow(2, (n - 60) / 12));
+        node.port.postMessage({ type: 'keys', data: Float32Array.from(ratios) });
+    }
+    function paintPiano() {
+        const held = new Set([...heldKeyboard, ...heldPointer]);
+        pianoEl.querySelectorAll('.piano-key').forEach((el) => {
+            el.classList.toggle('on', held.has(+el.dataset.note));
+        });
+    }
+
+    function buildPiano() {
+        pianoEl.innerHTML = '';
+        const whites = [];
+        for (let n = PIANO_LO; n < PIANO_HI; n++) if (!isBlackKey(n)) whites.push(n);
+        const ww = 100 / whites.length; // % de ancho por tecla blanca
+        whites.forEach((n, i) => {
+            const el = document.createElement('div');
+            el.className = 'piano-key white';
+            el.dataset.note = n;
+            el.style.left = `${i * ww}%`;
+            el.style.width = `${ww}%`;
+            pianoEl.appendChild(el);
+        });
+        for (let n = PIANO_LO; n < PIANO_HI; n++) {
+            if (!isBlackKey(n)) continue;
+            const belowWhiteIdx = whites.filter((w) => w < n).length - 1;
+            const el = document.createElement('div');
+            el.className = 'piano-key black';
+            el.dataset.note = n;
+            el.style.left = `${(belowWhiteIdx + 1) * ww - ww * 0.3}%`;
+            el.style.width = `${ww * 0.6}%`;
+            pianoEl.appendChild(el);
+        }
+    }
+    buildPiano();
+
+    pianoEl.addEventListener('pointerdown', (e) => {
+        const key = e.target.closest('.piano-key');
+        if (!key) return;
+        e.preventDefault();
+        pianoEl.setPointerCapture(e.pointerId);
+        const n = +key.dataset.note;
+        pointerActiveNote.set(e.pointerId, n);
+        heldPointer.add(n);
+        paintPiano();
+        sendKeys();
+    });
+    function releasePointerNote(e) {
+        const n = pointerActiveNote.get(e.pointerId);
+        if (n === undefined) return;
+        pointerActiveNote.delete(e.pointerId);
+        if (![...pointerActiveNote.values()].includes(n)) heldPointer.delete(n);
+        paintPiano();
+        sendKeys();
+    }
+    pianoEl.addEventListener('pointerup', releasePointerNote);
+    pianoEl.addEventListener('pointercancel', releasePointerNote);
+    pianoEl.addEventListener('pointerleave', releasePointerNote);
+
+    function setOctave(o) {
+        playOctave = Math.max(-2, Math.min(2, o));
+        poctV.innerText = `${playOctave > 0 ? '+' : ''}${playOctave}`;
+    }
+    poctDownBtn.addEventListener('click', () => setOctave(playOctave - 1));
+    poctUpBtn.addEventListener('click', () => setOctave(playOctave + 1));
+    setOctave(0);
+
+    window.addEventListener('keydown', (e) => {
+        if (e.repeat) return;
+        if (e.target.matches && e.target.matches('input, select, textarea')) return;
+        const k = e.key.toLowerCase();
+        if (KB_RESERVED.has(k) || !(k in KB_MAP)) return;
+        const n = 60 + KB_MAP[k] + playOctave * 12;
+        if (n < 0 || n > 127) return;
+        kbActiveNote.set(k, n);
+        heldKeyboard.add(n);
+        paintPiano();
+        sendKeys();
+    });
+    window.addEventListener('keyup', (e) => {
+        const k = e.key.toLowerCase();
+        const n = kbActiveNote.get(k);
+        if (n === undefined) return;
+        kbActiveNote.delete(k);
+        heldKeyboard.delete(n);
+        paintPiano();
+        sendKeys();
+    });
+    // Si la pestaña pierde el foco (p.ej. alt-tab) con una tecla físicamente
+    // pulsada, nunca llega el keyup correspondiente → la nota quedaría "pegada".
+    window.addEventListener('blur', () => {
+        if (kbActiveNote.size === 0) return;
+        kbActiveNote.clear();
+        heldKeyboard.clear();
+        paintPiano();
+        sendKeys();
+    });
+
     document.addEventListener('keydown', (e) => {
         if (e.target.matches && e.target.matches('input, select, textarea')) return;
         const k = e.key.toLowerCase();

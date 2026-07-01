@@ -69,6 +69,12 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             const len = Math.min(d.data.length, ex.scale_capacity());
             if (len) new Float32Array(this.mem.buffer, ex.scale_ptr(), len).set(d.data.subarray(0, len));
             ex.set_scale(len);
+        } else if (d.type === 'keys') {
+            // Ratios de las notas sostenidas (piano por teclado/ratón/táctil);
+            // vacía = ninguna tecla pulsada, se cae a Microtonal/Voicing o pitch continuo.
+            const len = Math.min(d.data.length, ex.keys_capacity());
+            if (len) new Float32Array(this.mem.buffer, ex.keys_ptr(), len).set(d.data.subarray(0, len));
+            ex.set_keys(len);
         } else if (d.type === 'chord') {
             // Voicing afinado de core::music (0 = unísono/continuo).
             ex.set_chord(d.preset >>> 0);

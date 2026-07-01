@@ -99,6 +99,12 @@ Motor con paridad casi completa con la versión JS:
 - ✅ **Estéreo (Width)**: paneo equal-power por grano → nube ancha e inmersiva.
 - ✅ **Octava / Shimmer**: probabilidad de que cada grano suene una octava arriba.
 - ✅ **Pitch (transposición)**: ±12 semitonos (multiplicador de velocidad de lectura).
+- ✅ **Play · piano por teclado/ratón/táctil**: teclado A W S E D F T G Y U J K O L
+  (desde C4, D/F/A solo por clic/táctil al coincidir con atajos de la página), o
+  clic/toque directo sobre el piano en pantalla (multi-touch → acordes con varios
+  dedos). Mientras haya alguna nota sostenida, cada grano nuevo coge una de esas
+  notas en vez del grado de Microtonal/Voicing — mismo mecanismo de muestreo por
+  grado (estratificado/QMC/random) que ya usan esos dos sistemas.
 - ✅ **Escala (textura microtonal)**: cada grano coge un grado de una tabla de ratios
   (12/19/22/24-EDO, justa entonación, Bohlen–Pierce). El grado se muestrea con la
   misma maquinaria de reducción de varianza que el eje temporal: estratificado puro

@@ -97,7 +97,65 @@ ex.set_scale(sc);
 ex.set_params(1.0, 0.25, 150, 220, 0.3, 1.0);
 const scaled = run(120);
 check('renders cleanly with a microtonal scale', scaled.nonFinite === 0 && scaled.rms > 1e-4, `rms=${scaled.rms.toExponential(2)}`);
+
+console.log('\n[held keys — computer-keyboard/mouse piano, chords]');
+// Held keys must render cleanly on their own...
+const chord = Float32Array.from([1.0, 5 / 4, 3 / 2]); // C major triad ratios
+const kc = Math.min(chord.length, ex.keys_capacity());
+f32(ex.keys_ptr(), kc).set(chord.subarray(0, kc));
+ex.set_keys(kc);
+ex.set_params(1.0, 0.25, 150, 220, 0.3, 1.0);
+const withKeysHeld = run(120);
+check('renders cleanly with keys held', withKeysHeld.nonFinite === 0 && withKeysHeld.rms > 1e-4, `rms=${withKeysHeld.rms.toExponential(2)}`);
 ex.set_scale(0); // back to continuous pitch
+ex.set_keys(0); // release all keys
+
+// ...and must take priority over an active microtonal scale. A true A/B needs
+// two fresh, identically-seeded instances (this file's shared `ex` has already
+// spawned grains and consumed RNG draws by this point, so reseeding it alone
+// wouldn't isolate the one thing that should differ: whether keys are held).
+function freshInstance() {
+    const i2 = new WebAssembly.Instance(mod, {});
+    const e2 = i2.exports;
+    const m2 = e2.memory;
+    const g32 = (ptr, n) => new Float32Array(m2.buffer, ptr, n);
+    g32(e2.window_ptr(), WIN).set(win);
+    const s2 = g32(e2.sample_ptr(), len);
+    for (let i = 0; i < len; i++) s2[i] = 0.6 * Math.sin((2 * Math.PI * 220 * i) / SR);
+    e2.set_sample(len, SR);
+    e2.set_mode(1);
+    e2.set_params(1.0, 0.25, 150, 220, 0.3, 1.0);
+    const sc2 = g32(e2.scale_ptr(), sc);
+    sc2.set(ratios.subarray(0, sc));
+    e2.set_scale(sc);
+    return { ex: e2, f32: g32 };
+}
+
+const a = freshInstance();
+a.ex.seed(0x9e37_79b9);
+let sumA = 0, nA = 0;
+for (let b = 0; b < 120; b++) {
+    a.ex.process(BLOCK);
+    const L = a.f32(a.ex.out_l_ptr(), BLOCK), R = a.f32(a.ex.out_r_ptr(), BLOCK);
+    for (let i = 0; i < BLOCK; i++) { sumA += L[i] + R[i]; nA++; }
+}
+
+const b = freshInstance();
+const kc2 = Math.min(chord.length, b.ex.keys_capacity());
+b.f32(b.ex.keys_ptr(), kc2).set(chord.subarray(0, kc2));
+b.ex.set_keys(kc2); // only difference from `a`: keys are held
+b.ex.seed(0x9e37_79b9);
+let sumB = 0, nB = 0;
+for (let bl = 0; bl < 120; bl++) {
+    b.ex.process(BLOCK);
+    const L = b.f32(b.ex.out_l_ptr(), BLOCK), R = b.f32(b.ex.out_r_ptr(), BLOCK);
+    for (let i = 0; i < BLOCK; i++) { sumB += L[i] + R[i]; nB++; }
+}
+check(
+    'held keys override the microtonal scale (bit-for-bit different render)',
+    sumA !== sumB,
+    `scale-only sum=${sumA.toExponential(3)} vs keys-held sum=${sumB.toExponential(3)}`
+);
 
 console.log('\n[ambient constellation + smart rays + bounces]');
 ex.set_ambient(1, 3, 2, 0.25, 0.3, 0.4);
