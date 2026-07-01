@@ -33,6 +33,23 @@ class RayDroneProcessor extends AudioWorkletProcessor {
     }
 
     onMsg(d) {
+        try {
+            this.handleMsg(d);
+        } catch (err) {
+            // Lo típico: raydrone.wasm está desactualizado respecto al JS (p.ej.
+            // tras un `git pull` sin recompilar — el .wasm NO está en git, hay
+            // que correr wasm/build.sh) y falta un export nuevo. Sin este
+            // try/catch, la excepción moría en silencio aquí dentro del
+            // worklet y el control simplemente "no hacía nada".
+            this.port.postMessage({
+                type: 'enginemismatch',
+                messageType: d.type,
+                error: String((err && err.message) || err),
+            });
+        }
+    }
+
+    handleMsg(d) {
         const ex = this.ex;
         if (d.type === 'sample') {
             const cap = ex.sample_capacity();

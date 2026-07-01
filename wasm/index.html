@@ -616,6 +616,13 @@
                 else if (d.type === 'sampleinfo' && d.truncated) {
                     statusEl.innerText = `⚠ Sample truncado a ${(d.used / sampleRate).toFixed(0)} s (capacidad del motor). Usa un archivo más corto para tenerlo entero.`;
                 }
+                else if (d.type === 'enginemismatch') {
+                    // El .wasm cargado no reconoce un mensaje que el JS ya manda —
+                    // típico de haber tirado de git sin recompilar raydrone.wasm
+                    // (no está versionado; hay que correr wasm/build.sh).
+                    statusEl.innerText = `⚠ El motor (.wasm) no reconoce "${d.messageType}" — recompílalo con: bash wasm/build.sh (git pull no actualiza el binario compilado). Detalle: ${d.error}`;
+                    console.error('enginemismatch:', d.messageType, d.error);
+                }
                 if (d.perf) updatePerf(d.perf);
             };
             // LUT de ventana Hann (JS sí tiene Math.cos)
