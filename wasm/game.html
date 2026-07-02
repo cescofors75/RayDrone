@@ -18,24 +18,24 @@
         #stage { position:relative; }
         canvas { display:block; width:100%; height:340px; background:#05060b; border-radius:10px;
                  border:1px solid rgba(255,53,94,0.15); touch-action:none; }
-        .hud { display:flex; justify-content:space-between; gap:12px; font-family:monospace;
+        .hud { display:flex; justify-content:space-between; gap:10px; font-family:monospace;
                font-size:0.88rem; margin:10px 0; flex-wrap:wrap; }
         .hud b { color:var(--accent); }
         .hud .n b, .hud .zone b { color:var(--cyan); }
         .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
-                   justify-content:center; gap:14px; background:rgba(5,6,11,0.9); border-radius:10px; z-index:5;
-                   text-align:center; padding:18px; }
+                   justify-content:center; gap:12px; background:rgba(5,6,11,0.92); border-radius:10px; z-index:5;
+                   text-align:center; padding:18px; overflow-y:auto; }
         .btn { border:none; padding:13px 26px; border-radius:10px; font-size:1rem; font-weight:bold;
                text-transform:uppercase; letter-spacing:1px; cursor:pointer;
                background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; }
+        .btn.sec { background:#0f1320; color:var(--text); border:1px solid rgba(255,53,94,0.3); }
         #fs-btn { position:absolute; right:8px; top:8px; z-index:6; padding:4px 10px; font-size:15px;
                   border-radius:8px; border:1px solid rgba(255,53,94,0.3); background:rgba(15,19,32,0.7);
                   color:var(--text); cursor:pointer; }
-        /* En pantalla completa el escenario ocupa todo y el canvas crece con él */
         #stage:fullscreen, #stage:-webkit-full-screen { background:#05060b; width:100vw; height:100vh; }
         #stage:fullscreen canvas, #stage:-webkit-full-screen canvas { height:100vh; border-radius:0; border:none; }
-        .keys { display:flex; gap:10px; justify-content:center; margin-top:10px; }
-        .kbtn { min-width:86px; padding:14px 10px; border-radius:10px; border:1px solid rgba(255,53,94,0.3);
+        .keys { display:flex; gap:8px; justify-content:center; margin-top:10px; }
+        .kbtn { min-width:70px; padding:14px 8px; border-radius:10px; border:1px solid rgba(255,53,94,0.3);
                 background:#0f1320; color:var(--text); font-size:1.1rem; cursor:pointer; user-select:none;
                 touch-action:none; }
         .kbtn:active { background:rgba(255,53,94,0.25); }
@@ -43,17 +43,23 @@
         .how b { color:var(--cyan); }
         .status { text-align:center; font-family:monospace; font-size:0.74rem; color:#c6d2e5; min-height:1em; margin-top:8px; }
         a.back { color:var(--accent-dim); font-size:0.75rem; text-decoration:none; display:block; text-align:center; margin-top:12px; }
+        /* Ranking */
+        #lb-list { font-family:monospace; font-size:0.82rem; text-align:left; line-height:1.7; min-width:min(340px,86vw); }
+        #lb-list .me { color:var(--cyan); }
+        #lb-list .pos { color:#8a99ad; display:inline-block; width:2.2em; }
+        #nick-form input { background:#0f1320; border:1px solid rgba(255,53,94,0.4); border-radius:8px;
+                           color:var(--text); font-size:1rem; padding:10px 12px; text-align:center; width:200px; }
+        #nick-form input:focus { outline:none; border-color:var(--accent); }
 
-        /* ── Móvil: canvas más alto (el juego manda), controles grandes, texto compacto ── */
         @media (max-width: 700px) {
             body { padding:8px 6px; }
             .container { padding:12px 10px; border-radius:12px; }
             h1 { font-size:1.15rem; }
             .sub { font-size:0.72rem; margin:4px 0 10px; }
             canvas { height:min(56vh, 460px); }
-            .hud { font-size:0.72rem; gap:8px; }
-            .keys { gap:12px; }
-            .kbtn { flex:1; min-width:0; padding:18px 10px; font-size:1.4rem; }
+            .hud { font-size:0.7rem; gap:6px; }
+            .keys { gap:8px; }
+            .kbtn { flex:1; min-width:0; padding:18px 6px; font-size:1.3rem; }
             .overlay { padding:12px; gap:10px; font-size:0.85rem; }
             .how { font-size:0.72rem; }
         }
@@ -62,13 +68,15 @@
 <body>
 <div class="container">
     <h1>◢ RayRunner</h1>
-    <p class="sub">Vuela, esquiva, recoge — y escucha cómo el mundo y tu forma de jugar <b>renderizan la música</b></p>
+    <p class="sub">Dos niveles, power-ups y ranking — y toda la música <b>renderizada en vivo</b> por RayDrone</p>
 
     <div class="hud">
+        <span>Nivel: <b id="hud-level">1</b></span>
         <span class="zone">Zona: <b id="hud-zone">—</b></span>
         <span class="n">N = <b id="hud-n">0</b> rayos/s</span>
         <span>Combo: <b id="hud-combo">0</b></span>
         <span>Puntos: <b id="hud-score">0</b></span>
+        <span>🛡<b id="hud-shield">0</b> 🚀<b id="hud-missiles">0</b> 💣<b id="hud-bombs">0</b></span>
         <span>Vidas: <b id="hud-lives">♥♥♥</b></span>
     </div>
 
@@ -76,41 +84,51 @@
         <canvas id="game" width="1000" height="340"></canvas>
         <button id="fs-btn" title="Pantalla completa">⛶</button>
         <div class="overlay" id="start-overlay">
-            <div style="max-width:560px; line-height:1.65;">
-                Pilota con <b>↑ ↓</b> o <b>arrastrando el dedo</b> por la pantalla. Esquiva asteroides,
-                recoge cristales <b style="color:var(--cyan)">◆</b>. La banda sonora la renderiza
-                <b style="color:var(--accent)">RayDrone en vivo</b>: la <b>zona</b> que atraviesas decide el
-                sonido (el mundo es un sample: pad → campanas → tormenta → coro), y tu <b>combo</b> decide N,
-                la densidad de rayos — juega bien y la música converge, densa y nítida; recibe impactos y se
-                rompe en polvo granular.
+            <div style="max-width:560px; line-height:1.6;">
+                <b>Nivel 1 · Espacio</b>: pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides, recoge
+                cristales <b style="color:var(--cyan)">◆</b> y power-ups (🛡 escudo · 🚀 misil con <b>X</b> ·
+                💣 bomba con <b>C</b>). Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>, en 3D estilo kart y con otra música
+                — alegre, luminosa, renderizada por el mismo motor. Tu <b>combo</b> decide N, la densidad de rayos:
+                juega bien y la música converge; recibe impactos y se rompe.
             </div>
             <button class="btn" id="start-btn">▶ Despegar</button>
+            <button class="btn sec" id="lb-show-btn">🏆 Ranking</button>
+            <div id="lb-list-start" style="display:none;"></div>
         </div>
         <div class="overlay" id="pause-overlay" style="display:none;">
             <div style="font-size:1.2rem;">⏸ Pausa</div>
             <button class="btn" id="resume-btn">▶ Seguir</button>
         </div>
         <div class="overlay" id="end-overlay" style="display:none;">
-            <div style="font-size:1.4rem;">💥 Nave destruida</div>
-            <div>Puntuación: <b id="end-score" style="color:var(--accent); font-size:1.6rem;">0</b></div>
-            <div style="color:#8a99ad; max-width:480px;">La música que oíste no estaba grabada: era el estimador
-                Monte Carlo convergiendo (o rompiéndose) con tu manera de jugar.</div>
+            <div style="font-size:1.3rem;">💥 Fin de la partida</div>
+            <div>Puntuación: <b id="end-score" style="color:var(--accent); font-size:1.5rem;">0</b>
+                 · Nivel <b id="end-level">1</b></div>
+            <div id="nick-form" style="display:none;">
+                <div style="margin-bottom:8px; color:#8a99ad;">Tu nombre para el ranking (solo se pide una vez):</div>
+                <input id="nick-input" maxlength="12" placeholder="tu nick" autocomplete="off">
+                <button class="btn" id="nick-save" style="margin-left:8px; padding:10px 16px;">Guardar</button>
+            </div>
+            <div id="lb-position" style="color:var(--cyan); font-family:monospace;"></div>
+            <div id="lb-list"></div>
             <button class="btn" id="restart-btn">↻ Otra vez</button>
         </div>
     </div>
 
     <div class="keys">
-        <button class="kbtn" id="btn-up">▲</button>
-        <button class="kbtn" id="btn-down">▼</button>
+        <button class="kbtn" id="btn-a">▲</button>
+        <button class="kbtn" id="btn-fire">🚀</button>
+        <button class="kbtn" id="btn-bomb">💣</button>
+        <button class="kbtn" id="btn-b">▼</button>
     </div>
 
     <div class="how">
         <b>Qué está pasando por debajo</b> — el motor granular real (el mismo Rust→wasm del demo) suena todo el
-        rato. El desplazamiento del mundo mueve el <i>foco</i> por un sample de 24 s con 4 zonas sonoras — por
-        donde pasas, eso suena. Tu combo controla <b>N</b> (rayos/segundo) y la <i>apertura</i>: combo alto =
-        cientos de rayos convergiendo a una textura limpia (error ∝ 1/√N); un impacto desploma el combo y la
-        música se vuelve rala y ruidosa, además de caer de tono un instante. Cada cristal dispara un destello de
-        <i>shimmer</i> (granos una octava arriba). Audio adaptativo sin capas pregrabadas: un solo motor, parámetros vivos.
+        rato y cada nivel es un sample distinto de 24 s con 4 zonas: el espacio (pad → campanas → tormenta → coro)
+        y el circuito neón (amanecer → calipso → niebla → faro 2077), en tono mayor y luminoso. El scroll mueve el <i>foco</i>
+        — por donde pasas, eso suena — y tu combo controla <b>N</b> (rayos/s) y la <i>apertura</i>: combo alto =
+        la textura converge limpia (error ∝ 1/√N); un impacto la rompe en polvo granular y hunde el tono
+        (con 🛡 el escudo absorbe el golpe… y la música ni se entera). El ranking se guarda en este dispositivo;
+        la interfaz está preparada para enchufar un servidor y compartirlo entre móvil y portátil.
     </div>
     <div class="status" id="status"></div>
     <a class="back" href="index.html">← volver al demo completo de RayDrone</a>
@@ -120,41 +138,60 @@
     'use strict';
     const $ = (id) => document.getElementById(id);
     const canvas = $('game'), g = canvas.getContext('2d');
-    const hudZone = $('hud-zone'), hudN = $('hud-n'), hudCombo = $('hud-combo'),
-          hudScore = $('hud-score'), hudLives = $('hud-lives');
+    const hudLevel = $('hud-level'), hudZone = $('hud-zone'), hudN = $('hud-n'), hudCombo = $('hud-combo'),
+          hudScore = $('hud-score'), hudLives = $('hud-lives'),
+          hudShield = $('hud-shield'), hudMissiles = $('hud-missiles'), hudBombs = $('hud-bombs');
     const statusEl = $('status');
     const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
 
-    // ── El mundo sonoro: un sample sintetizado de 24 s con 4 zonas ───────────
+    // ════════════════════════════════════════════════════════════════════════
+    // Mundos sonoros: dos samples sintetizados de 24 s con 4 zonas cada uno.
+    // Nivel 1 (espacio): pad → campanas → tormenta → coro.
+    // Nivel 2 (circuito neón; música mayor y alegre): amanecer → calipso → niebla → faro.
+    // ════════════════════════════════════════════════════════════════════════
     const SR = 44100, TERRAIN_SECS = 24;
-    const ZONES = [
+    const ZONES_SPACE = [
         { name: 'NEBULOSA PAD',      tint: [255, 53, 94] },
         { name: 'CAMPO DE CAMPANAS', tint: [255, 170, 60] },
         { name: 'TORMENTA DE RUIDO', tint: [120, 140, 255] },
         { name: 'CORO ESTELAR',      tint: [40, 230, 220] },
     ];
-    function makeTerrain() {
-        const n = SR * TERRAIN_SECS;
-        const buf = new Float32Array(n);
+    const ZONES_NEON = [
+        { name: 'AMANECER NEÓN',  tint: [40, 230, 220] },
+        { name: 'BARRIO CALIPSO', tint: [255, 200, 60] },
+        { name: 'NIEBLA ESTÁTICA', tint: [170, 220, 255] },
+        { name: 'FARO 2077',      tint: [255, 140, 90] },
+    ];
+    // Peso de crossfade equal-power de la zona s en la muestra i (compartido).
+    function zoneWeight(i, s, seg, fade) {
+        const a = s * seg, b = (s + 1) * seg;
+        if (i < a - fade || i >= b + fade) return 0;
+        let gn = 1;
+        if (i < a + fade) gn = (i - (a - fade)) / (2 * fade);
+        else if (i >= b - fade) gn = (b + fade - i) / (2 * fade);
+        return Math.sin(clamp(gn, 0, 1) * Math.PI / 2);
+    }
+    function normalize(buf) {
+        let peak = 1e-6;
+        for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > peak) peak = a; }
+        const gn = 0.9 / peak;
+        for (let i = 0; i < buf.length; i++) buf[i] *= gn;
+        return buf;
+    }
+
+    function makeTerrainSpace() {
+        const n = SR * TERRAIN_SECS, buf = new Float32Array(n);
         const seg = n / 4, fade = SR * 0.5, tau = 2 * Math.PI;
-        const w = (i, s) => {
-            const a = s * seg, b = (s + 1) * seg;
-            if (i < a - fade || i >= b + fade) return 0;
-            let gn = 1;
-            if (i < a + fade) gn = (i - (a - fade)) / (2 * fade);
-            else if (i >= b - fade) gn = (b + fade - i) / (2 * fade);
-            return Math.sin(clamp(gn, 0, 1) * Math.PI / 2);
-        };
-        for (let i = 0; i < n; i++) { // zona 0: pad
-            const gn = w(i, 0);
+        for (let i = 0; i < n; i++) { // pad
+            const gn = zoneWeight(i, 0, seg, fade);
             if (gn <= 0) continue;
             const t = i / SR;
             let s = 0;
             for (let k = 1; k <= 6; k++) s += (0.6 / k) * Math.sin(tau * 110 * k * (1 + 0.0012 * k) * t);
             buf[i] += gn * s;
         }
-        for (let i = Math.floor(seg - fade); i < Math.min(n, 2 * seg + fade); i++) { // zona 1: campanas
-            const gn = w(i, 1);
+        for (let i = Math.floor(seg - fade); i < Math.min(n, 2 * seg + fade); i++) { // campanas
+            const gn = zoneWeight(i, 1, seg, fade);
             if (gn <= 0) continue;
             const t = i / SR, tl = t % 2;
             let s = 0;
@@ -164,15 +201,15 @@
             buf[i] += gn * s;
         }
         let rng = 0x9e3779b9 >>> 0, lp = 0;
-        for (let i = Math.floor(2 * seg - fade); i < Math.min(n, 3 * seg + fade); i++) { // zona 2: tormenta
+        for (let i = Math.floor(2 * seg - fade); i < Math.min(n, 3 * seg + fade); i++) { // tormenta
             rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0;
             const white = rng / 2147483648 - 1;
             lp += 0.03 * (white - lp);
-            const gn = w(i, 2);
+            const gn = zoneWeight(i, 2, seg, fade);
             if (gn > 0) buf[i] += gn * lp * 3.2;
         }
-        for (let i = Math.floor(3 * seg - fade); i < n; i++) { // zona 3: coro
-            const gn = w(i, 3);
+        for (let i = Math.floor(3 * seg - fade); i < n; i++) { // coro
+            const gn = zoneWeight(i, 3, seg, fade);
             if (gn <= 0) continue;
             const t = i / SR;
             const vib = 1 + 0.004 * Math.sin(tau * 5 * t);
@@ -184,15 +221,83 @@
             }
             buf[i] += gn * s;
         }
-        let peak = 1e-6;
-        for (let i = 0; i < n; i++) { const a = Math.abs(buf[i]); if (a > peak) peak = a; }
-        const gn = 0.9 / peak;
-        for (let i = 0; i < n; i++) buf[i] *= gn;
-        return buf;
+        return normalize(buf);
+    }
+
+    function makeTerrainNeon() {
+        const n = SR * TERRAIN_SECS, buf = new Float32Array(n);
+        const seg = n / 4, fade = SR * 0.5, tau = 2 * Math.PI;
+        // Zona 0 · MAREA ALTA: pad mayor add6 (C4-E4-G4-A4) con tremolo lento de oleaje.
+        const chord = [261.63, 329.63, 392.0, 440.0];
+        for (let i = 0; i < n; i++) {
+            const gn = zoneWeight(i, 0, seg, fade);
+            if (gn <= 0) continue;
+            const t = i / SR;
+            const swell = 0.7 + 0.3 * Math.sin(tau * 0.35 * t);
+            let s = 0;
+            for (let c = 0; c < chord.length; c++) {
+                s += 0.32 * Math.sin(tau * chord[c] * (1 + 0.0009 * c) * t);
+                s += 0.10 * Math.sin(tau * chord[c] * 2 * t); // octava brillante
+            }
+            buf[i] += gn * s * swell;
+        }
+        // Zona 1 · CALIPSO: plucks tipo steel-drum en pentatónica mayor, corcheas a 160 BPM.
+        {
+            const penta = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25];
+            const stepDur = 60 / 160 / 2; // corchea
+            let prng = 0x1234abcd >>> 0;
+            const nextNote = () => { prng ^= prng << 13; prng >>>= 0; prng ^= prng >>> 17; prng ^= prng << 5; prng >>>= 0; return penta[prng % penta.length]; };
+            const i0 = Math.max(0, Math.floor(seg - fade)), i1 = Math.min(n, Math.floor(2 * seg + fade));
+            let noteF = nextNote(), noteStart = i0 / SR;
+            for (let i = i0; i < i1; i++) {
+                const t = i / SR;
+                if (t - noteStart >= stepDur) { noteF = nextNote(); noteStart += stepDur; }
+                const tl = t - noteStart;
+                const gn = zoneWeight(i, 1, seg, fade);
+                if (gn <= 0) continue;
+                const pluck = Math.exp(-tl / 0.13) * (0.8 * Math.sin(tau * noteF * t) + 0.25 * Math.sin(tau * noteF * 2.01 * t));
+                buf[i] += gn * pluck;
+            }
+        }
+        // Zona 2 · ESPUMA: olas de ruido filtrado con swells + destello agudo dulce.
+        {
+            let rng = 0x5eaf00d1 >>> 0, lp = 0;
+            const i0 = Math.max(0, Math.floor(2 * seg - fade)), i1 = Math.min(n, Math.floor(3 * seg + fade));
+            for (let i = i0; i < i1; i++) {
+                rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0;
+                const white = rng / 2147483648 - 1;
+                lp += 0.055 * (white - lp);
+                const t = i / SR;
+                const wave = 0.45 + 0.55 * Math.pow(0.5 + 0.5 * Math.sin(tau * 0.14 * t), 2); // olas que rompen
+                const gn = zoneWeight(i, 2, seg, fade);
+                if (gn <= 0) continue;
+                const sparkle = 0.07 * Math.sin(tau * 1568 * (1 + 0.002 * Math.sin(tau * 5 * t)) * t);
+                buf[i] += gn * (lp * 2.4 * wave + sparkle * wave);
+            }
+        }
+        // Zona 3 · FARO: arpegio Cmaj7 campanado (C4 E4 G4 B4 C5), negras a 100 BPM.
+        {
+            const arp = [261.63, 329.63, 392.0, 493.88, 523.25, 493.88, 392.0, 329.63];
+            const stepDur = 60 / 100;
+            const i0 = Math.max(0, Math.floor(3 * seg - fade));
+            for (let i = i0; i < n; i++) {
+                const t = i / SR;
+                const idx = Math.floor(t / stepDur) % arp.length;
+                const tl = t % stepDur;
+                const gn = zoneWeight(i, 3, seg, fade);
+                if (gn <= 0) continue;
+                const f = arp[idx];
+                const bell = Math.exp(-tl / 0.45) * (0.7 * Math.sin(tau * f * t) + 0.2 * Math.sin(tau * f * 2 * t) + 0.08 * Math.sin(tau * f * 3.01 * t));
+                const padq = 0.10 * (Math.sin(tau * 261.63 * t) + Math.sin(tau * 392.0 * t));
+                buf[i] += gn * (bell + padq);
+            }
+        }
+        return normalize(buf);
     }
 
     // ── Motor (mismo patrón que index.html: worklet + wasm cache-busted) ─────
     let actx = null, node = null, gainNode = null;
+    let terrainSpace = null, terrainNeon = null;
     async function ensureEngine() {
         if (node) return;
         actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -222,16 +327,20 @@
         node.port.postMessage({ type: 'space', width: 0.6, oct: 0 });
         node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 });
         node.port.postMessage({ type: 'pitch', mult: 1 });
-        node.port.postMessage({ type: 'sample', data: makeTerrain(), sampleRate: SR });
+        terrainSpace = makeTerrainSpace();
+        terrainNeon = makeTerrainNeon();
+        loadTerrain('space');
+    }
+    let terrainLoaded = '';
+    function loadTerrain(which) {
+        if (!node || terrainLoaded === which) return;
+        terrainLoaded = which;
+        node.port.postMessage({ type: 'sample', data: which === 'neon' ? terrainNeon : terrainSpace, sampleRate: SR });
     }
 
-    // ── Lienzo adaptativo ─────────────────────────────────────────────────────
-    // El tamaño interno sigue al tamaño visible × dpr (nítido en pantallas
-    // retina, tope ×2 por rendimiento). Todo lo dependiente del tamaño usa
-    // W/H/k en vivo; al redimensionar (girar el móvil, pantalla completa) las
-    // entidades existentes se reescalan para que la partida no salte.
+    // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
     let W = 0, H = 0, k = 1, SHIP_X = 0;
-    const sf = () => W / 1000; // factor de velocidad horizontal (diseño: 1000 px)
+    const sf = () => W / 1000;
     function resizeCanvas() {
         const rect = canvas.getBoundingClientRect();
         if (rect.width < 10 || rect.height < 10) return;
@@ -241,61 +350,200 @@
         const sx = W ? nw / W : 1, sy = H ? nh / H : 1;
         W = nw; H = nh;
         canvas.width = W; canvas.height = H;
-        k = clamp(H / 340, 0.75, 2.4); // escala de sprites/fuentes (diseño: 340 px de alto)
+        k = clamp(H / 340, 0.75, 2.4);
         SHIP_X = W * 0.16;
         st.shipY = W ? clamp(st.shipY * sy, 24 * k, H - 24 * k) : H / 2;
+        // Solo las entidades en espacio de píxeles (nivel 1); las del nivel 2
+        // viven en coordenadas normalizadas (z, carril) y no necesitan nada.
         for (const a of st.asteroids) { a.x *= sx; a.y *= sy; a.r *= sy; }
         for (const c of st.crystals) { c.x *= sx; c.y *= sy; }
+        for (const p of st.pickups) { p.x *= sx; p.y *= sy; }
+        for (const m of st.shots) { m.x *= sx; m.y *= sy; }
         for (const p of st.particles) { p.x *= sx; p.y *= sy; }
         for (const s of st.stars) { s.x *= sx; s.y *= sy; }
     }
 
-    // ── Estado del juego ──────────────────────────────────────────────────────
-    const SHIP_R = 13; // radio de diseño; en colisiones/dibujo se multiplica por k
+    // ── Estado ────────────────────────────────────────────────────────────────
+    const SHIP_R = 13;
+    const LEVEL1_WORLD_SECS = 16; // ~45 s reales de espacio antes del mar
+    const PICKUP_KINDS = ['shield', 'missile', 'bomb'];
     const st = {
-        playing: false, paused: false, shipY: 170, vy: 0, worldT: 0, speed: 150,
+        playing: false, paused: false, level: 1,
+        shipY: 170, vy: 0, laneX: 0,                 // nave: Y en nivel 1, carril X en nivel 2
+        worldT: 0, speed: 150, zSpeed: 0.2,
         combo: 0, score: 0, lives: 3, rate: 0, zone: -1,
-        shimmer: 0, pitchDip: 0, shake: 0, zoneFlash: 0, zoneFlashName: '',
-        asteroids: [], crystals: [], particles: [], stars: [],
-        spawnAst: 0, spawnCry: 0, touchTarget: null,
+        shield: 0, missiles: 0, bombs: 0,
+        shimmer: 0, pitchDip: 0, shake: 0, shieldFlash: 0,
+        zoneFlash: 0, zoneFlashName: '', banner: '', bannerTtl: 0,
+        asteroids: [], crystals: [], pickups: [], shots: [], particles: [], stars: [],
+        objs3d: [],                                   // nivel 2: {z, lane, type}
+        spawnAst: 0, spawnCry: 0, spawnPick: 0, spawnObj: 0,
+        touchTarget: null, touchTargetX: null,
     };
     resizeCanvas();
     for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
-    const keys = { up: false, down: false };
+    const keys = { a: false, b: false }; // a = arriba/izquierda, b = abajo/derecha
+
+    const zones = () => st.level === 1 ? ZONES_SPACE : ZONES_NEON;
 
     function resetRound() {
-        st.shipY = H / 2; st.vy = 0; st.worldT = 0; st.speed = 150;
+        st.level = 1;
+        st.shipY = H / 2; st.vy = 0; st.laneX = 0; st.worldT = 0; st.speed = 150; st.zSpeed = 0.2;
         st.combo = 0; st.score = 0; st.lives = 3; st.zone = -1;
-        st.shimmer = 0; st.pitchDip = 0; st.shake = 0; st.touchTarget = null;
-        st.asteroids = []; st.crystals = []; st.particles = [];
-        st.spawnAst = 1.2; st.spawnCry = 0.8;
+        st.shield = 0; st.missiles = 0; st.bombs = 0;
+        st.shimmer = 0; st.pitchDip = 0; st.shake = 0; st.shieldFlash = 0;
+        st.banner = ''; st.bannerTtl = 0; st.touchTarget = null; st.touchTargetX = null;
+        st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = []; st.particles = []; st.objs3d = [];
+        st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
+        loadTerrain('space');
+        relabelButtons();
         updateHud();
     }
     function updateHud() {
+        hudLevel.innerText = st.level;
         hudCombo.innerText = st.combo;
         hudScore.innerText = st.score;
-        hudLives.innerText = '♥'.repeat(st.lives) || '—';
+        hudLives.innerText = '♥'.repeat(Math.max(0, st.lives)) || '—';
         hudN.innerText = Math.round(st.rate);
+        hudShield.innerText = st.shield;
+        hudMissiles.innerText = st.missiles;
+        hudBombs.innerText = st.bombs;
+    }
+    function relabelButtons() {
+        $('btn-a').innerText = st.level === 1 ? '▲' : '◀';
+        $('btn-b').innerText = st.level === 1 ? '▼' : '▶';
     }
     const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
+    function banner(text) { st.banner = text; st.bannerTtl = 1; }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Ranking local. `lb` es la única puerta al almacenamiento: para hacerlo
+    // COMPARTIDO entre dispositivos basta sustituir estas cuatro funciones por
+    // llamadas fetch() a un backend (Supabase/Worker) con la misma forma
+    // {n: nick, s: puntos, l: nivel, d: fecha} — la UI no cambia.
+    // ════════════════════════════════════════════════════════════════════════
+    const LB_KEY = 'raydrone_scores', NICK_KEY = 'raydrone_nick';
+    const lb = {
+        all() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || []; } catch (_) { return []; } },
+        save(a) { try { localStorage.setItem(LB_KEY, JSON.stringify(a.slice(0, 100))); } catch (_) {} },
+        submit(nick, score, level) {
+            const a = this.all();
+            const entry = { n: nick, s: score, l: level, d: Date.now() };
+            a.push(entry);
+            a.sort((x, y) => y.s - x.s);
+            this.save(a);
+            return { pos: a.findIndex((e) => e.d === entry.d && e.s === score) + 1, total: a.length };
+        },
+        top(n) { return this.all().slice(0, n); },
+        reset() { try { localStorage.removeItem(LB_KEY); } catch (_) {} },
+    };
+    const getNick = () => { try { return localStorage.getItem(NICK_KEY) || ''; } catch (_) { return ''; } };
+    const setNick = (n) => { try { localStorage.setItem(NICK_KEY, n); } catch (_) {} };
+
+    // El nick es texto del usuario: SIEMPRE via textContent (nunca innerHTML).
+    function renderBoard(el, highlightNick) {
+        el.textContent = '';
+        const top = lb.top(10);
+        if (!top.length) {
+            el.textContent = 'Aún no hay puntuaciones — ¡estrena el ranking!';
+            return;
+        }
+        top.forEach((e, i) => {
+            const row = document.createElement('div');
+            if (highlightNick && e.n === highlightNick) row.className = 'me';
+            const pos = document.createElement('span');
+            pos.className = 'pos';
+            pos.textContent = `${i + 1}.`;
+            row.appendChild(pos);
+            row.appendChild(document.createTextNode(`${e.n}  —  ${e.s} pts · nivel ${e.l}`));
+            el.appendChild(row);
+        });
+    }
+
+    // ── Power-ups ─────────────────────────────────────────────────────────────
+    function give(kind) {
+        if (kind === 'shield') st.shield = Math.min(1, st.shield + 1);
+        else if (kind === 'missile') st.missiles = Math.min(3, st.missiles + 1);
+        else if (kind === 'bomb') st.bombs = Math.min(1, st.bombs + 1);
+        vibrate(20);
+        updateHud();
+    }
+    function fireMissile() {
+        if (!st.playing || st.paused || st.missiles <= 0) return;
+        st.missiles -= 1;
+        st.shimmer = Math.max(st.shimmer, 0.6); // el disparo enciende un destello shimmer
+        if (st.level === 1) {
+            st.shots.push({ x: SHIP_X + 18 * k, y: st.shipY });
+        } else {
+            // 3D: destruye la roca más cercana en tu carril (por delante)
+            let best = -1, bestZ = 2;
+            for (let i = 0; i < st.objs3d.length; i++) {
+                const o = st.objs3d[i];
+                if (o.type === 'rock' && o.z > 0.05 && Math.abs(o.lane - st.laneX) < 0.5 && o.z < bestZ) { bestZ = o.z; best = i; }
+            }
+            if (best >= 0) {
+                const o = st.objs3d[best];
+                const p = project(o.z, o.lane);
+                burst(p.x, p.y, [255, 140, 60], 20);
+                st.objs3d.splice(best, 1);
+                st.score += 40;
+            }
+        }
+        vibrate(25);
+        updateHud();
+    }
+    function useBomb() {
+        if (!st.playing || st.paused || st.bombs <= 0) return;
+        st.bombs -= 1;
+        st.shake = 1.4;
+        // La bomba deja una cola recursiva grande (rebotes) — impacto sónico sin castigo
+        if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 4, refl: 0.8, feedback: 0.1 });
+        setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 1500);
+        if (st.level === 1) {
+            for (const a of st.asteroids) { burst(a.x, a.y, [255, 170, 60], 10); st.score += 20; }
+            st.asteroids = [];
+        } else {
+            for (const o of st.objs3d) {
+                if (o.type !== 'rock') continue;
+                const p = project(o.z, o.lane);
+                burst(p.x, p.y, [255, 170, 60], 10);
+                st.score += 20;
+            }
+            st.objs3d = st.objs3d.filter((o) => o.type !== 'rock');
+        }
+        vibrate([50, 30, 80]);
+        updateHud();
+    }
 
     // ── Acciones → sonido ─────────────────────────────────────────────────────
     function collectCrystal() {
+        if (!st.playing) return; // la ronda pudo acabar en este mismo frame
         st.combo = Math.min(10, st.combo + 1);
         st.score += 50 + st.combo * 10;
         st.shimmer = 1;
-        burst(SHIP_X + 20 * k, st.shipY, [40, 230, 220], 14);
+        const p = st.level === 1 ? { x: SHIP_X + 20 * k, y: st.shipY } : project(0.08, st.laneX);
+        burst(p.x, p.y, [40, 230, 220], 14);
         vibrate(15);
         updateHud();
     }
     function hitShip() {
+        if (!st.playing) return; // dos golpes en el mismo frame: el segundo llega post-endRound
+        if (st.shield > 0) {
+            // El escudo absorbe el golpe — y la música ni se entera.
+            st.shield = 0;
+            st.shieldFlash = 1;
+            vibrate(30);
+            updateHud();
+            return;
+        }
         st.combo = Math.max(0, st.combo - 4);
         st.lives -= 1;
         st.pitchDip = 1;
         st.shake = 1;
         if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 3, refl: 0.7, feedback: 0.1 });
         setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 1200);
-        burst(SHIP_X, st.shipY, [255, 80, 80], 22);
+        const p = st.level === 1 ? { x: SHIP_X, y: st.shipY } : project(0.05, st.laneX);
+        burst(p.x, p.y, [255, 80, 80], 22);
         vibrate([60, 40, 60]);
         updateHud();
         if (st.lives <= 0) endRound();
@@ -311,17 +559,50 @@
         const conc = Math.max(1, rate * grainMs / 1000);
         const gain = clamp(1.5 / Math.sqrt(conc), 0, 0.5);
         node.port.postMessage({ type: 'params', focus: focusSec, aperture, grainMs, grainRate: rate, gain, master: 1.0 });
-        node.port.postMessage({ type: 'reverb', wet: 0.12 + c * 0.2 });
+        node.port.postMessage({ type: 'reverb', wet: (st.level === 2 ? 0.2 : 0.12) + c * 0.2 });
         node.port.postMessage({ type: 'space', width: 0.6, oct: st.shimmer * 0.6 });
         node.port.postMessage({ type: 'pitch', mult: 1 - st.pitchDip * 0.22 });
     }
 
+    // ── Fin de partida + ranking ─────────────────────────────────────────────
     function endRound() {
         st.playing = false;
         sendAudio();
         $('end-score').innerText = st.score;
+        $('end-level').innerText = st.level;
         $('end-overlay').style.display = '';
+        $('lb-position').textContent = '';
+        const nick = getNick();
+        if (st.score > 0 && !nick) {
+            $('nick-form').style.display = '';
+            $('lb-list').textContent = '';
+            $('nick-input').focus();
+        } else {
+            $('nick-form').style.display = 'none';
+            if (st.score > 0) submitScore(nick);
+            else renderBoard($('lb-list'), nick);
+        }
     }
+    function submitScore(nick) {
+        const { pos, total } = lb.submit(nick, st.score, st.level);
+        $('lb-position').textContent = `${nick}: puesto #${pos} de ${total}`;
+        renderBoard($('lb-list'), nick);
+    }
+    $('nick-save').addEventListener('click', () => {
+        const raw = $('nick-input').value.trim().slice(0, 12);
+        if (!raw) return;
+        setNick(raw);
+        $('nick-form').style.display = 'none';
+        submitScore(raw);
+    });
+    $('nick-input') && $('nick-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('nick-save').click(); });
+    $('lb-show-btn').addEventListener('click', () => {
+        const el = $('lb-list-start');
+        const show = el.style.display === 'none';
+        el.style.display = show ? '' : 'none';
+        if (show) renderBoard(el, getNick());
+    });
+
     async function startRound() {
         try { await ensureEngine(); } catch (err) {
             statusEl.innerText = `Error al iniciar el motor: ${(err && err.message) || err}`;
@@ -330,14 +611,29 @@
         resizeCanvas();
         resetRound();
         st.playing = true; st.paused = false;
+        banner('NIVEL 1 · ESPACIO');
         $('start-overlay').style.display = 'none';
         $('end-overlay').style.display = 'none';
         $('pause-overlay').style.display = 'none';
     }
+    function switchToLevel2() {
+        st.level = 2;
+        st.zone = -1;
+        st.worldT = 0;
+        st.laneX = 0;
+        st.touchTarget = null; st.touchTargetX = null;
+        st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = [];
+        st.objs3d = [];
+        st.spawnObj = 1.2; st.spawnCry = 1.2; st.spawnPick = 6;
+        loadTerrain('neon');
+        banner('NIVEL 2 · CIRCUITO NEÓN');
+        relabelButtons();
+        updateHud();
+    }
     function pauseGame() {
         if (!st.playing || st.paused) return;
         st.paused = true;
-        sendAudio(); // rate 0 → silencio mientras tanto
+        sendAudio();
         $('pause-overlay').style.display = '';
     }
     function resumeGame() {
@@ -348,25 +644,26 @@
     $('start-btn').addEventListener('click', startRound);
     $('restart-btn').addEventListener('click', startRound);
     $('resume-btn').addEventListener('click', resumeGame);
-    // Móvil: una llamada/notificación o cambiar de pestaña pausa la partida.
     document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
 
-    // ── Entrada: teclado, botones táctiles y ARRASTRE sobre el lienzo ─────────
+    // ── Entrada ───────────────────────────────────────────────────────────────
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowUp' || e.key === 'w') keys.up = true;
-        else if (e.key === 'ArrowDown' || e.key === 's') keys.down = true;
+        if (e.target.tagName === 'INPUT') return;
+        const up = e.key === 'ArrowUp' || e.key === 'w', down = e.key === 'ArrowDown' || e.key === 's';
+        const left = e.key === 'ArrowLeft' || e.key === 'a', right = e.key === 'ArrowRight' || e.key === 'd';
+        if ((st.level === 1 && up) || (st.level === 2 && left)) keys.a = true;
+        else if ((st.level === 1 && down) || (st.level === 2 && right)) keys.b = true;
+        else if (e.key === 'x') { if (!e.repeat) fireMissile(); }
+        else if (e.key === 'c') { if (!e.repeat) useBomb(); }
         else if (e.key === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
         else return;
         e.preventDefault();
     });
     window.addEventListener('keyup', (e) => {
-        if (e.key === 'ArrowUp' || e.key === 'w') keys.up = false;
-        if (e.key === 'ArrowDown' || e.key === 's') keys.down = false;
+        if (['ArrowUp', 'w', 'ArrowLeft', 'a'].includes(e.key)) keys.a = false;
+        if (['ArrowDown', 's', 'ArrowRight', 'd'].includes(e.key)) keys.b = false;
     });
-    // setPointerCapture puede lanzar si el puntero ya se soltó entre el evento
-    // y la llamada (visto en iOS y con eventos sintéticos) — capturar es solo
-    // una mejora de seguimiento, nunca debe romper la entrada.
-    const capture = (el, e) => { try { el.setPointerCapture(e.pointerId); } catch (_) { /* sin captura, el drag sigue */ } };
+    const capture = (el, e) => { try { el.setPointerCapture(e.pointerId); } catch (_) { /* sin captura, sigue */ } };
     const holdBtn = (id, key) => {
         const el = $(id);
         el.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[key] = true; capture(el, e); });
@@ -374,23 +671,28 @@
         el.addEventListener('pointerup', off);
         el.addEventListener('pointercancel', off);
     };
-    holdBtn('btn-up', 'up');
-    holdBtn('btn-down', 'down');
-    // El control móvil principal: arrastra el dedo (o el ratón) y la nave sigue
-    // tu altura con un easing rápido. touch-action:none evita que la página
-    // haga scroll/zoom mientras pilotas.
+    holdBtn('btn-a', 'a');
+    holdBtn('btn-b', 'b');
+    $('btn-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); fireMissile(); });
+    $('btn-bomb').addEventListener('pointerdown', (e) => { e.preventDefault(); useBomb(); });
+    // Arrastre: en nivel 1 la nave sigue la ALTURA del dedo; en nivel 2, su X.
     let dragging = false;
     function dragTo(e) {
         const rect = canvas.getBoundingClientRect();
-        st.touchTarget = clamp((e.clientY - rect.top) / rect.height * H, 24 * k, H - 24 * k);
+        if (st.level === 1) {
+            st.touchTarget = clamp((e.clientY - rect.top) / rect.height * H, 24 * k, H - 24 * k);
+        } else {
+            st.touchTargetX = clamp(((e.clientX - rect.left) / rect.width) * 2 - 1, -1, 1);
+        }
     }
     canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); dragging = true; dragTo(e); capture(canvas, e); });
     canvas.addEventListener('pointermove', (e) => { if (dragging) dragTo(e); });
-    const dragEnd = () => { dragging = false; st.touchTarget = null; };
+    const dragEnd = () => { dragging = false; st.touchTarget = null; st.touchTargetX = null; };
     canvas.addEventListener('pointerup', dragEnd);
     canvas.addEventListener('pointercancel', dragEnd);
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // ── Pantalla completa (donde el navegador lo permita; iPhone Safari no) ──
+    // ── Pantalla completa ────────────────────────────────────────────────────
     const stage = $('stage'), fsBtn = $('fs-btn');
     const fsSupported = stage.requestFullscreen || stage.webkitRequestFullscreen;
     if (!fsSupported) fsBtn.style.display = 'none';
@@ -403,12 +705,22 @@
     document.addEventListener('webkitfullscreenchange', resizeCanvas);
     window.addEventListener('resize', resizeCanvas);
 
-    // ── Partículas ────────────────────────────────────────────────────────────
     function burst(x, y, col, n) {
         for (let i = 0; i < n; i++) {
             const a = Math.random() * 6.283, sp = (40 + Math.random() * 160) * k;
             st.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, col });
         }
+    }
+
+    // ── Proyección pseudo-3D del nivel 2 (estilo kart: carretera al horizonte) ─
+    function horizonY() { return H * 0.36; }
+    function project(z, lane) {
+        // z: 1 = horizonte, 0 = encima del jugador. Curva de perspectiva ^2.2.
+        const t = Math.pow(1 - clamp(z, 0, 1), 2.2);
+        const y = horizonY() + (H * 0.94 - horizonY()) * t;
+        const half = 10 * k + (W * 0.42 - 10 * k) * t;
+        const x = W / 2 + lane * half * 0.75;
+        return { x, y, s: half / (W * 0.42) };
     }
 
     // ── Bucle ─────────────────────────────────────────────────────────────────
@@ -417,65 +729,18 @@
         const dt = Math.min(0.05, (t - lastT) / 1000 || 0.016);
         lastT = t;
         if (st.playing && !st.paused) step(dt);
-        draw(t / 1000);
+        if (st.level === 1) drawSpace(t / 1000); else drawCircuit(t / 1000);
         requestAnimationFrame(frame);
     }
-    function step(dt) {
-        // Nave: el arrastre táctil manda; si no, teclas con inercia.
-        if (st.touchTarget !== null) {
-            st.shipY += (st.touchTarget - st.shipY) * Math.min(1, 14 * dt);
-            st.vy = 0;
-        } else {
-            const dir = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
-            st.vy += dir * 1400 * k * dt;
-            st.vy *= Math.pow(0.001, dt);
-            st.shipY = clamp(st.shipY + st.vy * dt, 24 * k, H - 24 * k);
-        }
-        // Mundo
+
+    function stepCommon(dt) {
         st.worldT += 0.35 * dt;
-        st.speed = Math.min(320, st.speed + 2.5 * dt);
-        st.score += Math.round(10 * dt);
         const zone = Math.floor((st.worldT % TERRAIN_SECS) / (TERRAIN_SECS / 4));
         if (zone !== st.zone) {
             st.zone = zone;
             st.zoneFlash = 1;
-            st.zoneFlashName = ZONES[zone].name;
-            hudZone.innerText = ZONES[zone].name;
-        }
-        // Spawns
-        st.spawnAst -= dt;
-        if (st.spawnAst <= 0) {
-            st.spawnAst = Math.max(0.45, 1.15 - st.worldT * 0.008);
-            st.asteroids.push({ x: W + 40 * k, y: (30 + Math.random() * 280) / 340 * H, r: (12 + Math.random() * 15) * k, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 2 });
-        }
-        st.spawnCry -= dt;
-        if (st.spawnCry <= 0) {
-            st.spawnCry = 1.3 + Math.random() * 0.8;
-            st.crystals.push({ x: W + 20 * k, y: (30 + Math.random() * 280) / 340 * H, ph: Math.random() * 6.28 });
-        }
-        // Mover + colisiones (velocidad horizontal ∝ anchura del lienzo)
-        const vx = st.speed * sf();
-        for (let i = st.asteroids.length - 1; i >= 0; i--) {
-            const a = st.asteroids[i];
-            a.x -= vx * dt; a.rot += a.vr * dt;
-            if (a.x < -50 * k) { st.asteroids.splice(i, 1); continue; }
-            const dx = a.x - SHIP_X, dy = a.y - st.shipY;
-            const rr = a.r + SHIP_R * k;
-            if (dx * dx + dy * dy < rr * rr) {
-                st.asteroids.splice(i, 1);
-                hitShip();
-            }
-        }
-        for (let i = st.crystals.length - 1; i >= 0; i--) {
-            const c = st.crystals[i];
-            c.x -= vx * dt; c.ph += 4 * dt;
-            if (c.x < -20 * k) { st.crystals.splice(i, 1); continue; }
-            const dx = c.x - SHIP_X, dy = c.y - st.shipY;
-            const rr = (10 + SHIP_R) * k;
-            if (dx * dx + dy * dy < rr * rr) {
-                st.crystals.splice(i, 1);
-                collectCrystal();
-            }
+            st.zoneFlashName = zones()[zone].name;
+            hudZone.innerText = zones()[zone].name;
         }
         for (let i = st.particles.length - 1; i >= 0; i--) {
             const p = st.particles[i];
@@ -485,24 +750,144 @@
         st.shimmer = Math.max(0, st.shimmer - 0.9 * dt);
         st.pitchDip = Math.max(0, st.pitchDip - 1.1 * dt);
         st.shake = Math.max(0, st.shake - 3 * dt);
+        st.shieldFlash = Math.max(0, st.shieldFlash - 2 * dt);
         st.zoneFlash = Math.max(0, st.zoneFlash - 0.5 * dt);
+        st.bannerTtl = Math.max(0, st.bannerTtl - 0.35 * dt);
         sendAudio();
         hudN.innerText = Math.round(st.rate);
         hudScore.innerText = st.score;
     }
 
-    function draw(t) {
+    function step(dt) {
+        if (st.level === 1) stepLevel1(dt); else stepLevel2(dt);
+        stepCommon(dt);
+    }
+
+    function stepLevel1(dt) {
+        if (st.touchTarget !== null) {
+            st.shipY += (st.touchTarget - st.shipY) * Math.min(1, 14 * dt);
+            st.vy = 0;
+        } else {
+            const dir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
+            st.vy += dir * 1400 * k * dt;
+            st.vy *= Math.pow(0.001, dt);
+            st.shipY = clamp(st.shipY + st.vy * dt, 24 * k, H - 24 * k);
+        }
+        st.speed = Math.min(320, st.speed + 2.5 * dt);
+        st.score += Math.round(10 * dt);
+        if (st.worldT >= LEVEL1_WORLD_SECS) { switchToLevel2(); return; }
+        // Spawns
+        st.spawnAst -= dt;
+        if (st.spawnAst <= 0) {
+            st.spawnAst = Math.max(0.45, 1.15 - st.worldT * 0.02);
+            st.asteroids.push({ x: W + 40 * k, y: (30 + Math.random() * 280) / 340 * H, r: (12 + Math.random() * 15) * k, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 2 });
+        }
+        st.spawnCry -= dt;
+        if (st.spawnCry <= 0) {
+            st.spawnCry = 1.3 + Math.random() * 0.8;
+            st.crystals.push({ x: W + 20 * k, y: (30 + Math.random() * 280) / 340 * H, ph: Math.random() * 6.28 });
+        }
+        st.spawnPick -= dt;
+        if (st.spawnPick <= 0) {
+            st.spawnPick = 7 + Math.random() * 4;
+            st.pickups.push({ x: W + 20 * k, y: (40 + Math.random() * 260) / 340 * H, ph: 0, kind: PICKUP_KINDS[Math.floor(Math.random() * PICKUP_KINDS.length)] });
+        }
+        const vx = st.speed * sf();
+        // Misiles disparados
+        for (let i = st.shots.length - 1; i >= 0; i--) {
+            const m = st.shots[i];
+            m.x += 900 * sf() * dt;
+            if (m.x > W + 30 * k) { st.shots.splice(i, 1); continue; }
+            for (let j = st.asteroids.length - 1; j >= 0; j--) {
+                const a = st.asteroids[j];
+                const dx = a.x - m.x, dy = a.y - m.y;
+                if (dx * dx + dy * dy < a.r * a.r) {
+                    burst(a.x, a.y, [255, 140, 60], 18);
+                    st.asteroids.splice(j, 1);
+                    st.shots.splice(i, 1);
+                    st.score += 40;
+                    updateHud();
+                    break;
+                }
+            }
+        }
+        for (let i = st.asteroids.length - 1; i >= 0; i--) {
+            const a = st.asteroids[i];
+            a.x -= vx * dt; a.rot += a.vr * dt;
+            if (a.x < -50 * k) { st.asteroids.splice(i, 1); continue; }
+            const dx = a.x - SHIP_X, dy = a.y - st.shipY;
+            const rr = a.r + SHIP_R * k;
+            if (dx * dx + dy * dy < rr * rr) { st.asteroids.splice(i, 1); hitShip(); }
+        }
+        for (let i = st.crystals.length - 1; i >= 0; i--) {
+            const c = st.crystals[i];
+            c.x -= vx * dt; c.ph += 4 * dt;
+            if (c.x < -20 * k) { st.crystals.splice(i, 1); continue; }
+            const dx = c.x - SHIP_X, dy = c.y - st.shipY;
+            const rr = (10 + SHIP_R) * k;
+            if (dx * dx + dy * dy < rr * rr) { st.crystals.splice(i, 1); collectCrystal(); }
+        }
+        for (let i = st.pickups.length - 1; i >= 0; i--) {
+            const p = st.pickups[i];
+            p.x -= vx * dt; p.ph += 3 * dt;
+            if (p.x < -20 * k) { st.pickups.splice(i, 1); continue; }
+            const dx = p.x - SHIP_X, dy = p.y - st.shipY;
+            const rr = (12 + SHIP_R) * k;
+            if (dx * dx + dy * dy < rr * rr) { st.pickups.splice(i, 1); give(p.kind); }
+        }
+    }
+
+    function stepLevel2(dt) {
+        // Timón: arrastre horizontal o teclas ◀ ▶
+        if (st.touchTargetX !== null) {
+            st.laneX += (st.touchTargetX - st.laneX) * Math.min(1, 10 * dt);
+        } else {
+            const dir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
+            st.laneX = clamp(st.laneX + dir * 1.9 * dt, -1, 1);
+        }
+        st.zSpeed = Math.min(0.34, 0.20 + st.worldT * 0.004);
+        st.score += Math.round(12 * dt);
+        // Spawns 3D
+        st.spawnObj -= dt;
+        if (st.spawnObj <= 0) {
+            st.spawnObj = Math.max(0.5, 1.2 - st.worldT * 0.02);
+            st.objs3d.push({ z: 1, lane: Math.random() * 1.7 - 0.85, type: 'rock', seed: Math.random() * 7 });
+        }
+        st.spawnCry -= dt;
+        if (st.spawnCry <= 0) {
+            st.spawnCry = 1.4 + Math.random() * 0.9;
+            st.objs3d.push({ z: 1, lane: Math.random() * 1.7 - 0.85, type: 'crystal', seed: Math.random() * 7 });
+        }
+        st.spawnPick -= dt;
+        if (st.spawnPick <= 0) {
+            st.spawnPick = 7 + Math.random() * 4;
+            st.objs3d.push({ z: 1, lane: Math.random() * 1.5 - 0.75, type: PICKUP_KINDS[Math.floor(Math.random() * PICKUP_KINDS.length)], seed: 0 });
+        }
+        for (let i = st.objs3d.length - 1; i >= 0; i--) {
+            const o = st.objs3d[i];
+            o.z -= st.zSpeed * dt * (1 + (1 - o.z) * 0.8); // acelera al acercarse
+            if (o.z <= 0.02) { st.objs3d.splice(i, 1); continue; }
+            if (o.z < 0.07 && Math.abs(o.lane - st.laneX) < 0.30) {
+                st.objs3d.splice(i, 1);
+                if (o.type === 'rock') hitShip();
+                else if (o.type === 'crystal') collectCrystal();
+                else give(o.type);
+            }
+        }
+    }
+
+    // ── Dibujo · nivel 1 (espacio, lateral) ──────────────────────────────────
+    function drawSpace(t) {
         g.save();
         if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
         g.clearRect(-20, -20, W + 40, H + 40);
-        const tint = ZONES[Math.max(0, st.zone)].tint;
+        const tint = ZONES_SPACE[Math.max(0, st.zone)].tint;
         const bg = g.createLinearGradient(0, 0, 0, H);
         bg.addColorStop(0, `rgba(${tint[0]},${tint[1]},${tint[2]},0.10)`);
         bg.addColorStop(0.5, '#05060b');
         bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.06)`);
         g.fillStyle = bg;
         g.fillRect(-20, -20, W + 40, H + 40);
-        // Estrellas
         g.fillStyle = 'rgba(255,255,255,0.6)';
         for (const s of st.stars) {
             s.x -= st.speed * sf() * s.z * 0.02;
@@ -512,33 +897,26 @@
             g.fillRect(s.x, s.y, sz, sz);
         }
         g.globalAlpha = 1;
-        // Cristales
-        for (const c of st.crystals) {
-            const r = (9 + Math.sin(c.ph) * 1.5) * k;
-            g.save();
-            g.translate(c.x, c.y); g.rotate(0.785);
-            g.fillStyle = 'rgba(40,230,220,0.9)';
-            g.shadowColor = '#28e6dc'; g.shadowBlur = 12 * k;
-            g.fillRect(-r / 2, -r / 2, r, r);
-            g.restore();
-        }
-        // Asteroides
+        for (const c of st.crystals) drawCrystal(c.x, c.y, (9 + Math.sin(c.ph) * 1.5) * k);
+        for (const p of st.pickups) drawPickup(p.x, p.y, p.kind, p.ph);
         for (const a of st.asteroids) {
             g.save();
             g.translate(a.x, a.y); g.rotate(a.rot);
             g.strokeStyle = 'rgba(255,120,120,0.85)';
             g.fillStyle = 'rgba(60,25,32,0.9)';
             g.lineWidth = 1.6 * k;
-            g.beginPath();
-            for (let i = 0; i < 7; i++) {
-                const an = i / 7 * 6.283;
-                const rr = a.r * (0.75 + 0.25 * Math.sin(i * 2.7));
-                i ? g.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) : g.moveTo(Math.cos(an) * rr, Math.sin(an) * rr);
-            }
-            g.closePath(); g.fill(); g.stroke();
+            drawRockPoly(a.r, 0);
             g.restore();
         }
-        // Nave (propulsor ∝ N: la propia nave enseña la densidad de rayos)
+        for (const m of st.shots) {
+            g.fillStyle = 'rgba(255,160,80,0.95)';
+            g.beginPath();
+            g.moveTo(m.x + 10 * k, m.y); g.lineTo(m.x - 8 * k, m.y - 3.4 * k); g.lineTo(m.x - 8 * k, m.y + 3.4 * k);
+            g.closePath(); g.fill();
+            g.fillStyle = 'rgba(255,220,150,0.4)';
+            g.fillRect(m.x - 20 * k, m.y - 1.2 * k, 12 * k, 2.4 * k);
+        }
+        // Nave lateral
         const flame = (6 + (st.rate / 400) * 22 + Math.random() * 4) * k;
         g.save();
         g.translate(SHIP_X, st.shipY);
@@ -552,39 +930,288 @@
         g.beginPath(); g.moveTo(16, 0); g.lineTo(-12, -11); g.lineTo(-7, 0); g.lineTo(-12, 11); g.closePath();
         g.fill(); g.stroke();
         g.restore();
-        // Partículas
+        drawShield(SHIP_X, st.shipY, 22 * k);
+        drawFxOverlays(t, tint);
+        g.restore();
+    }
+
+    // ── Dibujo · nivel 2 (Circuito Neón: kart pseudo-3D synthwave) ───────────
+    function drawCircuit(t) {
+        g.save();
+        if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
+        g.clearRect(-20, -20, W + 40, H + 40);
+        const hy = horizonY();
+        const tint = ZONES_NEON[Math.max(0, st.zone)].tint;
+        // Cielo synthwave: violeta profundo → magenta en el horizonte
+        const sky = g.createLinearGradient(0, 0, 0, hy);
+        sky.addColorStop(0, '#0d0420');
+        sky.addColorStop(0.65, '#33104a');
+        sky.addColorStop(1, '#6e1550');
+        g.fillStyle = sky;
+        g.fillRect(-20, -20, W + 40, hy + 20);
+        // Estrellas fijas del cielo
+        g.fillStyle = 'rgba(255,255,255,0.5)';
+        for (let i = 0; i < 40; i++) {
+            const sx = (Math.sin(i * 12.9898) * 0.5 + 0.5) * W;
+            const sy2 = (Math.sin(i * 78.233) * 0.5 + 0.5) * hy * 0.7;
+            g.globalAlpha = 0.2 + (Math.sin(i * 3.7 + t * 2) * 0.5 + 0.5) * 0.4;
+            g.fillRect(sx, sy2, 1.4 * k, 1.4 * k);
+        }
+        g.globalAlpha = 1;
+        // Sol gigante de rayas (el icono synthwave)
+        const sunX = W * 0.5, sunY = hy - 6 * k, sunR = 62 * k;
+        g.save();
+        g.beginPath(); g.arc(sunX, sunY, sunR, 0, 7); g.clip();
+        const sun = g.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
+        sun.addColorStop(0, '#ffd36e');
+        sun.addColorStop(0.55, '#ff8f5a');
+        sun.addColorStop(1, '#ff355e');
+        g.fillStyle = sun;
+        g.fillRect(sunX - sunR, sunY - sunR, sunR * 2, sunR * 2);
+        // franjas horizontales que "escanean" hacia abajo
+        g.fillStyle = '#33104a';
+        for (let i = 0; i < 6; i++) {
+            const fy = sunY - sunR * 0.1 + i * sunR * 0.22 + ((t * 8) % (sunR * 0.22));
+            g.fillRect(sunX - sunR, fy, sunR * 2, (1.5 + i * 1.6) * k);
+        }
+        g.restore();
+        // Skyline: siluetas de edificios con ventanas encendidas (determinista)
+        g.fillStyle = '#0a0616';
+        for (let i = 0; i < 14; i++) {
+            const bw = W / 14;
+            const bh = (0.12 + (Math.sin(i * 7.31) * 0.5 + 0.5) * 0.35) * hy;
+            g.fillRect(i * bw, hy - bh, bw - 3 * k, bh);
+        }
+        for (let i = 0; i < 60; i++) {
+            const bi = i % 14;
+            const bw = W / 14;
+            const bh = (0.12 + (Math.sin(bi * 7.31) * 0.5 + 0.5) * 0.35) * hy;
+            const wx = bi * bw + (Math.sin(i * 3.3) * 0.5 + 0.5) * (bw - 8 * k);
+            const wy = hy - bh + (Math.sin(i * 9.1) * 0.5 + 0.5) * (bh - 6 * k);
+            const on = Math.sin(i * 5.7 + Math.floor(t * 0.5)) > -0.3;
+            if (!on) continue;
+            g.fillStyle = i % 3 ? 'rgba(40,230,220,0.65)' : 'rgba(255,53,94,0.65)';
+            g.fillRect(wx, wy, 2.2 * k, 2.8 * k);
+        }
+        // Suelo: rejilla en perspectiva (clásico synthwave), teñida por la zona
+        const ground = g.createLinearGradient(0, hy, 0, H);
+        ground.addColorStop(0, '#120826');
+        ground.addColorStop(1, '#05060b');
+        g.fillStyle = ground;
+        g.fillRect(-20, hy, W + 40, H - hy + 20);
+        g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.05)`;
+        g.fillRect(-20, hy, W + 40, H - hy + 20);
+        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.28)`;
+        g.lineWidth = 1 * k;
+        // verticales convergentes al punto de fuga
+        for (let i = -10; i <= 10; i++) {
+            if (i === 0) continue;
+            g.beginPath();
+            g.moveTo(W / 2 + i * W * 0.011, hy);
+            g.lineTo(W / 2 + i * W * 0.16, H + 20);
+            g.stroke();
+        }
+        // horizontales que avanzan hacia el jugador
+        for (let r = 0; r < 10; r++) {
+            const ph = (t * 0.55 + r / 10) % 1;
+            const tt = Math.pow(ph, 2.2);
+            const y = hy + (H - hy) * tt;
+            g.globalAlpha = 0.08 + tt * 0.3;
+            g.beginPath(); g.moveTo(-20, y); g.lineTo(W + 20, y); g.stroke();
+        }
+        g.globalAlpha = 1;
+        // Pista: asfalto oscuro con bordes neón (magenta/cian) y guiones centrales
+        const rl0 = project(1, -1.05), rl1 = project(0, -1.05);
+        const rr0 = project(1, 1.05), rr1 = project(0, 1.05);
+        g.fillStyle = 'rgba(8,8,18,0.92)';
+        g.beginPath();
+        g.moveTo(rl0.x, rl0.y); g.lineTo(rl1.x, rl1.y);
+        g.lineTo(rr1.x, rr1.y); g.lineTo(rr0.x, rr0.y);
+        g.closePath(); g.fill();
+        g.lineWidth = 2.4 * k;
+        g.shadowBlur = 12 * k;
+        g.strokeStyle = '#ff355e'; g.shadowColor = '#ff355e';
+        g.beginPath(); g.moveTo(rl0.x, rl0.y); g.lineTo(rl1.x, rl1.y); g.stroke();
+        g.strokeStyle = '#28e6dc'; g.shadowColor = '#28e6dc';
+        g.beginPath(); g.moveTo(rr0.x, rr0.y); g.lineTo(rr1.x, rr1.y); g.stroke();
+        g.shadowBlur = 0;
+        // guiones centrales avanzando
+        g.fillStyle = 'rgba(240,240,255,0.55)';
+        for (let d = 0; d < 8; d++) {
+            const ph = (t * 0.9 + d / 8) % 1;
+            const p = project(1 - ph, 0);
+            const wd = 3.5 * k * (0.15 + p.s), ln = 16 * k * (0.15 + p.s);
+            g.fillRect(p.x - wd / 2, p.y - ln / 2, wd, ln);
+        }
+        // Pilones de luz a los lados (alternando magenta/cian)
+        for (const side of [-1, 1]) {
+            for (let b = 0; b < 6; b++) {
+                const z = ((t * 0.14 + b / 6) % 1);
+                const p = project(1 - z, side * 1.28);
+                const hpx = 34 * k * (0.12 + p.s);
+                const col = (b + (side < 0 ? 0 : 1)) % 2 ? '#28e6dc' : '#ff355e';
+                g.strokeStyle = col;
+                g.shadowColor = col; g.shadowBlur = 8 * k;
+                g.lineWidth = 2 * k * (0.3 + p.s);
+                g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x, p.y - hpx); g.stroke();
+                g.shadowBlur = 0;
+            }
+        }
+        // Objetos 3D, de lejos a cerca
+        const sorted = [...st.objs3d].sort((a, b) => b.z - a.z);
+        for (const o of sorted) {
+            const p = project(o.z, o.lane);
+            const size = (26 + Math.sin(o.seed) * 4) * k * (0.15 + p.s);
+            if (o.type === 'rock') {
+                // Holo-barrera: pirámide wireframe magenta con núcleo oscuro
+                g.save();
+                g.translate(p.x, p.y);
+                g.fillStyle = 'rgba(26,6,20,0.92)';
+                g.strokeStyle = 'rgba(255,53,94,0.95)';
+                g.shadowColor = '#ff355e'; g.shadowBlur = 10 * k;
+                g.lineWidth = 1.8 * k;
+                g.beginPath();
+                g.moveTo(0, -size * 0.62); g.lineTo(size * 0.55, size * 0.3); g.lineTo(-size * 0.55, size * 0.3);
+                g.closePath(); g.fill(); g.stroke();
+                g.beginPath(); g.moveTo(0, -size * 0.62); g.lineTo(0, size * 0.3); g.stroke();
+                g.restore();
+            } else if (o.type === 'crystal') {
+                drawCrystal(p.x, p.y, size * 0.4);
+            } else {
+                drawPickup(p.x, p.y, o.type, t * 3, 0.3 + p.s);
+            }
+        }
+        // Hover-kart del jugador (visto desde atrás), con estelas de luz
+        const kart = project(0.045, st.laneX);
+        const tilt = st.touchTargetX !== null ? (st.touchTargetX - st.laneX) : ((keys.b ? 1 : 0) - (keys.a ? 1 : 0)) * 0.4;
+        g.save();
+        g.translate(kart.x, kart.y);
+        g.rotate(clamp(tilt, -0.5, 0.5) * 0.35);
+        g.scale(k * 1.15, k * 1.15);
+        // estelas de luz traseras (∝ N: cuanto más converge la música, más luz)
+        const trail = 10 + (st.rate / 400) * 26;
+        for (const [dx2, col] of [[-9, '#ff355e'], [9, '#28e6dc']]) {
+            const tg = g.createLinearGradient(0, 12, 0, 12 + trail);
+            tg.addColorStop(0, col);
+            tg.addColorStop(1, 'rgba(0,0,0,0)');
+            g.fillStyle = tg;
+            g.fillRect(dx2 - 2, 12, 4, trail);
+        }
+        // carrocería
+        g.fillStyle = '#0f1320';
+        g.strokeStyle = '#28e6dc';
+        g.lineWidth = 2;
+        g.shadowColor = '#28e6dc'; g.shadowBlur = 10 + st.combo * 1.5;
+        g.beginPath(); g.moveTo(-13, 10); g.lineTo(-9, -8); g.lineTo(9, -8); g.lineTo(13, 10); g.closePath();
+        g.fill(); g.stroke();
+        // cabina
+        g.fillStyle = 'rgba(255,220,150,0.9)';
+        g.beginPath(); g.moveTo(-4, -8); g.lineTo(4, -8); g.lineTo(3, -14); g.lineTo(-3, -14); g.closePath(); g.fill();
+        // alerón
+        g.strokeStyle = '#ff355e';
+        g.beginPath(); g.moveTo(-12, 2); g.lineTo(12, 2); g.stroke();
+        g.restore();
+        drawShield(kart.x, kart.y, 26 * k);
+        drawFxOverlays(t, tint);
+        g.restore();
+    }
+
+    // ── Sprites compartidos ───────────────────────────────────────────────────
+    function drawRockPoly(r, seed) {
+        g.beginPath();
+        for (let i = 0; i < 7; i++) {
+            const an = i / 7 * 6.283;
+            const rr = r * (0.75 + 0.25 * Math.sin(i * 2.7 + seed));
+            i ? g.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) : g.moveTo(Math.cos(an) * rr, Math.sin(an) * rr);
+        }
+        g.closePath(); g.fill(); g.stroke();
+    }
+    function drawCrystal(x, y, r) {
+        g.save();
+        g.translate(x, y); g.rotate(0.785);
+        g.fillStyle = 'rgba(40,230,220,0.9)';
+        g.shadowColor = '#28e6dc'; g.shadowBlur = 12 * k;
+        g.fillRect(-r / 2, -r / 2, r, r);
+        g.restore();
+    }
+    function drawPickup(x, y, kind, ph, scale = 1) {
+        const r = 11 * k * scale * (1 + 0.08 * Math.sin(ph));
+        g.save();
+        g.translate(x, y);
+        if (kind === 'shield') {
+            g.strokeStyle = 'rgba(120,255,190,0.95)';
+            g.lineWidth = 2.4 * k * scale;
+            g.shadowColor = '#7bffbe'; g.shadowBlur = 10 * k;
+            g.beginPath(); g.arc(0, 0, r, 0, 7); g.stroke();
+            g.beginPath(); g.arc(0, 0, r * 0.45, 0, 7); g.stroke();
+        } else if (kind === 'missile') {
+            g.fillStyle = 'rgba(255,160,80,0.95)';
+            g.shadowColor = '#ffa050'; g.shadowBlur = 10 * k;
+            g.beginPath(); g.moveTo(r, 0); g.lineTo(-r * 0.7, -r * 0.6); g.lineTo(-r * 0.7, r * 0.6); g.closePath(); g.fill();
+        } else { // bomb
+            g.fillStyle = 'rgba(255,120,120,0.95)';
+            g.shadowColor = '#ff7878'; g.shadowBlur = 10 * k;
+            g.beginPath(); g.arc(0, r * 0.15, r * 0.75, 0, 7); g.fill();
+            g.strokeStyle = 'rgba(255,220,150,0.9)';
+            g.lineWidth = 1.6 * k;
+            g.beginPath(); g.moveTo(0, -r * 0.55); g.quadraticCurveTo(r * 0.5, -r * 0.9, r * 0.6, -r * 0.5); g.stroke();
+        }
+        g.restore();
+    }
+    function drawShield(x, y, r) {
+        if (st.shield > 0 || st.shieldFlash > 0) {
+            const a = st.shield > 0 ? 0.35 + 0.15 * Math.sin(performance.now() / 200) : st.shieldFlash;
+            g.strokeStyle = `rgba(120,255,190,${a})`;
+            g.lineWidth = 2.5 * k;
+            g.beginPath(); g.arc(x, y, r * (st.shieldFlash > 0 ? 1 + (1 - st.shieldFlash) * 0.6 : 1), 0, 7); g.stroke();
+        }
+    }
+    function drawFxOverlays(t, tint) {
         for (const p of st.particles) {
             g.fillStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.life})`;
             const sz = 3 * k;
             g.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
         }
-        // Nombre de zona al cruzar
         if (st.zoneFlash > 0) {
             g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${st.zoneFlash})`;
             g.font = `bold ${Math.round(26 * k)}px monospace`;
             g.textAlign = 'center';
             g.fillText(st.zoneFlashName, W / 2, 52 * k);
         }
-        // Mini-HUD dentro del lienzo (visible también en pantalla completa)
+        if (st.bannerTtl > 0) {
+            g.fillStyle = `rgba(255,255,255,${Math.min(1, st.bannerTtl * 2)})`;
+            g.font = `bold ${Math.round(34 * k)}px monospace`;
+            g.textAlign = 'center';
+            g.fillText(st.banner, W / 2, H * 0.5);
+        }
         if (st.playing) {
             g.font = `${Math.round(12 * k)}px monospace`;
             g.textAlign = 'left';
             g.fillStyle = 'rgba(240,226,230,0.75)';
-            g.fillText(`${'♥'.repeat(st.lives)}  ${st.score} pts`, 10 * k, 18 * k);
+            g.fillText(`${'♥'.repeat(Math.max(0, st.lives))}  ${st.score} pts  🛡${st.shield} 🚀${st.missiles} 💣${st.bombs}`, 10 * k, 18 * k);
             g.fillStyle = 'rgba(40,230,220,0.75)';
             g.textAlign = 'right';
-            // Deja hueco a la derecha para el botón ⛶ de pantalla completa (DOM).
             g.fillText(`N=${Math.round(st.rate)}`, W - 52 * k, 18 * k);
         }
-        g.restore();
     }
     requestAnimationFrame(frame);
 
     // Hook de test/depuración (usado por las verificaciones headless del repo).
     window.__ray_game = {
         get state() { return st; },
-        collectCrystal, hitShip, start: startRound, pause: pauseGame, resume: resumeGame,
-        resize: resizeCanvas,
+        collectCrystal, hitShip, give, fireMissile, useBomb,
+        start: startRound, pause: pauseGame, resume: resumeGame, resize: resizeCanvas,
+        setWorldT(t) { st.worldT = t; },
+        spawnAhead(type) {
+            if (st.level === 1) {
+                if (type === 'rock') st.asteroids.push({ x: SHIP_X + 200 * k, y: st.shipY, r: 16 * k, rot: 0, vr: 0 });
+                else if (type === 'crystal') st.crystals.push({ x: SHIP_X + 30 * k, y: st.shipY, ph: 0 });
+                else st.pickups.push({ x: SHIP_X + 30 * k, y: st.shipY, ph: 0, kind: type });
+            } else {
+                st.objs3d.push({ z: type === 'rock' ? 0.5 : 0.06, lane: st.laneX, type, seed: 0 });
+            }
+        },
+        lb,
     };
 </script>
 </body>

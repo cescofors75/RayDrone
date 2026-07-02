@@ -139,18 +139,24 @@ Motor con paridad casi completa con la versión JS:
   reproducible bit a bit. N = 1…8192, 12 tiradas, 5 estrategias; acumuladores f64.
   Pendientes medidas: random −0.50 (teoría −0.5), stratified/QMC ≈ −0.58.
   El estimador JS se conserva solo para el A/B audible.
-- ✅ **RayRunner (`game.html`)**: arcade de nave cuya banda sonora la renderiza
-  RayDrone en vivo — la demo de "audio adaptativo para videojuegos". El mundo
-  recorre un sample sintetizado de 24 s con 4 zonas (pad → campanas → tormenta →
-  coro): **por donde pasas, eso suena** (el scroll mueve el foco). Y **cómo
-  juegas transforma la música**: el combo controla N (60→400 rayos/s) y la
-  apertura — jugar bien = la textura converge densa y nítida (error ∝ 1/√N);
-  un impacto desploma el combo (polvo granular), hunde el tono un instante y
-  dispara una cola de rebotes; cada cristal enciende un destello de shimmer.
-  Sin capas pregrabadas: un solo motor, parámetros vivos. En móvil: se pilota
-  arrastrando el dedo por la pantalla, canvas nítido (retina) que crece a
-  ~56vh, pantalla completa (⛶, donde el navegador lo permita), mini-HUD dentro
-  del lienzo, vibración háptica y pausa automática al cambiar de app.
+- ✅ **RayRunner (`game.html`)**: arcade de **2 niveles** cuya banda sonora la
+  renderiza RayDrone en vivo — la demo de "audio adaptativo para videojuegos".
+  Nivel 1 (nave espacial, lateral) y Nivel 2 (**Circuito Neón**, pseudo-3D
+  estilo kart: sol de rayas, rejilla en perspectiva, skyline, pilones neón),
+  cada uno con su propio sample sintetizado de 24 s y 4 zonas — el espacio
+  (pad → campanas → tormenta → coro) y el circuito (amanecer → calipso →
+  niebla → faro 2077, en tono mayor y alegre): **por donde pasas, eso suena**
+  (el scroll mueve el foco). Y **cómo juegas transforma la música**: el combo
+  controla N (60→400 rayos/s) y la apertura — jugar bien = la textura converge
+  densa y nítida (error ∝ 1/√N); un impacto desploma el combo (polvo
+  granular), hunde el tono un instante y dispara una cola de rebotes; cada
+  cristal enciende un destello de shimmer. **Power-ups** en ambos niveles:
+  🛡 escudo (absorbe un golpe — y la música ni se entera), 🚀 misil (X),
+  💣 bomba (C). **Ranking local** con nick (se pide una vez); la interfaz `lb`
+  está aislada para enchufar un backend y compartirlo entre dispositivos.
+  Sin capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
+  táctil (vertical en N1, horizontal en N2), canvas retina ~56vh, pantalla
+  completa, mini-HUD en el lienzo, vibración y pausa automática.
 
 Paridad completa con la versión JS.
 
