@@ -293,11 +293,11 @@
                     <input type="range" id="cutoff" min="0" max="100" value="100">
                 </div>
                 <div class="ctl">
-                    <label>Filtro · Resonancia <span class="v" id="reso-v">0 %</span></label>
+                    <label>Filtro · Resonancia (realza el corte — baja Cutoff para oírla) <span class="v" id="reso-v">0 %</span></label>
                     <input type="range" id="reso" min="0" max="100" value="0">
                 </div>
                 <div class="ctl">
-                    <label>Tempo (BPM) <span class="v" id="bpm-v">120</span></label>
+                    <label>Tempo (BPM — mueve el LFO: requiere profundidad &gt; 0) <span class="v" id="bpm-v">120</span></label>
                     <input type="range" id="bpm" min="40" max="200" value="120" step="1">
                 </div>
                 <div class="ctl">
@@ -312,7 +312,7 @@
                     </select>
                 </div>
                 <div class="ctl">
-                    <label>LFO de filtro · profundidad <span class="v" id="lfodepth-v">0 oct</span></label>
+                    <label>LFO de filtro · profundidad (0 = LFO apagado) <span class="v" id="lfodepth-v">0 oct</span></label>
                     <input type="range" id="lfodepth" min="0" max="100" value="0">
                 </div>
                 <div class="sub" style="text-align:left; margin:6px 0 0;">El voicing reparte cada rayo por los grados de un acorde en entonación justa → pad afinado y consonante (anula la rejilla Microtonal mientras esté activo). Ajusta la afinación con el slider <b>Pitch</b> para meterlo en tu tonalidad. El barrido del filtro va sincronizado al BPM y tiene recorrido aunque dejes el Cutoff totalmente abierto.</div>
