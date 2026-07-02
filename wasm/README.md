@@ -139,12 +139,15 @@ Motor con paridad casi completa con la versión JS:
   reproducible bit a bit. N = 1…8192, 12 tiradas, 5 estrategias; acumuladores f64.
   Pendientes medidas: random −0.50 (teoría −0.5), stratified/QMC ≈ −0.58.
   El estimador JS se conserva solo para el A/B audible.
-- ✅ **RayQuest (`game.html`)**: mini-juego donde la convergencia es la mecánica.
-  El mapa es un sample sintetizado de 24 s (pad → campanas → viento → coro), tu
-  posición es el foco del motor real, y la distancia a un tesoro escondido
-  controla N (25→400 rayos/s) y la apertura — encuentras el tesoro **por el
-  oído**, oyendo la textura converger de polvo granular a drone nítido. La
-  demo de "RayDrone para audio adaptativo de videojuegos" en 60 segundos.
+- ✅ **RayRunner (`game.html`)**: arcade de nave cuya banda sonora la renderiza
+  RayDrone en vivo — la demo de "audio adaptativo para videojuegos". El mundo
+  recorre un sample sintetizado de 24 s con 4 zonas (pad → campanas → tormenta →
+  coro): **por donde pasas, eso suena** (el scroll mueve el foco). Y **cómo
+  juegas transforma la música**: el combo controla N (60→400 rayos/s) y la
+  apertura — jugar bien = la textura converge densa y nítida (error ∝ 1/√N);
+  un impacto desploma el combo (polvo granular), hunde el tono un instante y
+  dispara una cola de rebotes; cada cristal enciende un destello de shimmer.
+  Sin capas pregrabadas: un solo motor, parámetros vivos.
 
 Paridad completa con la versión JS.
 

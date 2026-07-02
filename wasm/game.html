@@ -3,33 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RayQuest · RayDrone</title>
+    <title>RayRunner · RayDrone</title>
     <style>
         :root { --bg:#0c0809; --panel:#170f12; --accent:#ff355e; --accent-dim:#b3132f; --cyan:#28e6dc; --text:#f0e2e6; }
         * { box-sizing:border-box; }
         body { background:radial-gradient(1200px 600px at 50% -10%, #1a0e13, var(--bg)); color:var(--text);
                font-family:'Segoe UI',Tahoma,sans-serif; display:flex; justify-content:center;
                padding:24px 16px; margin:0; min-height:100vh; }
-        .container { background:var(--panel); padding:24px; border-radius:18px; width:min(980px,100%);
+        .container { background:var(--panel); padding:24px; border-radius:18px; width:min(1020px,100%);
                      border:1px solid rgba(255,53,94,0.12); box-shadow:0 20px 60px rgba(255,53,94,0.06); }
         h1 { font-size:1.5rem; text-align:center; margin:0; letter-spacing:3px; text-transform:uppercase;
              color:var(--accent); text-shadow:0 0 12px rgba(255,53,94,0.35); }
         .sub { text-align:center; color:#8a99ad; font-size:0.82rem; margin:6px 0 14px; }
         #stage { position:relative; }
-        canvas { display:block; width:100%; height:280px; background:#07080e; border-radius:10px;
+        canvas { display:block; width:100%; height:340px; background:#05060b; border-radius:10px;
                  border:1px solid rgba(255,53,94,0.15); }
         .hud { display:flex; justify-content:space-between; gap:12px; font-family:monospace;
-               font-size:0.9rem; margin:10px 0; flex-wrap:wrap; }
+               font-size:0.88rem; margin:10px 0; flex-wrap:wrap; }
         .hud b { color:var(--accent); }
-        .hud .n b { color:var(--cyan); }
+        .hud .n b, .hud .zone b { color:var(--cyan); }
         .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
-                   justify-content:center; gap:14px; background:rgba(7,8,14,0.88); border-radius:10px; z-index:5;
+                   justify-content:center; gap:14px; background:rgba(5,6,11,0.9); border-radius:10px; z-index:5;
                    text-align:center; padding:18px; }
         .btn { border:none; padding:13px 26px; border-radius:10px; font-size:1rem; font-weight:bold;
                text-transform:uppercase; letter-spacing:1px; cursor:pointer;
                background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; }
         .keys { display:flex; gap:10px; justify-content:center; margin-top:10px; }
-        .kbtn { min-width:76px; padding:14px 10px; border-radius:10px; border:1px solid rgba(255,53,94,0.3);
+        .kbtn { min-width:86px; padding:14px 10px; border-radius:10px; border:1px solid rgba(255,53,94,0.3);
                 background:#0f1320; color:var(--text); font-size:1.1rem; cursor:pointer; user-select:none;
                 touch-action:none; }
         .kbtn:active { background:rgba(255,53,94,0.25); }
@@ -41,49 +41,50 @@
 </head>
 <body>
 <div class="container">
-    <h1>◢ RayQuest</h1>
-    <p class="sub">La convergencia Monte Carlo como mecánica de juego — encuentra el tesoro <b>por el oído</b></p>
+    <h1>◢ RayRunner</h1>
+    <p class="sub">Vuela, esquiva, recoge — y escucha cómo el mundo y tu forma de jugar <b>renderizan la música</b></p>
 
     <div class="hud">
+        <span class="zone">Zona: <b id="hud-zone">—</b></span>
         <span class="n">N = <b id="hud-n">0</b> rayos/s</span>
+        <span>Combo: <b id="hud-combo">0</b></span>
         <span>Puntos: <b id="hud-score">0</b></span>
-        <span>Tiempo: <b id="hud-time">60</b> s</span>
-        <span>Hallados: <b id="hud-found">0</b></span>
+        <span>Vidas: <b id="hud-lives">♥♥♥</b></span>
     </div>
 
     <div id="stage">
-        <canvas id="game" width="960" height="280"></canvas>
+        <canvas id="game" width="1000" height="340"></canvas>
         <div class="overlay" id="start-overlay">
-            <div style="max-width:520px; line-height:1.6;">
-                <b style="color:var(--accent)">El mapa es un buffer de audio</b> y tú eres el foco del render granular.
-                En algún punto hay un tesoro enterrado. Tu sonar es <b style="color:var(--cyan)">N, la densidad de
-                rayos</b>: cuanto más cerca estás, más rayos dispara el motor y más <i>converge</i> la textura —
-                de polvo granular roto a drone liso y enfocado. Escucha, acércate, y excava.
+            <div style="max-width:560px; line-height:1.65;">
+                Pilota la nave con <b>↑ ↓</b>. Esquiva asteroides, recoge cristales <b style="color:var(--cyan)">◆</b>.
+                La banda sonora la renderiza <b style="color:var(--accent)">RayDrone en vivo</b>:
+                la <b>zona</b> que atraviesas decide el sonido (el mundo es un sample: pad → campanas →
+                tormenta → coro), y tu <b>combo</b> decide N, la densidad de rayos — juega bien y la música
+                converge, densa y nítida; recibe impactos y se rompe en polvo granular.
             </div>
-            <div>← → moverte · <b>ESPACIO</b> excavar · 60 segundos</div>
-            <button class="btn" id="start-btn">▶ Jugar</button>
+            <button class="btn" id="start-btn">▶ Despegar</button>
         </div>
         <div class="overlay" id="end-overlay" style="display:none;">
-            <div style="font-size:1.4rem;">⛏ Fin de la ronda</div>
+            <div style="font-size:1.4rem;">💥 Nave destruida</div>
             <div>Puntuación: <b id="end-score" style="color:var(--accent); font-size:1.6rem;">0</b></div>
-            <div style="color:#8a99ad; max-width:460px;">La convergencia fue tu sonar: N bajo = estimación ruidosa
-                (lejos), N alto = el render converge al objetivo (cerca). Eso es RayDrone.</div>
-            <button class="btn" id="restart-btn">↻ Otra ronda</button>
+            <div style="color:#8a99ad; max-width:480px;">La música que oíste no estaba grabada: era el estimador
+                Monte Carlo convergiendo (o rompiéndose) con tu manera de jugar.</div>
+            <button class="btn" id="restart-btn">↻ Otra vez</button>
         </div>
     </div>
 
     <div class="keys">
-        <button class="kbtn" id="btn-left">◀</button>
-        <button class="kbtn" id="btn-dig">⛏ EXCAVAR</button>
-        <button class="kbtn" id="btn-right">▶</button>
+        <button class="kbtn" id="btn-up">▲</button>
+        <button class="kbtn" id="btn-down">▼</button>
     </div>
 
     <div class="how">
-        <b>Qué está pasando por debajo</b> — tu posición mueve el <i>foco</i> del motor granular real
-        (el mismo Rust→wasm del demo). La distancia al tesoro controla <b>N</b> (rayos/segundo) y la
-        <i>apertura</i>: lejos = pocos rayos y apertura ancha (estimación ruidosa y borrosa del sample);
-        cerca = cientos de rayos y apertura estrecha (la textura converge, error ∝ 1/√N). Cada zona del
-        mapa suena distinta porque el mapa <i>es</i> el sample: pad cálido → campanas → viento de ruido → coro.
+        <b>Qué está pasando por debajo</b> — el motor granular real (el mismo Rust→wasm del demo) suena todo el
+        rato. El desplazamiento del mundo mueve el <i>foco</i> por un sample de 24 s con 4 zonas sonoras — por
+        donde pasas, eso suena. Tu combo controla <b>N</b> (rayos/segundo) y la <i>apertura</i>: combo alto =
+        cientos de rayos convergiendo a una textura limpia (error ∝ 1/√N); un impacto desploma el combo y la
+        música se vuelve rala y ruidosa, además de caer de tono un instante. Cada cristal dispara un destello de
+        <i>shimmer</i> (granos una octava arriba). Audio adaptativo sin capas pregrabadas: un solo motor, parámetros vivos.
     </div>
     <div class="status" id="status"></div>
     <a class="back" href="index.html">← volver al demo completo de RayDrone</a>
@@ -92,62 +93,62 @@
 <script>
     'use strict';
     const $ = (id) => document.getElementById(id);
-    const canvas = $('game'), ctx2d = canvas.getContext('2d');
-    const hudN = $('hud-n'), hudScore = $('hud-score'), hudTime = $('hud-time'), hudFound = $('hud-found');
+    const canvas = $('game'), g = canvas.getContext('2d');
+    const hudZone = $('hud-zone'), hudN = $('hud-n'), hudCombo = $('hud-combo'),
+          hudScore = $('hud-score'), hudLives = $('hud-lives');
     const statusEl = $('status');
     const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
 
-    // ── Terreno: el mapa ES un sample sintetizado de 24 s con 4 zonas sonoras ──
-    // (pad cálido → campanas → viento de ruido → coro). Determinista: siempre el
-    // mismo mundo, la partida cambia solo por dónde cae el tesoro.
+    // ── El mundo sonoro: un sample sintetizado de 24 s con 4 zonas ───────────
+    // (pad cálido → campanas → tormenta de ruido → coro). Determinista.
     const SR = 44100, TERRAIN_SECS = 24;
+    const ZONES = [
+        { name: 'NEBULOSA PAD',      tint: [255, 53, 94] },
+        { name: 'CAMPO DE CAMPANAS', tint: [255, 170, 60] },
+        { name: 'TORMENTA DE RUIDO', tint: [120, 140, 255] },
+        { name: 'CORO ESTELAR',      tint: [40, 230, 220] },
+    ];
     function makeTerrain() {
         const n = SR * TERRAIN_SECS;
         const buf = new Float32Array(n);
         const seg = n / 4, fade = SR * 0.5, tau = 2 * Math.PI;
-        // peso de crossfade equal-power de cada zona en la muestra i
         const w = (i, s) => {
             const a = s * seg, b = (s + 1) * seg;
             if (i < a - fade || i >= b + fade) return 0;
-            let g = 1;
-            if (i < a + fade) g = (i - (a - fade)) / (2 * fade);
-            else if (i >= b - fade) g = (b + fade - i) / (2 * fade);
-            return Math.sin(clamp(g, 0, 1) * Math.PI / 2);
+            let gn = 1;
+            if (i < a + fade) gn = (i - (a - fade)) / (2 * fade);
+            else if (i >= b - fade) gn = (b + fade - i) / (2 * fade);
+            return Math.sin(clamp(gn, 0, 1) * Math.PI / 2);
         };
-        // Zona 0: pad cálido (110 Hz, armónicos 1/k con leve stretch)
-        for (let i = 0; i < n; i++) {
-            const g = w(i, 0);
-            if (g <= 0) continue;
+        for (let i = 0; i < n; i++) { // zona 0: pad
+            const gn = w(i, 0);
+            if (gn <= 0) continue;
             const t = i / SR;
             let s = 0;
             for (let k = 1; k <= 6; k++) s += (0.6 / k) * Math.sin(tau * 110 * k * (1 + 0.0012 * k) * t);
-            buf[i] += g * s;
+            buf[i] += gn * s;
         }
-        // Zona 1: campanas inarmónicas (golpe cada 2 s)
-        for (let i = Math.floor(seg - fade); i < Math.min(n, 2 * seg + fade); i++) {
-            const g = w(i, 1);
-            if (g <= 0) continue;
-            const t = i / SR;
-            const tl = t % 2; // tiempo desde el último golpe
+        for (let i = Math.floor(seg - fade); i < Math.min(n, 2 * seg + fade); i++) { // zona 1: campanas
+            const gn = w(i, 1);
+            if (gn <= 0) continue;
+            const t = i / SR, tl = t % 2;
             let s = 0;
             for (const [r, d] of [[1, 1.6], [2.4, 1.1], [3.9, 0.7], [5.3, 0.5]]) {
                 s += (0.5 / r) * Math.exp(-tl / d) * Math.sin(tau * 220 * r * t);
             }
-            buf[i] += g * s;
+            buf[i] += gn * s;
         }
-        // Zona 2: viento (ruido xorshift filtrado)
         let rng = 0x9e3779b9 >>> 0, lp = 0;
-        for (let i = Math.floor(2 * seg - fade); i < Math.min(n, 3 * seg + fade); i++) {
+        for (let i = Math.floor(2 * seg - fade); i < Math.min(n, 3 * seg + fade); i++) { // zona 2: tormenta
             rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0;
             const white = rng / 2147483648 - 1;
             lp += 0.03 * (white - lp);
-            const g = w(i, 2);
-            if (g > 0) buf[i] += g * lp * 3.2;
+            const gn = w(i, 2);
+            if (gn > 0) buf[i] += gn * lp * 3.2;
         }
-        // Zona 3: coro (146.83 Hz con vibrato y peso formántico)
-        for (let i = Math.floor(3 * seg - fade); i < n; i++) {
-            const g = w(i, 3);
-            if (g <= 0) continue;
+        for (let i = Math.floor(3 * seg - fade); i < n; i++) { // zona 3: coro
+            const gn = w(i, 3);
+            if (gn <= 0) continue;
             const t = i / SR;
             const vib = 1 + 0.004 * Math.sin(tau * 5 * t);
             let s = 0;
@@ -156,9 +157,8 @@
                 const form = 0.35 + 1 / (1 + Math.pow((f - 700) / 300, 2));
                 s += (0.5 * form / Math.sqrt(k)) * Math.sin(tau * f * vib * t);
             }
-            buf[i] += g * s;
+            buf[i] += gn * s;
         }
-        // Normalizar a 0.9 de pico
         let peak = 1e-6;
         for (let i = 0; i < n; i++) { const a = Math.abs(buf[i]); if (a > peak) peak = a; }
         const gn = 0.9 / peak;
@@ -166,132 +166,136 @@
         return buf;
     }
 
-    // ── Motor (mismo patrón que index.html: worklet + wasm cache-busted) ──────
-    let ctx = null, node = null, gainNode = null, terrain = null, wavePeaks = null;
-    let lastRays = []; // offsets (segundos) de rayos reales del motor, para dibujar
-
+    // ── Motor (mismo patrón que index.html: worklet + wasm cache-busted) ─────
+    let actx = null, node = null, gainNode = null;
     async function ensureEngine() {
         if (node) return;
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-        gainNode = ctx.createGain();
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        gainNode = actx.createGain();
         gainNode.gain.value = 0.85;
-        gainNode.connect(ctx.destination);
-        if (ctx.state === 'suspended') await ctx.resume();
-        if (!ctx.audioWorklet) throw new Error(`AudioWorklet no disponible en ${location.origin}: hace falta HTTPS o localhost.`);
+        gainNode.connect(actx.destination);
+        if (actx.state === 'suspended') await actx.resume();
+        if (!actx.audioWorklet) throw new Error(`AudioWorklet no disponible en ${location.origin}: hace falta HTTPS o localhost.`);
         const bust = `?v=${Date.now()}`;
         const wasmBytes = await fetch('raydrone.wasm' + bust, { cache: 'no-store' }).then(r => r.arrayBuffer());
-        await ctx.audioWorklet.addModule('processor.js' + bust);
-        node = new AudioWorkletNode(ctx, 'raydrone', {
+        await actx.audioWorklet.addModule('processor.js' + bust);
+        node = new AudioWorkletNode(actx, 'raydrone', {
             numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
             processorOptions: { wasmBytes },
         });
         node.onprocessorerror = () => { statusEl.innerText = 'Error en el motor de audio (worklet).'; };
         node.connect(gainNode);
         node.port.onmessage = (e) => {
-            const d = e.data;
-            if (d.type === 'rays') lastRays = d.offsets;
-            else if (d.type === 'enginemismatch') {
-                statusEl.innerText = `⚠ El motor (.wasm) no reconoce "${d.messageType}" — recompílalo: bash wasm/build.sh`;
+            if (e.data.type === 'enginemismatch') {
+                statusEl.innerText = `⚠ El motor (.wasm) no reconoce "${e.data.messageType}" — recompílalo: bash wasm/build.sh`;
             }
         };
-        // Ventana Hann + escena + parámetros base
         const win = new Float32Array(2048);
         for (let i = 0; i < 2048; i++) win[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / 2047));
         node.port.postMessage({ type: 'window', data: win });
-        node.port.postMessage({ type: 'mode', value: 1 });      // QMC
+        node.port.postMessage({ type: 'mode', value: 1 }); // QMC
         node.port.postMessage({ type: 'space', width: 0.6, oct: 0 });
-        node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.15 });
+        node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 });
         node.port.postMessage({ type: 'pitch', mult: 1 });
-        terrain = makeTerrain();
-        node.port.postMessage({ type: 'sample', data: terrain, sampleRate: SR });
-        // Picos por columna para dibujar el "mapa"
-        const W = canvas.width;
-        wavePeaks = new Float32Array(W);
-        for (let x = 0; x < W; x++) {
-            const a = Math.floor(x / W * terrain.length), b = Math.floor((x + 1) / W * terrain.length);
-            let pk = 0;
-            for (let i = a; i < b; i += 8) { const v = Math.abs(terrain[i]); if (v > pk) pk = v; }
-            wavePeaks[x] = pk;
-        }
+        node.port.postMessage({ type: 'sample', data: makeTerrain(), sampleRate: SR });
     }
 
     // ── Estado del juego ──────────────────────────────────────────────────────
-    const ROUND_SECS = 60, DIG_TOL = 0.035;
+    const W = canvas.width, H = canvas.height;
+    const SHIP_X = W * 0.18, SHIP_R = 13;
     const st = {
-        playing: false, x: 0.5, vel: 0, target: 0.2, score: 0, found: 0,
-        timeLeft: ROUND_SECS, closeness: 0, rate: 0, digFlash: 0, digOkFlash: 0, digX: 0,
+        playing: false, shipY: H / 2, vy: 0, worldT: 0, speed: 150, // px/s de scroll
+        combo: 0, score: 0, lives: 3, rate: 0, zone: -1,
+        shimmer: 0,   // destello de octava al recoger cristal (decae)
+        pitchDip: 0,  // caída de tono al recibir impacto (decae)
+        shake: 0, zoneFlash: 0, zoneFlashName: '',
+        asteroids: [], crystals: [], particles: [], stars: [],
+        spawnAst: 0, spawnCry: 0,
     };
-    const keys = { left: false, right: false };
+    for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
+    const keys = { up: false, down: false };
 
-    function newTarget() {
-        let t;
-        do { t = 0.08 + Math.random() * 0.84; } while (Math.abs(t - st.x) < 0.25);
-        st.target = t;
+    function resetRound() {
+        st.shipY = H / 2; st.vy = 0; st.worldT = 0; st.speed = 150;
+        st.combo = 0; st.score = 0; st.lives = 3; st.zone = -1;
+        st.shimmer = 0; st.pitchDip = 0; st.shake = 0;
+        st.asteroids = []; st.crystals = []; st.particles = [];
+        st.spawnAst = 1.2; st.spawnCry = 0.8;
+        updateHud();
+    }
+    function updateHud() {
+        hudCombo.innerText = st.combo;
+        hudScore.innerText = st.score;
+        hudLives.innerText = '♥'.repeat(st.lives) || '—';
+        hudN.innerText = Math.round(st.rate);
     }
 
-    function sendGameParams() {
+    // ── Acciones → sonido ─────────────────────────────────────────────────────
+    function collectCrystal() {
+        st.combo = Math.min(10, st.combo + 1);
+        st.score += 50 + st.combo * 10;
+        st.shimmer = 1; // ráfaga de granos una octava arriba (decae en el bucle)
+        burst(SHIP_X + 20, st.shipY, [40, 230, 220], 14);
+        updateHud();
+    }
+    function hitShip() {
+        st.combo = Math.max(0, st.combo - 4);
+        st.lives -= 1;
+        st.pitchDip = 1; // el drone cae de tono y vuelve (decae en el bucle)
+        st.shake = 1;
+        // Ráfaga de rebotes: el impacto deja una cola recursiva un instante
+        if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 3, refl: 0.7, feedback: 0.1 });
+        setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 1200);
+        burst(SHIP_X, st.shipY, [255, 80, 80], 22);
+        updateHud();
+        if (st.lives <= 0) endRound();
+    }
+    function sendAudio() {
         if (!node) return;
-        const dist = Math.abs(st.x - st.target);
-        st.closeness = 1 - clamp(dist / 0.30, 0, 1);
-        const rate = st.playing ? 25 + st.closeness * st.closeness * 375 : 0; // N: 25..400 rayos/s
+        // Zona (posición del mundo en el buffer) → foco. Combo → N y apertura.
+        const focusSec = st.worldT % TERRAIN_SECS;
+        const c = st.combo / 10;
+        const rate = st.playing ? 60 + c * 340 : 0;   // N: 60..400 rayos/s
         st.rate = rate;
-        const apertureSec = 0.45 - st.closeness * 0.41;    // 450 ms lejos → 40 ms cerca
+        const aperture = 0.35 - c * 0.30;              // 350 ms caótico → 50 ms nítido
         const grainMs = 140;
         const conc = Math.max(1, rate * grainMs / 1000);
         const gain = clamp(1.5 / Math.sqrt(conc), 0, 0.5);
-        node.port.postMessage({
-            type: 'params',
-            focus: st.x * TERRAIN_SECS, aperture: apertureSec,
-            grainMs, grainRate: rate, gain, master: 1.0,
-        });
-        node.port.postMessage({ type: 'reverb', wet: 0.12 + st.closeness * 0.28 });
-    }
-
-    function dig() {
-        if (!st.playing) return;
-        st.digFlash = 1; st.digX = st.x;
-        if (Math.abs(st.x - st.target) < DIG_TOL) {
-            st.score += 100; st.found += 1; st.digOkFlash = 1;
-            newTarget();
-        } else {
-            st.score = Math.max(0, st.score - 10);
-        }
-        hudScore.innerText = st.score;
-        hudFound.innerText = st.found;
+        node.port.postMessage({ type: 'params', focus: focusSec, aperture, grainMs, grainRate: rate, gain, master: 1.0 });
+        node.port.postMessage({ type: 'reverb', wet: 0.12 + c * 0.2 });
+        node.port.postMessage({ type: 'space', width: 0.6, oct: st.shimmer * 0.6 });
+        node.port.postMessage({ type: 'pitch', mult: 1 - st.pitchDip * 0.22 });
     }
 
     function endRound() {
         st.playing = false;
-        sendGameParams(); // rate 0 → el motor se apaga en silencio
+        sendAudio(); // rate 0 → el motor se apaga en silencio
         $('end-score').innerText = st.score;
         $('end-overlay').style.display = '';
     }
-
     async function startRound() {
         try { await ensureEngine(); } catch (err) {
             statusEl.innerText = `Error al iniciar el motor: ${(err && err.message) || err}`;
             return;
         }
-        st.x = 0.5; st.vel = 0; st.score = 0; st.found = 0; st.timeLeft = ROUND_SECS; st.playing = true;
-        newTarget();
-        hudScore.innerText = '0'; hudFound.innerText = '0';
+        resetRound();
+        st.playing = true;
         $('start-overlay').style.display = 'none';
         $('end-overlay').style.display = 'none';
     }
     $('start-btn').addEventListener('click', startRound);
     $('restart-btn').addEventListener('click', startRound);
 
-    // ── Entrada: teclado + botones táctiles ───────────────────────────────────
+    // ── Entrada ───────────────────────────────────────────────────────────────
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
-        else if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
-        else if (e.code === 'Space' || e.key === 'Enter') { if (!e.repeat) dig(); }
+        if (e.key === 'ArrowUp' || e.key === 'w') keys.up = true;
+        else if (e.key === 'ArrowDown' || e.key === 's') keys.down = true;
         else return;
         e.preventDefault();
     });
     window.addEventListener('keyup', (e) => {
-        if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
-        if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
+        if (e.key === 'ArrowUp' || e.key === 'w') keys.up = false;
+        if (e.key === 'ArrowDown' || e.key === 's') keys.down = false;
     });
     const holdBtn = (id, key) => {
         const el = $(id);
@@ -300,101 +304,170 @@
         el.addEventListener('pointerup', off);
         el.addEventListener('pointercancel', off);
     };
-    holdBtn('btn-left', 'left');
-    holdBtn('btn-right', 'right');
-    $('btn-dig').addEventListener('pointerdown', (e) => { e.preventDefault(); dig(); });
+    holdBtn('btn-up', 'up');
+    holdBtn('btn-down', 'down');
 
-    // ── Bucle: física + parámetros del motor + dibujo ────────────────────────
-    let lastT = 0, timeAcc = 0;
+    // ── Partículas ────────────────────────────────────────────────────────────
+    function burst(x, y, col, n) {
+        for (let i = 0; i < n; i++) {
+            const a = Math.random() * 6.283, sp = 40 + Math.random() * 160;
+            st.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, col });
+        }
+    }
+
+    // ── Bucle ─────────────────────────────────────────────────────────────────
+    let lastT = 0;
     function frame(t) {
         const dt = Math.min(0.05, (t - lastT) / 1000 || 0.016);
         lastT = t;
-        if (st.playing) {
-            const dir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
-            st.vel += dir * 1.4 * dt;
-            st.vel *= Math.pow(0.02, dt); // fricción
-            st.x = clamp(st.x + st.vel * dt, 0.02, 0.98);
-            timeAcc += dt;
-            if (timeAcc >= 1) {
-                timeAcc -= 1;
-                st.timeLeft -= 1;
-                hudTime.innerText = st.timeLeft;
-                if (st.timeLeft <= 0) endRound();
-            }
-            sendGameParams();
-            hudN.innerText = Math.round(st.rate);
-        }
+        if (st.playing) step(dt);
         draw(t / 1000);
         requestAnimationFrame(frame);
     }
+    function step(dt) {
+        // Nave
+        const dir = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+        st.vy += dir * 1400 * dt;
+        st.vy *= Math.pow(0.001, dt);
+        st.shipY = clamp(st.shipY + st.vy * dt, 24, H - 24);
+        // Mundo: el scroll recorre el buffer (0.35 s de sample por segundo real)
+        st.worldT += 0.35 * dt;
+        st.speed = Math.min(320, st.speed + 2.5 * dt); // dificultad sube suave
+        st.score += Math.round(10 * dt);
+        const zone = Math.floor((st.worldT % TERRAIN_SECS) / (TERRAIN_SECS / 4));
+        if (zone !== st.zone) {
+            st.zone = zone;
+            st.zoneFlash = 1;
+            st.zoneFlashName = ZONES[zone].name;
+            hudZone.innerText = ZONES[zone].name;
+        }
+        // Spawns
+        st.spawnAst -= dt;
+        if (st.spawnAst <= 0) {
+            st.spawnAst = Math.max(0.45, 1.15 - st.worldT * 0.008);
+            st.asteroids.push({ x: W + 30, y: 30 + Math.random() * (H - 60), r: 12 + Math.random() * 15, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 2 });
+        }
+        st.spawnCry -= dt;
+        if (st.spawnCry <= 0) {
+            st.spawnCry = 1.3 + Math.random() * 0.8;
+            st.crystals.push({ x: W + 20, y: 30 + Math.random() * (H - 60), ph: Math.random() * 6.28 });
+        }
+        // Mover + colisiones
+        for (let i = st.asteroids.length - 1; i >= 0; i--) {
+            const a = st.asteroids[i];
+            a.x -= st.speed * dt; a.rot += a.vr * dt;
+            if (a.x < -40) { st.asteroids.splice(i, 1); continue; }
+            const dx = a.x - SHIP_X, dy = a.y - st.shipY;
+            if (dx * dx + dy * dy < (a.r + SHIP_R) * (a.r + SHIP_R)) {
+                st.asteroids.splice(i, 1);
+                hitShip();
+            }
+        }
+        for (let i = st.crystals.length - 1; i >= 0; i--) {
+            const c = st.crystals[i];
+            c.x -= st.speed * dt; c.ph += 4 * dt;
+            if (c.x < -20) { st.crystals.splice(i, 1); continue; }
+            const dx = c.x - SHIP_X, dy = c.y - st.shipY;
+            if (dx * dx + dy * dy < (10 + SHIP_R) * (10 + SHIP_R)) {
+                st.crystals.splice(i, 1);
+                collectCrystal();
+            }
+        }
+        for (let i = st.particles.length - 1; i >= 0; i--) {
+            const p = st.particles[i];
+            p.x += p.vx * dt; p.y += p.vy * dt; p.life -= 2.2 * dt;
+            if (p.life <= 0) st.particles.splice(i, 1);
+        }
+        // Decaimiento de los efectos sonoros de acción
+        st.shimmer = Math.max(0, st.shimmer - 0.9 * dt);
+        st.pitchDip = Math.max(0, st.pitchDip - 1.1 * dt);
+        st.shake = Math.max(0, st.shake - 3 * dt);
+        st.zoneFlash = Math.max(0, st.zoneFlash - 0.5 * dt);
+        sendAudio();
+        hudN.innerText = Math.round(st.rate);
+        hudScore.innerText = st.score;
+    }
 
     function draw(t) {
-        const W = canvas.width, H = canvas.height;
-        ctx2d.clearRect(0, 0, W, H);
-        ctx2d.fillStyle = '#07080e'; ctx2d.fillRect(0, 0, W, H);
-        const mid = H * 0.56, amp = H * 0.30;
-
-        // El mapa: la forma de onda del terreno
-        if (wavePeaks) {
-            ctx2d.strokeStyle = 'rgba(255,53,94,0.35)';
-            ctx2d.beginPath();
-            for (let x = 0; x < W; x += 2) {
-                const a = wavePeaks[x] * amp;
-                ctx2d.moveTo(x, mid - a); ctx2d.lineTo(x, mid + a);
+        g.save();
+        if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10, (Math.random() - 0.5) * st.shake * 10);
+        g.clearRect(-10, -10, W + 20, H + 20);
+        // Fondo teñido por la zona actual
+        const tint = ZONES[Math.max(0, st.zone)].tint;
+        const bg = g.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, `rgba(${tint[0]},${tint[1]},${tint[2]},0.10)`);
+        bg.addColorStop(0.5, '#05060b');
+        bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.06)`);
+        g.fillStyle = bg;
+        g.fillRect(-10, -10, W + 20, H + 20);
+        // Estrellas (parallax)
+        g.fillStyle = 'rgba(255,255,255,0.6)';
+        for (const s of st.stars) {
+            s.x -= st.speed * s.z * 0.02;
+            if (s.x < 0) { s.x = W; s.y = Math.random() * H; }
+            g.globalAlpha = 0.25 + s.z * 0.5;
+            g.fillRect(s.x, s.y, 1.6 * s.z + 0.4, 1.6 * s.z + 0.4);
+        }
+        g.globalAlpha = 1;
+        // Cristales
+        for (const c of st.crystals) {
+            const r = 9 + Math.sin(c.ph) * 1.5;
+            g.save();
+            g.translate(c.x, c.y); g.rotate(0.785);
+            g.fillStyle = 'rgba(40,230,220,0.9)';
+            g.shadowColor = '#28e6dc'; g.shadowBlur = 12;
+            g.fillRect(-r / 2, -r / 2, r, r);
+            g.restore();
+        }
+        // Asteroides
+        for (const a of st.asteroids) {
+            g.save();
+            g.translate(a.x, a.y); g.rotate(a.rot);
+            g.strokeStyle = 'rgba(255,120,120,0.85)';
+            g.fillStyle = 'rgba(60,25,32,0.9)';
+            g.lineWidth = 1.6;
+            g.beginPath();
+            for (let k = 0; k < 7; k++) {
+                const an = k / 7 * 6.283;
+                const rr = a.r * (0.75 + 0.25 * Math.sin(k * 2.7));
+                k ? g.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) : g.moveTo(Math.cos(an) * rr, Math.sin(an) * rr);
             }
-            ctx2d.stroke();
+            g.closePath(); g.fill(); g.stroke();
+            g.restore();
         }
-
-        const px = st.x * W;
-        // Rayos reales del motor cayendo alrededor del foco (jugador)
-        ctx2d.globalCompositeOperation = 'lighter';
-        for (let i = 0; i < lastRays.length; i++) {
-            const rx = (lastRays[i] / TERRAIN_SECS) * W;
-            const a = 0.10 + st.closeness * 0.5;
-            ctx2d.strokeStyle = `rgba(40,230,220,${a})`;
-            ctx2d.beginPath();
-            ctx2d.moveTo(px, 26);
-            ctx2d.lineTo(rx, mid);
-            ctx2d.stroke();
+        // Nave (triángulo neón con propulsor ∝ N: la propia nave enseña la densidad)
+        const flame = 6 + (st.rate / 400) * 22 + Math.random() * 4;
+        g.save();
+        g.translate(SHIP_X, st.shipY);
+        g.fillStyle = 'rgba(255,140,60,0.8)';
+        g.beginPath(); g.moveTo(-14, 0); g.lineTo(-14 - flame, -4); g.lineTo(-14 - flame, 4); g.closePath(); g.fill();
+        g.fillStyle = '#0f1320';
+        g.strokeStyle = '#28e6dc';
+        g.lineWidth = 2;
+        g.shadowColor = '#28e6dc'; g.shadowBlur = 10 + st.combo * 1.5;
+        g.beginPath(); g.moveTo(16, 0); g.lineTo(-12, -11); g.lineTo(-7, 0); g.lineTo(-12, 11); g.closePath();
+        g.fill(); g.stroke();
+        g.restore();
+        // Partículas
+        for (const p of st.particles) {
+            g.fillStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.life})`;
+            g.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
         }
-        lastRays = lastRays.slice(-40); // que no se acumulen entre mensajes
-        ctx2d.globalCompositeOperation = 'source-over';
-
-        // El jugador: la "cámara"/foco, con glow ∝ cercanía (la pista visual y
-        // la sonora cuentan lo mismo: N)
-        const glowR = 8 + st.closeness * 26 + Math.sin(t * 5) * 2;
-        const grad = ctx2d.createRadialGradient(px, 26, 0, px, 26, glowR);
-        grad.addColorStop(0, `rgba(255,120,150,${0.35 + st.closeness * 0.5})`);
-        grad.addColorStop(1, 'rgba(255,53,94,0)');
-        ctx2d.fillStyle = grad;
-        ctx2d.beginPath(); ctx2d.arc(px, 26, glowR, 0, 7); ctx2d.fill();
-        ctx2d.fillStyle = '#fff';
-        ctx2d.beginPath(); ctx2d.arc(px, 26, 3.2, 0, 7); ctx2d.fill();
-        ctx2d.strokeStyle = 'rgba(255,255,255,0.35)';
-        ctx2d.beginPath(); ctx2d.moveTo(px, 30); ctx2d.lineTo(px, H - 14); ctx2d.stroke();
-
-        // Flash de excavación (verde acierto / rojo fallo)
-        if (st.digFlash > 0) {
-            const dx = st.digX * W;
-            const col = st.digOkFlash > 0 ? '40,230,120' : '255,80,80';
-            ctx2d.fillStyle = `rgba(${col},${st.digFlash * 0.5})`;
-            ctx2d.beginPath(); ctx2d.arc(dx, mid, 26 * (1.6 - st.digFlash), 0, 7); ctx2d.fill();
-            st.digFlash = Math.max(0, st.digFlash - 0.04);
-            if (st.digFlash === 0) st.digOkFlash = 0;
+        // Nombre de zona al cruzar
+        if (st.zoneFlash > 0) {
+            g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${st.zoneFlash})`;
+            g.font = 'bold 26px monospace';
+            g.textAlign = 'center';
+            g.fillText(st.zoneFlashName, W / 2, 52);
         }
-
-        // Suelo
-        ctx2d.strokeStyle = 'rgba(255,255,255,0.12)';
-        ctx2d.beginPath(); ctx2d.moveTo(0, H - 14); ctx2d.lineTo(W, H - 14); ctx2d.stroke();
+        g.restore();
     }
     requestAnimationFrame(frame);
 
     // Hook de test/depuración (usado por las verificaciones headless del repo).
     window.__ray_game = {
         get state() { return st; },
-        dig,
-        setTarget(x) { st.target = clamp(x, 0, 1); },
-        start: startRound,
+        collectCrystal, hitShip, start: startRound,
     };
 </script>
 </body>

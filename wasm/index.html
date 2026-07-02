@@ -29,12 +29,12 @@
             .p-engine { grid-column:3; grid-row:2; }
             .p-play { grid-column:1 / -1; grid-row:3; }
             .p-ambient { grid-column:1 / -1; grid-row:4; }
-            .p-tonal { grid-column:1 / -1; grid-row:5; }
-            .p-micro { grid-column:1 / -1; grid-row:6; }
-            .lab    { grid-column:1 / -1; grid-row:7; }
-            .p-game { grid-column:1 / -1; grid-row:8; }
+            .p-tune { grid-column:1 / -1; grid-row:5; }
+            .lab    { grid-column:1 / -1; grid-row:6; }
+            .p-game { grid-column:1 / -1; grid-row:7; }
             .micro-grid { grid-template-columns:300px 1fr; }
             .ambient-grid { grid-template-columns:repeat(5,1fr); }
+            .tune-filter { grid-template-columns:repeat(5,1fr); }
         }
         .panel { background:linear-gradient(180deg, rgba(40,18,24,0.55), rgba(16,9,12,0.92));
                  border:1px solid rgba(255,53,94,0.14); border-radius:14px; padding:16px;
@@ -99,6 +99,8 @@
         #fs-btn { position:absolute; right:8px; top:8px; z-index:3; padding:3px 9px; font-size:14px; line-height:1.2; }
         .micro-grid { display:grid; gap:16px; grid-template-columns:1fr; align-items:start; }
         .ambient-grid { display:grid; gap:14px; grid-template-columns:1fr 1fr; }
+        .tune-filter { display:grid; gap:14px; grid-template-columns:1fr 1fr; margin-top:14px;
+                       padding-top:12px; border-top:1px solid rgba(255,53,94,0.12); }
         #lattice { height:180px; cursor:default; margin:0; }
         .btn { width:100%; border:none; padding:14px; border-radius:10px; font-size:1rem; font-weight:bold;
                text-transform:uppercase; letter-spacing:1px; cursor:pointer; transition:all .25s; }
@@ -271,59 +273,29 @@
                 <div class="sub" style="text-align:left; margin:6px 0 0;">Las semillas se reparten en baja discrepancia (golden ratio) y derivan solas; cada foco engendra focos hijo más breves y cercanos → estructura auto-similar (la misma ley QMC a escala de sección, frase y grano). Súbele a Reverb y grano largo para drone. Combínalo con autoevolución y rebotes.</div>
             </section>
 
-            <!-- ── PAD: VOICING AFINADO + FILTRO ── -->
-            <section class="panel p-tonal adv">
-                <div class="panel-title"><span>🎹 Tonalidad &amp; Filtro<span class="info-badge" tabindex="0">i<span class="info-tip">Voicing apila la nube en un acorde afinado en entonación justa (anula la retícula Microtonal mientras esté activo). El filtro resonante se puede barrer con un LFO sincronizado al BPM. Tocar el piano (sección Play) anula tanto Voicing como Microtonal mientras haya notas sostenidas.</span></span></span><span>pad afinado · filtro con LFO a tempo</span></div>
-                <div class="ctl">
-                    <label>Voicing (acorde afinado · core::music) <span class="v" id="voicing-v">Ninguno</span></label>
-                    <select id="voicing">
-                        <option value="" selected>Ninguno (usa Microtonal)</option>
-                        <option value="2">Power pad · sub·raíz·5ª·8ª</option>
-                        <option value="1">Octavas</option>
-                        <option value="5">Quintas apiladas</option>
-                        <option value="3">Tríada mayor</option>
-                        <option value="4">Tríada menor</option>
-                        <option value="6">Sus2</option>
-                        <option value="7">Pentatónica</option>
-                        <option value="8">Escala mayor (justa)</option>
-                        <option value="9">Escala menor (justa)</option>
-                    </select>
-                </div>
-                <div class="ctl">
-                    <label>Filtro · Cutoff <span class="v" id="cutoff-v">abierto</span></label>
-                    <input type="range" id="cutoff" min="0" max="100" value="100">
-                </div>
-                <div class="ctl">
-                    <label>Filtro · Resonancia (realza el corte — baja Cutoff para oírla) <span class="v" id="reso-v">0 %</span></label>
-                    <input type="range" id="reso" min="0" max="100" value="0">
-                </div>
-                <div class="ctl">
-                    <label>Tempo (BPM — mueve el LFO: requiere profundidad &gt; 0) <span class="v" id="bpm-v">120</span></label>
-                    <input type="range" id="bpm" min="40" max="200" value="120" step="1">
-                </div>
-                <div class="ctl">
-                    <label>LFO de filtro · división <span class="v" id="lfodiv-v">1/4</span></label>
-                    <select id="lfodiv">
-                        <option value="0.25">1/16</option>
-                        <option value="0.5">1/8</option>
-                        <option value="1" selected>1/4</option>
-                        <option value="2">1/2</option>
-                        <option value="4">1 compás</option>
-                        <option value="8">2 compases</option>
-                    </select>
-                </div>
-                <div class="ctl">
-                    <label>LFO de filtro · profundidad (0 = LFO apagado) <span class="v" id="lfodepth-v">0 oct</span></label>
-                    <input type="range" id="lfodepth" min="0" max="100" value="0">
-                </div>
-                <div class="sub" style="text-align:left; margin:6px 0 0;">El voicing reparte cada rayo por los grados de un acorde en entonación justa → pad afinado y consonante (anula la rejilla Microtonal mientras esté activo). Ajusta la afinación con el slider <b>Pitch</b> para meterlo en tu tonalidad. El barrido del filtro va sincronizado al BPM y tiene recorrido aunque dejes el Cutoff totalmente abierto.</div>
-            </section>
-
-            <!-- ── MICROTONAL ── -->
-            <section class="panel p-micro adv">
-                <div class="panel-title"><span>♪ Microtonal<span class="info-badge" tabindex="0">i<span class="info-tip">Cada rayo elige un grado de una retícula de afinación (12/19/22/24-EDO, justa o Bohlen–Pierce) en vez de un pitch continuo. El Acorde restringe qué grados suenan, para notar la diferencia entre temperamentos. Tocar el piano (sección Play) tiene prioridad mientras haya notas sostenidas.</span></span></span><span>retícula en cents · cada rayo en su grado</span></div>
+            <!-- ── AFINACIÓN: voicing + retícula microtonal + filtro a tempo ── -->
+            <!-- (Fusión de los antiguos paneles "Tonalidad & Filtro" y "Microtonal":
+                 ambos deciden el pitch de cada rayo, así que viven juntos. Los IDs
+                 no cambian — el JS de siempre sigue funcionando tal cual.) -->
+            <section class="panel p-tune adv">
+                <div class="panel-title"><span>🎼 Afinación<span class="info-badge" tabindex="0">i<span class="info-tip">Decide el pitch de cada rayo, con prioridades claras: el piano (sección Play) manda mientras haya notas sostenidas; si no, el Voicing (acorde en entonación justa); si no, la Escala microtonal (12/19/22/24-EDO, justa o Bohlen–Pierce); si no, pitch continuo. Abajo, el filtro resonante con LFO sincronizado al BPM.</span></span></span><span>voicing · retícula microtonal · filtro a tempo</span></div>
                 <div class="micro-grid">
                     <div>
+                        <div class="ctl">
+                            <label>Voicing (acorde afinado · core::music) <span class="v" id="voicing-v">Ninguno</span></label>
+                            <select id="voicing">
+                                <option value="" selected>Ninguno (usa la Escala de abajo)</option>
+                                <option value="2">Power pad · sub·raíz·5ª·8ª</option>
+                                <option value="1">Octavas</option>
+                                <option value="5">Quintas apiladas</option>
+                                <option value="3">Tríada mayor</option>
+                                <option value="4">Tríada menor</option>
+                                <option value="6">Sus2</option>
+                                <option value="7">Pentatónica</option>
+                                <option value="8">Escala mayor (justa)</option>
+                                <option value="9">Escala menor (justa)</option>
+                            </select>
+                        </div>
                         <div class="ctl">
                             <label>Escala (textura microtonal) <span class="v" id="scale-v">Libre</span></label>
                             <select id="scale">
@@ -347,10 +319,40 @@
                                 <option value="penta">Pentatónica · 5 grados</option>
                             </select>
                         </div>
-                        <div class="sub" style="text-align:left; margin:0;">Con acorde, cada temperamento afina los mismos intervalos a su manera (tercera: 400¢ en 12-EDO, 379¢ en 19-EDO, 386¢ justa). Granos largos = retícula más nítida.</div>
+                        <div class="sub" style="text-align:left; margin:0;">Voicing activo = pad consonante en entonación justa (anula la Escala). Con Escala + Acorde, cada temperamento afina los mismos intervalos a su manera (tercera: 400¢ en 12-EDO, 379¢ en 19-EDO, 386¢ justa). Ajusta la raíz con el slider <b>Pitch</b>.</div>
                     </div>
                     <canvas id="lattice" width="800" height="180"></canvas>
                 </div>
+                <div class="tune-filter">
+                    <div class="ctl">
+                        <label>Filtro · Cutoff <span class="v" id="cutoff-v">abierto</span></label>
+                        <input type="range" id="cutoff" min="0" max="100" value="100">
+                    </div>
+                    <div class="ctl">
+                        <label>Resonancia (baja Cutoff para oírla) <span class="v" id="reso-v">0 %</span></label>
+                        <input type="range" id="reso" min="0" max="100" value="0">
+                    </div>
+                    <div class="ctl">
+                        <label>Tempo (BPM del LFO) <span class="v" id="bpm-v">120</span></label>
+                        <input type="range" id="bpm" min="40" max="200" value="120" step="1">
+                    </div>
+                    <div class="ctl">
+                        <label>LFO · división <span class="v" id="lfodiv-v">1/4</span></label>
+                        <select id="lfodiv">
+                            <option value="0.25">1/16</option>
+                            <option value="0.5">1/8</option>
+                            <option value="1" selected>1/4</option>
+                            <option value="2">1/2</option>
+                            <option value="4">1 compás</option>
+                            <option value="8">2 compases</option>
+                        </select>
+                    </div>
+                    <div class="ctl">
+                        <label>LFO · profundidad (0 = off) <span class="v" id="lfodepth-v">0 oct</span></label>
+                        <input type="range" id="lfodepth" min="0" max="100" value="0">
+                    </div>
+                </div>
+                <div class="sub" style="text-align:left; margin:6px 0 0;">El barrido del filtro va sincronizado al BPM (sube la profundidad del LFO para oírlo) y tiene recorrido aunque dejes el Cutoff totalmente abierto.</div>
             </section>
 
             <!-- ── ANALYSIS / CONVERGENCE LAB ── -->
@@ -369,11 +371,11 @@
                 </div>
             </section>
 
-            <!-- ── GAME: la convergencia como mecánica de juego ── -->
+            <!-- ── GAME: audio adaptativo en vivo, demostrado jugando ── -->
             <section class="panel p-game">
-                <div class="panel-title"><span>🎮 Game<span class="info-badge" tabindex="0">i<span class="info-tip">RayQuest: un mini-juego donde el buffer de audio es el mapa, tu posición es el foco del render granular, y la densidad de rayos N es tu sonar — cuanto más cerca del tesoro, más rayos y más converge la textura. Encuéntralo por el oído.</span></span></span><span>encuentra el tesoro por el oído · N = tu sonar</span></div>
-                <div class="sub" style="text-align:left; margin:0 0 12px;">El mapa <b>es</b> un sample (pad → campanas → viento → coro); caminas por él y tu distancia al tesoro controla <b>N</b> (rayos/s): lejos = estimación ruidosa y borrosa, cerca = el drone converge nítido (error ∝ 1/√N). La misma matemática del Convergence Lab, hecha mecánica jugable.</div>
-                <a class="btn btn-play" href="game.html" style="display:block; text-align:center; text-decoration:none;">▶ Jugar RayQuest</a>
+                <div class="panel-title"><span>🎮 Game<span class="info-badge" tabindex="0">i<span class="info-tip">RayRunner: arcade de nave (esquiva asteroides, recoge cristales) cuya banda sonora la renderiza RayDrone en vivo. La zona que atraviesas mueve el foco por el sample (cada zona suena distinta) y tu combo controla N: jugar bien = la música converge densa y nítida; recibir impactos = se degrada a polvo granular y cae de tono.</span></span></span><span>arcade · la banda sonora se renderiza en vivo</span></div>
+                <div class="sub" style="text-align:left; margin:0 0 12px;">Pilota una nave con ↑↓: por <b>donde pasas</b> decide el sonido (el mundo es un sample de 4 zonas: pad → campanas → tormenta → coro) y <b>cómo juegas</b> decide N (rayos/s): combo alto = música convergida y limpia, impactos = polvo granular + caída de tono + cola de rebotes. Audio adaptativo sin capas pregrabadas — un solo motor, parámetros vivos.</div>
+                <a class="btn btn-play" href="game.html" style="display:block; text-align:center; text-decoration:none;">▶ Jugar RayRunner</a>
             </section>
         </div>
     </div>
@@ -784,7 +786,7 @@
     });
 
     // ── Secciones avanzadas: ocultas por defecto, reveladas con el botón ──────
-    // (Ambient · Tonalidad/Filtro · Microtonal · Convergence Lab, en ese orden.)
+    // (Ambient · Afinación · Convergence Lab, en ese orden.)
     const advSections = document.querySelectorAll('.adv');
     advSections.forEach((el) => { el.style.display = 'none'; });
     const advToggle = $('adv-toggle');
