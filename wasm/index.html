@@ -1541,7 +1541,7 @@
             const sl = labFitSlope(Ns, labCurves[s.k]);
             html += `<span style="color:${s.c}">${s.label.padEnd(12)} ${sl.toFixed(3).padStart(7)}   ${f(labCurves[s.k][last])}</span>\n`;
         }
-        html += `<span style="color:#8a99ad">(ideal random ≈ −0.50; los demás bajan más; Reverse se aplana = sesgo)</span></pre>`;
+        html += `<span style="color:#8a99ad">(ideal random ≈ −0.50; stratified/QMC/importance bajan más; Reverse ≈ random en material uniforme — su sesgo solo aflora como meseta si la energía dentro de la apertura es muy desigual)</span></pre>`;
         labReadout.innerHTML = html;
     }
 
