@@ -32,6 +32,7 @@
             .p-tonal { grid-column:1 / -1; grid-row:5; }
             .p-micro { grid-column:1 / -1; grid-row:6; }
             .lab    { grid-column:1 / -1; grid-row:7; }
+            .p-game { grid-column:1 / -1; grid-row:8; }
             .micro-grid { grid-template-columns:300px 1fr; }
             .ambient-grid { grid-template-columns:repeat(5,1fr); }
         }
@@ -366,6 +367,13 @@
                     <button class="preset" id="lab-stop" disabled>■ Stop</button>
                     <button class="preset" id="lab-csv" disabled>⬇ CSV</button>
                 </div>
+            </section>
+
+            <!-- ── GAME: la convergencia como mecánica de juego ── -->
+            <section class="panel p-game">
+                <div class="panel-title"><span>🎮 Game<span class="info-badge" tabindex="0">i<span class="info-tip">RayQuest: un mini-juego donde el buffer de audio es el mapa, tu posición es el foco del render granular, y la densidad de rayos N es tu sonar — cuanto más cerca del tesoro, más rayos y más converge la textura. Encuéntralo por el oído.</span></span></span><span>encuentra el tesoro por el oído · N = tu sonar</span></div>
+                <div class="sub" style="text-align:left; margin:0 0 12px;">El mapa <b>es</b> un sample (pad → campanas → viento → coro); caminas por él y tu distancia al tesoro controla <b>N</b> (rayos/s): lejos = estimación ruidosa y borrosa, cerca = el drone converge nítido (error ∝ 1/√N). La misma matemática del Convergence Lab, hecha mecánica jugable.</div>
+                <a class="btn btn-play" href="game.html" style="display:block; text-align:center; text-decoration:none;">▶ Jugar RayQuest</a>
             </section>
         </div>
     </div>
