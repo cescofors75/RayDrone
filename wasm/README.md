@@ -159,7 +159,15 @@ Motor con paridad casi completa con la versión JS:
   granular), hunde el tono un instante y dispara una cola de rebotes; cada
   cristal enciende un destello de shimmer. **Power-ups** en ambos niveles:
   🛡 escudo (absorbe un golpe — y la música ni se entera), 🚀 misil (X),
-  💣 bomba (C). **Ranking local** con nick (se pide una vez); la interfaz `lb`
+  💣 bomba (C), más un **bláster ilimitado** con cadencia que se dispara con
+  **clic de ratón, Z/espacio o un toque corto**. **Enemigos fantasma** en los
+  dos niveles: naves translúcidas que persiguen tu altura en el espacio y
+  tres coches espectrales (mismo modelo GT que el tuyo, en material aditivo
+  parpadeante) que dan vueltas solos al circuito — alcanzarlos es un golpe
+  (si te adelantan ellos, te atraviesan), disiparlos con un arma da +80 y un
+  destello shimmer, y reaparecen más adelante. El coche del jugador es un
+  GT low-poly con casco extruido, cabina, alerón, llantas neón, faros y
+  underglow. **Ranking local** con nick (se pide una vez); la interfaz `lb`
   está aislada para enchufar un backend y compartirlo entre dispositivos.
   Sin capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
   táctil (vertical en N1, horizontal en N2), canvas retina ~56vh, pantalla

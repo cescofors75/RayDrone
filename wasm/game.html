@@ -93,12 +93,14 @@
         <button id="fs-btn" title="Pantalla completa">⛶</button>
         <div class="overlay" id="start-overlay">
             <div style="max-width:560px; line-height:1.6;">
-                <b>Nivel 1 · Espacio</b>: pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides, recoge
-                cristales <b style="color:var(--cyan)">◆</b> y power-ups (🛡 escudo · 🚀 misil con <b>X</b> ·
-                💣 bomba con <b>C</b>). Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito 3D de verdad (WebGL) estilo kart, con
-                curvas, chicanes, túnel, cambios de rasante, asfalto y tierra — y otra música, alegre y
-                luminosa, renderizada por el mismo motor. Cada vuelta recorre el sample entero. Tu <b>combo</b> decide N, la densidad de rayos:
-                juega bien y la música converge; recibe impactos y se rompe.
+                <b>Nivel 1 · Espacio</b>: pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides y
+                <b style="color:#7bdcff">fantasmas</b> 👻, recoge cristales <b style="color:var(--cyan)">◆</b> y power-ups
+                (🛡 escudo · 🚀 misil con <b>X</b> · 💣 bomba con <b>C</b>). Dispara el <b>bláster</b> —ilimitado— con
+                <b>clic de ratón</b>, <b>Z</b>/<b>espacio</b> o un <b>toque corto</b>.
+                Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito 3D de verdad (WebGL) estilo kart, con
+                curvas, chicanes, túnel, cambios de rasante, asfalto y tierra, rivales fantasma que rondan la pista — y otra
+                música, alegre y luminosa, renderizada por el mismo motor. Cada vuelta recorre el sample entero.
+                Tu <b>combo</b> decide N, la densidad de rayos: juega bien y la música converge; recibe impactos y se rompe.
             </div>
             <button class="btn" id="start-btn">▶ Despegar</button>
             <button class="btn sec" id="lb-show-btn">🏆 Ranking</button>
@@ -355,6 +357,8 @@
     let LAP_LEN = 1;              // longitud real de la vuelta (curve.getLength())
     let curvK = null;             // curvatura firmada muestreada (para la centrífuga)
     const objs2 = [];             // {s, lane, type, mesh}
+    const ghosts2 = [];           // rivales fantasma: {s, lane, spd, ph, t, dead, mesh}
+    const bolts2 = [];            // disparos de bláster en el circuito: {s, lane, spd, ttl, mesh}
 
     // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
     let W = 0, H = 0, k = 1, SHIP_X = 0;
@@ -395,6 +399,7 @@
         shimmer: 0, pitchDip: 0, shake: 0, shieldFlash: 0,
         zoneFlash: 0, zoneFlashName: '', banner: '', bannerTtl: 0,
         asteroids: [], crystals: [], pickups: [], shots: [], particles: [], stars: [],
+        ghosts: [], spawnGhost: 0, blastCd: 0, // fantasmas nivel 1 + cadencia del bláster
         // Nivel 2 (racer 3D): posición sobre la pista (arco), vuelta, etc.
         pos: 0, lap: 0, speed2: 2300, inTunnel: false, bgShift: 0,
         spawnAst: 0, spawnCry: 0, spawnPick: 0, spawnObj: 0,
@@ -414,8 +419,9 @@
         st.shimmer = 0; st.pitchDip = 0; st.shake = 0; st.shieldFlash = 0;
         st.banner = ''; st.bannerTtl = 0; st.touchTarget = null; st.touchTargetX = null;
         st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = []; st.particles = [];
+        st.ghosts = []; st.spawnGhost = 7; st.blastCd = 0;
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
-        clearObjs2();
+        clearObjs2(); clearGhosts2(); clearBolts2();
         $('stage').classList.remove('mode3d');
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
         loadTerrain('space');
@@ -496,17 +502,24 @@
         st.missiles -= 1;
         st.shimmer = Math.max(st.shimmer, 0.6); // el disparo enciende un destello shimmer
         if (st.level === 1) {
-            st.shots.push({ x: SHIP_X + 18 * k, y: st.shipY });
+            st.shots.push({ x: SHIP_X + 18 * k, y: st.shipY, kind: 'm' });
         } else {
-            // Circuito: destruye la primera holo-barrera por delante en tu carril
-            let best = -1, bestD = 1e9;
+            // Circuito: destruye la primera holo-barrera (o fantasma) por delante en tu carril
+            let best = -1, bestD = 1e9, bestGh = null;
             for (let i = 0; i < objs2.length; i++) {
                 const o = objs2[i];
                 if (o.type !== 'rock' || Math.abs(o.lane - st.laneX) >= 0.55) continue;
                 const d = wrapS(o.s - st.pos);
                 if (d > 2 && d < 150 && d < bestD) { bestD = d; best = i; }
             }
-            if (best >= 0) {
+            for (const gh of ghosts2) {
+                if (gh.dead > 0 || Math.abs(gh.lane - st.laneX) >= 0.55) continue;
+                const d = wrapS(gh.s - st.pos);
+                if (d > 2 && d < 150 && d < bestD) { bestD = d; best = -1; bestGh = gh; }
+            }
+            if (bestGh) {
+                killGhost2(bestGh, 6);
+            } else if (best >= 0) {
                 const pxy = screenOf(objs2[best].mesh);
                 burst(pxy.x, pxy.y, [255, 140, 60], 20);
                 removeObj2(best);
@@ -515,6 +528,23 @@
         }
         vibrate(25);
         updateHud();
+    }
+    // Bláster: arma básica ilimitada con cadencia — clic de ratón, toque corto o Z
+    function fireBlaster() {
+        if (!st.playing || st.paused || st.blastCd > 0) return;
+        st.blastCd = 0.22;
+        st.shimmer = Math.max(st.shimmer, 0.25); // cada disparo, un chispazo shimmer
+        if (st.level === 1) {
+            st.shots.push({ x: SHIP_X + 16 * k, y: st.shipY, kind: 'b' });
+        } else {
+            if (!T3) return;
+            const mesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.16, 0.16, 2.4),
+                new THREE.MeshBasicMaterial({ color: 0x9df6ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+            T3.scene.add(mesh);
+            bolts2.push({ s: wrapS(st.pos + 3), lane: st.laneX, spd: st.speed2 * S3D + 240, ttl: 1.3, mesh });
+        }
+        vibrate(8);
     }
     function useBomb() {
         if (!st.playing || st.paused || st.bombs <= 0) return;
@@ -526,6 +556,8 @@
         if (st.level === 1) {
             for (const a of st.asteroids) { burst(a.x, a.y, [255, 170, 60], 10); st.score += 20; }
             st.asteroids = [];
+            for (const gh of st.ghosts) { burst(gh.x, gh.y, [150, 200, 255], 14); st.score += 30; }
+            st.ghosts = [];
         } else {
             for (let i = objs2.length - 1; i >= 0; i--) {
                 const o = objs2[i];
@@ -535,6 +567,10 @@
                 burst(pxy.x, pxy.y, [255, 170, 60], 10);
                 removeObj2(i);
                 st.score += 20;
+            }
+            for (const gh of ghosts2) {
+                if (gh.dead > 0 || wrapS(gh.s - st.pos) > 420) continue;
+                killGhost2(gh, 8);
             }
         }
         vibrate([50, 30, 80]);
@@ -650,8 +686,9 @@
         st.laneX = 0;
         st.touchTarget = null; st.touchTargetX = null;
         st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = [];
+        st.ghosts = [];
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
-        clearObjs2();
+        clearObjs2(); clearGhosts2(); clearBolts2();
         $('stage').classList.add('mode3d');
         resize3D();
         st.spawnObj = 1.2; st.spawnCry = 1.2; st.spawnPick = 6;
@@ -685,6 +722,7 @@
         else if ((st.level === 1 && down) || (st.level === 2 && right)) keys.b = true;
         else if (e.key === 'x') { if (!e.repeat) fireMissile(); }
         else if (e.key === 'c') { if (!e.repeat) useBomb(); }
+        else if (e.key === 'z' || e.key === ' ') { fireBlaster(); } // mantener = autofuego (con cadencia)
         else if (e.key === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
         else return;
         e.preventDefault();
@@ -715,10 +753,23 @@
             st.touchTargetX = clamp(((e.clientX - rect.left) / rect.width) * 2 - 1, -1, 1);
         }
     }
-    canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); dragging = true; dragTo(e); capture(canvas, e); });
-    canvas.addEventListener('pointermove', (e) => { if (dragging) dragTo(e); });
+    let downT = 0, downX = 0, downY = 0;
+    canvas.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        dragging = true;
+        downT = performance.now(); downX = e.clientX; downY = e.clientY;
+        if (e.pointerType === 'mouse') fireBlaster(); // clic = disparo (el ratón no pilota: teclado)
+        else dragTo(e);
+        capture(canvas, e);
+    });
+    canvas.addEventListener('pointermove', (e) => { if (dragging && e.pointerType !== 'mouse') dragTo(e); });
     const dragEnd = () => { dragging = false; st.touchTarget = null; st.touchTargetX = null; };
-    canvas.addEventListener('pointerup', dragEnd);
+    canvas.addEventListener('pointerup', (e) => {
+        // Toque corto (sin arrastre) = disparo de bláster también en táctil
+        if (e.pointerType !== 'mouse' && performance.now() - downT < 220 &&
+            Math.hypot(e.clientX - downX, e.clientY - downY) < 12) fireBlaster();
+        dragEnd();
+    });
     canvas.addEventListener('pointercancel', dragEnd);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -761,7 +812,39 @@
         for (const o of objs2) if (o.mesh && T3) T3.scene.remove(o.mesh);
         objs2.length = 0;
     }
+    function clearGhosts2() {
+        for (const gh of ghosts2) if (gh.mesh && T3) T3.scene.remove(gh.mesh);
+        ghosts2.length = 0;
+    }
+    function clearBolts2() {
+        for (const b of bolts2) if (b.mesh && T3) T3.scene.remove(b.mesh);
+        bolts2.length = 0;
+    }
     const wrapS = (d) => ((d % LAP_LEN) + LAP_LEN) % LAP_LEN;
+    const signedS = (d) => { d = wrapS(d); return d > LAP_LEN / 2 ? d - LAP_LEN : d; }; // distancia con signo
+
+    // Rivales fantasma: coches translúcidos que dan vueltas solos. Tocarlos = golpe
+    // (el escudo lo absorbe); un arma los disipa (+80) y reaparecen más adelante.
+    const GHOST_COLS = [0x9a6bff, 0x54e0ff, 0xff5ea0];
+    function spawnGhost2(i) {
+        const mesh = buildCar(GHOST_COLS[i % 3], GHOST_COLS[i % 3], GHOST_COLS[i % 3]);
+        const gh = {
+            s: wrapS(st.pos + 300 + i * (LAP_LEN / 3.2)),
+            lane: (i - 1) * 0.7,
+            spd: (0.88 + 0.08 * i) * 2300 * S3D, // algo más lentos/rápidos que tú
+            ph: Math.random() * 6.28, t: 0, dead: 0, mesh,
+        };
+        T3.scene.add(mesh);
+        ghosts2.push(gh);
+    }
+    function killGhost2(gh, respawnSecs) {
+        const pxy = screenOf(gh.mesh);
+        burst(pxy.x, pxy.y, [180, 150, 255], 22);
+        gh.dead = respawnSecs;
+        gh.mesh.visible = false;
+        st.score += 80;
+        st.shimmer = 1;
+    }
 
     // ── Texturas procedurales (nada que descargar) ──
     function canvasTex(w, h, draw, repX = 1, repY = 1) {
@@ -1035,39 +1118,17 @@
             }
         }
 
-        // Kart low-poly con neón y estelas
-        const kart = new THREE.Group();
-        {
-            const body = new THREE.Mesh(
-                new THREE.BoxGeometry(1.9, 0.55, 2.6),
-                new THREE.MeshLambertMaterial({ color: 0x0f1320 }));
-            body.position.y = 0.45;
-            kart.add(body);
-            const edge = new THREE.LineSegments(
-                new THREE.EdgesGeometry(body.geometry),
-                new THREE.LineBasicMaterial({ color: 0x28e6dc }));
-            edge.position.copy(body.position);
-            kart.add(edge);
-            const cab = new THREE.Mesh(
-                new THREE.BoxGeometry(0.9, 0.5, 1.0),
-                new THREE.MeshLambertMaterial({ color: 0x2b2233, emissive: 0x604020 }));
-            cab.position.set(0, 0.95, -0.2);
-            kart.add(cab);
-            const wing = new THREE.Mesh(
-                new THREE.BoxGeometry(2.2, 0.12, 0.5),
-                new THREE.MeshBasicMaterial({ color: 0xff355e }));
-            wing.position.set(0, 0.95, 1.25);
-            kart.add(wing);
-            kart.userData.trails = [];
-            for (const [dx, col] of [[-0.7, 0xff355e], [0.7, 0x28e6dc]]) {
-                const tr = new THREE.Mesh(
-                    new THREE.PlaneGeometry(0.28, 6),
-                    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-                tr.rotation.x = Math.PI / 2;
-                tr.position.set(dx, 0.35, 1.4 + 3);
-                kart.add(tr);
-                kart.userData.trails.push(tr);
-            }
+        // Coche del jugador (GT synthwave) + estelas ∝ N
+        const kart = buildCar(0x28e6dc, 0xff355e, 0);
+        kart.userData.trails = [];
+        for (const [dx, col] of [[-0.7, 0xff355e], [0.7, 0x28e6dc]]) {
+            const tr = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.28, 6),
+                new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+            tr.rotation.x = Math.PI / 2;
+            tr.position.set(dx, 0.35, -(1.4 + 3)); // detrás del coche (el morro mira a +z)
+            kart.add(tr);
+            kart.userData.trails.push(tr);
         }
         scene.add(kart);
 
@@ -1086,6 +1147,97 @@
         T3.renderer.setSize(r.width, r.height, false);
         T3.camera.aspect = r.width / r.height;
         T3.camera.updateProjectionMatrix();
+    }
+
+    // Coche GT low-poly: casco extruido desde el perfil lateral, cabina de
+    // cristal, alerón, ruedas con llanta neón, faros, piloto trasero y
+    // underglow. ghostCol != 0 → variante fantasma (aditiva y translúcida).
+    // Convención: el MORRO mira a +z (Object3D.lookAt orienta +z al objetivo).
+    function buildCar(accent, accent2, ghostCol) {
+        const car = new THREE.Group();
+        // Perfil lateral (x = largo con el morro en x−, y = alto), extruido a lo ancho
+        const pf = new THREE.Shape();
+        pf.moveTo(-2.25, 0.12);
+        pf.lineTo(-2.25, 0.36);  // morro chato
+        pf.lineTo(-1.1, 0.62);   // capó
+        pf.lineTo(-0.4, 1.02);   // parabrisas
+        pf.lineTo(0.72, 1.05);   // techo
+        pf.lineTo(1.55, 0.64);   // luneta
+        pf.lineTo(2.15, 0.7);    // aleta trasera
+        pf.lineTo(2.15, 0.12);
+        pf.closePath();
+        const hullGeo = new THREE.ExtrudeGeometry(pf, { depth: 1.72, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 1 });
+        hullGeo.translate(0, 0, -0.86);
+        hullGeo.rotateY(Math.PI / 2); // morro (x−) pasa a +z
+        const hull = new THREE.Mesh(hullGeo, new THREE.MeshLambertMaterial({ color: 0x25304f, emissive: 0x151d38 }));
+        car.add(hull);
+        const edges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(hullGeo, 22),
+            new THREE.LineBasicMaterial({ color: accent }));
+        car.add(edges);
+        // Cabina de cristal oscuro
+        const glass = new THREE.Mesh(
+            new THREE.BoxGeometry(1.4, 0.3, 1.25),
+            new THREE.MeshLambertMaterial({ color: 0x0a2330, emissive: 0x0e4256 }));
+        glass.position.set(0, 0.86, 0.15);
+        car.add(glass);
+        // Alerón trasero (dos soportes + ala)
+        const wingMat = new THREE.MeshBasicMaterial({ color: accent2 });
+        for (const sx of [-0.6, 0.6]) {
+            const strut = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.36, 0.09), wingMat);
+            strut.position.set(sx, 0.86, -1.9);
+            car.add(strut);
+        }
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 0.44), wingMat);
+        wing.position.set(0, 1.08, -1.9);
+        car.add(wing);
+        // Ruedas (giran en render3D) con disco de llanta neón
+        car.userData.wheels = [];
+        const tireGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 14);
+        tireGeo.rotateZ(Math.PI / 2); // eje de giro = x local
+        const rimGeo = new THREE.CylinderGeometry(0.26, 0.26, 0.34, 10);
+        rimGeo.rotateZ(Math.PI / 2);
+        const tireMat = new THREE.MeshLambertMaterial({ color: 0x05070c });
+        const rimMat = new THREE.MeshBasicMaterial({ color: accent });
+        for (const [wx, wz] of [[-0.95, 1.28], [0.95, 1.28], [-0.95, -1.28], [0.95, -1.28]]) {
+            const wheel = new THREE.Group();
+            wheel.add(new THREE.Mesh(tireGeo, tireMat));
+            wheel.add(new THREE.Mesh(rimGeo, rimMat));
+            wheel.position.set(wx, 0.42, wz);
+            car.add(wheel);
+            car.userData.wheels.push(wheel);
+        }
+        // Faros delante, piloto detrás, underglow debajo
+        const lampMat = new THREE.MeshBasicMaterial({ color: 0xdffcff });
+        for (const sx of [-0.58, 0.58]) {
+            const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.12, 0.07), lampMat);
+            lamp.position.set(sx, 0.5, 2.3);
+            car.add(lamp);
+        }
+        const tail = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.07), new THREE.MeshBasicMaterial({ color: accent2 }));
+        tail.position.set(0, 0.56, -2.3);
+        car.add(tail);
+        const glow = new THREE.Mesh(
+            new THREE.PlaneGeometry(2.8, 5.0),
+            new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+        glow.rotation.x = -Math.PI / 2;
+        glow.position.y = 0.06;
+        car.add(glow);
+        car.scale.setScalar(1.18);
+        if (ghostCol) {
+            // Fantasma: todo el coche en un solo material aditivo translúcido
+            car.userData.ghostMats = [];
+            car.traverse((n) => {
+                if (n.isMesh) {
+                    n.material = new THREE.MeshBasicMaterial({ color: ghostCol, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
+                    car.userData.ghostMats.push(n.material);
+                } else if (n.isLineSegments) {
+                    n.material = new THREE.LineBasicMaterial({ color: ghostCol, transparent: true, opacity: 0.85 });
+                    car.userData.ghostMats.push(n.material);
+                }
+            });
+        }
+        return car;
     }
 
     // Meshes de objetos del circuito
@@ -1173,6 +1325,7 @@
             p.x += p.vx * dt; p.y += p.vy * dt; p.life -= 2.2 * dt;
             if (p.life <= 0) st.particles.splice(i, 1);
         }
+        st.blastCd = Math.max(0, st.blastCd - dt);
         st.shimmer = Math.max(0, st.shimmer - 0.9 * dt);
         st.pitchDip = Math.max(0, st.pitchDip - 1.1 * dt);
         st.shake = Math.max(0, st.shake - 3 * dt);
@@ -1219,23 +1372,54 @@
             st.pickups.push({ x: W + 20 * k, y: (40 + Math.random() * 260) / 340 * H, ph: 0, kind: PICKUP_KINDS[Math.floor(Math.random() * PICKUP_KINDS.length)] });
         }
         const vx = st.speed * sf();
-        // Misiles disparados
+        // Fantasmas: aparecen de tanto en tanto y persiguen tu altura
+        st.spawnGhost -= dt;
+        if (st.spawnGhost <= 0) {
+            st.spawnGhost = 8 + Math.random() * 5;
+            st.ghosts.push({ x: W + 40 * k, y: Math.random() * H, ph: Math.random() * 6.28 });
+        }
+        for (let i = st.ghosts.length - 1; i >= 0; i--) {
+            const gh = st.ghosts[i];
+            gh.x -= vx * 0.55 * dt;               // más lento que los asteroides…
+            gh.y += (st.shipY - gh.y) * Math.min(1, 0.6 * dt); // …pero te busca
+            gh.ph += 5 * dt;
+            if (gh.x < -40 * k) { st.ghosts.splice(i, 1); continue; }
+            const dx = gh.x - SHIP_X, dy = gh.y - st.shipY;
+            const rr = (15 + SHIP_R) * k;
+            if (dx * dx + dy * dy < rr * rr) { st.ghosts.splice(i, 1); hitShip(); }
+        }
+        // Proyectiles (misiles 'm' y bláster 'b')
         for (let i = st.shots.length - 1; i >= 0; i--) {
             const m = st.shots[i];
-            m.x += 900 * sf() * dt;
+            m.x += (m.kind === 'b' ? 1250 : 900) * sf() * dt;
             if (m.x > W + 30 * k) { st.shots.splice(i, 1); continue; }
+            let used = false;
             for (let j = st.asteroids.length - 1; j >= 0; j--) {
                 const a = st.asteroids[j];
                 const dx = a.x - m.x, dy = a.y - m.y;
                 if (dx * dx + dy * dy < a.r * a.r) {
                     burst(a.x, a.y, [255, 140, 60], 18);
                     st.asteroids.splice(j, 1);
-                    st.shots.splice(i, 1);
-                    st.score += 40;
+                    st.score += m.kind === 'b' ? 15 : 40;
+                    used = true;
                     updateHud();
                     break;
                 }
             }
+            if (!used) for (let j = st.ghosts.length - 1; j >= 0; j--) {
+                const gh = st.ghosts[j];
+                const dx = gh.x - m.x, dy = gh.y - m.y;
+                if (dx * dx + dy * dy < (16 * k) * (16 * k)) {
+                    burst(gh.x, gh.y, [150, 200, 255], 20);
+                    st.ghosts.splice(j, 1);
+                    st.score += 80;
+                    st.shimmer = 1;
+                    used = true;
+                    updateHud();
+                    break;
+                }
+            }
+            if (used) st.shots.splice(i, 1);
         }
         for (let i = st.asteroids.length - 1; i >= 0; i--) {
             const a = st.asteroids[i];
@@ -1332,6 +1516,56 @@
                 }
             }
         }
+        // Rivales fantasma: nacen con la escena y dan vueltas solos
+        while (ghosts2.length < 3) spawnGhost2(ghosts2.length);
+        for (const gh of ghosts2) {
+            if (gh.dead > 0) {
+                gh.dead -= dt;
+                if (gh.dead <= 0) { gh.s = wrapS(st.pos + 320 + Math.random() * 400); gh.mesh.visible = true; }
+                continue;
+            }
+            gh.t += dt;
+            gh.s = wrapS(gh.s + gh.spd * dt);
+            gh.lane += (Math.sin(gh.t * 0.4 + gh.ph) * 0.85 - gh.lane) * Math.min(1, 1.1 * dt);
+            // Choque: solo si TÚ lo alcanzas (un fantasma que te adelanta por
+            // detrás no se ve venir — te atraviesa, que para eso es fantasma)
+            const dS = signedS(gh.s - st.pos);
+            if (dS > 0.3 && dS < 2.6 && Math.abs(gh.lane - st.laneX) < 0.5 && sSpeed > gh.spd - 0.5) {
+                hitShip();
+                gh.dead = 2.2; // se desvanece un instante tras el golpe
+                gh.mesh.visible = false;
+            }
+        }
+        // Disparos de bláster: avanzan por el arco y revientan barreras/fantasmas
+        for (let i = bolts2.length - 1; i >= 0; i--) {
+            const b = bolts2[i];
+            const bPrev = b.s;
+            b.s = wrapS(b.s + b.spd * dt);
+            b.ttl -= dt;
+            const bds = b.spd * dt;
+            let hit = false;
+            for (let j = objs2.length - 1; j >= 0 && !hit; j--) {
+                const o = objs2[j];
+                if (o.type !== 'rock') continue;
+                if (wrapS(o.s - bPrev) <= bds + 1.6 && Math.abs(o.lane - b.lane) < 0.45) {
+                    const pxy = screenOf(o.mesh);
+                    burst(pxy.x, pxy.y, [160, 240, 255], 14);
+                    removeObj2(j);
+                    st.score += 15;
+                    hit = true;
+                    updateHud();
+                }
+            }
+            for (const gh of ghosts2) {
+                if (hit || gh.dead > 0) continue;
+                if (wrapS(gh.s - bPrev) <= bds + 1.6 && Math.abs(gh.lane - b.lane) < 0.5) {
+                    killGhost2(gh, 6);
+                    hit = true;
+                    updateHud();
+                }
+            }
+            if (hit || b.ttl <= 0) { T3.scene.remove(b.mesh); bolts2.splice(i, 1); }
+        }
     }
 
     // ── Dibujo · nivel 1 (espacio, lateral) ──────────────────────────────────
@@ -1366,7 +1600,29 @@
             drawRockPoly(a.r, 0);
             g.restore();
         }
+        for (const gh of st.ghosts) {
+            // Nave fantasma: silueta espejo translúcida que parpadea
+            const fl = 0.4 + 0.22 * Math.sin(gh.ph * 1.7);
+            g.save();
+            g.translate(gh.x, gh.y);
+            g.globalAlpha = fl * 0.35;
+            g.fillStyle = '#9adfff';
+            g.beginPath(); g.arc(0, 0, 17 * k, 0, 6.283); g.fill();
+            g.globalAlpha = fl;
+            g.fillStyle = '#7bdcff';
+            g.beginPath();
+            g.moveTo(-16 * k, 0); g.lineTo(10 * k, -9 * k); g.lineTo(4 * k, 0); g.lineTo(10 * k, 9 * k);
+            g.closePath(); g.fill();
+            g.restore();
+        }
         for (const m of st.shots) {
+            if (m.kind === 'b') {
+                g.fillStyle = 'rgba(157,246,255,0.95)';
+                g.fillRect(m.x - 9 * k, m.y - 1.6 * k, 18 * k, 3.2 * k);
+                g.fillStyle = 'rgba(157,246,255,0.35)';
+                g.fillRect(m.x - 22 * k, m.y - 1 * k, 13 * k, 2 * k);
+                continue;
+            }
             g.fillStyle = 'rgba(255,160,80,0.95)';
             g.beginPath();
             g.moveTo(m.x + 10 * k, m.y); g.lineTo(m.x - 8 * k, m.y - 3.4 * k); g.lineTo(m.x - 8 * k, m.y + 3.4 * k);
@@ -1412,12 +1668,40 @@
         const kIdx = Math.floor(frac * curvK.length) % curvK.length;
         kart.rotation.z = clamp(-steer * 0.5 - curvK[kIdx] * 11, -0.38, 0.38);
         if (surfaceAt(frac) === 'dirt') kart.position.y += Math.abs(Math.sin(t * 34)) * 0.12;
-        // Estelas ∝ N (la música convergiendo se VE en el kart)
+        // Ruedas girando ∝ velocidad
+        const spin = st.speed2 * S3D * t;
+        for (const wh of kart.userData.wheels) wh.rotation.x = spin;
+        // Estelas ∝ N (la música convergiendo se VE en el kart) — detrás (−z)
         for (const tr of kart.userData.trails) {
             const L = 2.5 + (st.rate / 400) * 8;
             tr.scale.y = L / 6;
-            tr.position.z = 1.4 + (L / 2);
+            tr.position.z = -(1.4 + L / 2);
             tr.material.opacity = 0.35 + (st.rate / 400) * 0.45;
+        }
+        // Rivales fantasma: sobre la pista, parpadeando; miran a su propio rumbo
+        for (const gh of ghosts2) {
+            if (gh.dead > 0) continue;
+            const gf = wrapS(gh.s) / LAP_LEN;
+            const gP = T3.curve.getPointAt(gf);
+            const gT = T3.curve.getTangentAt(gf);
+            const gSide = V3().crossVectors(T3.up, gT).setY(0).normalize();
+            gh.mesh.position.copy(gP).addScaledVector(gSide, -gh.lane * ROAD_HALF * 0.86);
+            gh.mesh.position.y += 0.32 + Math.sin(t * 2.4 + gh.ph) * 0.14; // levitan
+            const gA = T3.curve.getPointAt((gf + 6 / LAP_LEN) % 1).addScaledVector(gSide, -gh.lane * ROAD_HALF * 0.86);
+            gh.mesh.lookAt(gA.x, gh.mesh.position.y, gA.z);
+            for (const wh of gh.mesh.userData.wheels) wh.rotation.x = spin;
+            const fl = 0.75 + 0.25 * Math.sin(t * 7 + gh.ph);
+            for (const m of gh.mesh.userData.ghostMats) m.opacity = (m.isLineBasicMaterial ? 0.85 : 0.3) * fl;
+        }
+        // Bolts de bláster sobre la pista
+        for (const b of bolts2) {
+            const bf = wrapS(b.s) / LAP_LEN;
+            const bP = T3.curve.getPointAt(bf);
+            const bT = T3.curve.getTangentAt(bf);
+            const bSide = V3().crossVectors(T3.up, bT).setY(0).normalize();
+            b.mesh.position.copy(bP).addScaledVector(bSide, -b.lane * ROAD_HALF * 0.86);
+            b.mesh.position.y += 0.62;
+            b.mesh.lookAt(bP.clone().add(bT));
         }
         // Cámara: detrás y por encima, mirando por delante del kart
         const cam = T3.camera;
@@ -1539,7 +1823,9 @@
     // Hook de test/depuración (usado por las verificaciones headless del repo).
     window.__ray_game = {
         get state() { return st; },
-        collectCrystal, hitShip, give, fireMissile, useBomb,
+        collectCrystal, hitShip, give, fireMissile, useBomb, fireBlaster,
+        get ghosts() { return st.level === 1 ? st.ghosts : ghosts2; },
+        get t3() { return T3; },
         start: startRound, pause: pauseGame, resume: resumeGame, resize: resizeCanvas,
         setWorldT(t) { st.worldT = t; },
         get lapLen() { return LAP_LEN; },
