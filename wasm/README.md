@@ -141,12 +141,17 @@ Motor con paridad casi completa con la versión JS:
   El estimador JS se conserva solo para el A/B audible.
 - ✅ **RayRunner (`game.html`)**: arcade de **2 niveles** cuya banda sonora la
   renderiza RayDrone en vivo — la demo de "audio adaptativo para videojuegos".
-  Nivel 1 (nave espacial, lateral) y Nivel 2 (**Circuito Neón**, pseudo-3D
-  estilo kart: sol de rayas, rejilla en perspectiva, skyline, pilones neón),
-  cada uno con su propio sample sintetizado de 24 s y 4 zonas — el espacio
-  (pad → campanas → tormenta → coro) y el circuito (amanecer → calipso →
-  niebla → faro 2077, en tono mayor y alegre): **por donde pasas, eso suena**
-  (el scroll mueve el foco). Y **cómo juegas transforma la música**: el combo
+  Nivel 1 (nave espacial, lateral) y Nivel 2 (**Circuito Neón**: un circuito
+  cerrado de verdad renderizado por segmentos al estilo de los kart racers
+  clásicos — curvas que doblan la carretera, chicanes, un túnel con luces,
+  cambios de rasante que ocultan el trazado tras las crestas, asfalto y
+  tierra, arco de meta y contador de vueltas; sol de rayas, skyline con
+  parallax y pilones neón), cada nivel con su propio sample sintetizado de
+  24 s y 4 zonas — el espacio (pad → campanas → tormenta → coro) y el
+  circuito (amanecer → calipso → niebla → faro 2077, en tono mayor y
+  alegre). En el circuito, **cada sector de pista es una zona musical**: una
+  vuelta = una pasada entera por el sample (el túnel suena a niebla estática,
+  el tramo de tierra a faro 2077). Y **cómo juegas transforma la música**: el combo
   controla N (60→400 rayos/s) y la apertura — jugar bien = la textura converge
   densa y nítida (error ∝ 1/√N); un impacto desploma el combo (polvo
   granular), hunde el tono un instante y dispara una cola de rebotes; cada

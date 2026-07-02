@@ -87,8 +87,9 @@
             <div style="max-width:560px; line-height:1.6;">
                 <b>Nivel 1 · Espacio</b>: pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides, recoge
                 cristales <b style="color:var(--cyan)">◆</b> y power-ups (🛡 escudo · 🚀 misil con <b>X</b> ·
-                💣 bomba con <b>C</b>). Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>, en 3D estilo kart y con otra música
-                — alegre, luminosa, renderizada por el mismo motor. Tu <b>combo</b> decide N, la densidad de rayos:
+                💣 bomba con <b>C</b>). Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito de verdad estilo kart, con
+                curvas, chicanes, túnel, cambios de rasante, asfalto y tierra — y otra música, alegre y
+                luminosa, renderizada por el mismo motor. Cada vuelta recorre el sample entero. Tu <b>combo</b> decide N, la densidad de rayos:
                 juega bien y la música converge; recibe impactos y se rompe.
             </div>
             <button class="btn" id="start-btn">▶ Despegar</button>
@@ -124,7 +125,9 @@
     <div class="how">
         <b>Qué está pasando por debajo</b> — el motor granular real (el mismo Rust→wasm del demo) suena todo el
         rato y cada nivel es un sample distinto de 24 s con 4 zonas: el espacio (pad → campanas → tormenta → coro)
-        y el circuito neón (amanecer → calipso → niebla → faro 2077), en tono mayor y luminoso. El scroll mueve el <i>foco</i>
+        y el circuito neón (amanecer → calipso → niebla → faro 2077), en tono mayor y luminoso —
+        cada <b>sector de la pista</b> es una zona musical: la recta de salida suena a amanecer, el túnel a
+        niebla estática, el tramo de tierra a faro 2077; una vuelta = una pasada entera por el sample. El scroll mueve el <i>foco</i>
         — por donde pasas, eso suena — y tu combo controla <b>N</b> (rayos/s) y la <i>apertura</i>: combo alto =
         la textura converge limpia (error ∝ 1/√N); un impacto la rompe en polvo granular y hunde el tono
         (con 🛡 el escudo absorbe el golpe… y la música ni se entera). El ranking se guarda en este dispositivo;
@@ -376,7 +379,8 @@
         shimmer: 0, pitchDip: 0, shake: 0, shieldFlash: 0,
         zoneFlash: 0, zoneFlashName: '', banner: '', bannerTtl: 0,
         asteroids: [], crystals: [], pickups: [], shots: [], particles: [], stars: [],
-        objs3d: [],                                   // nivel 2: {z, lane, type}
+        // Nivel 2 (racer por segmentos): posición sobre la pista, vuelta, etc.
+        pos: 0, lap: 0, speed2: 2300, inTunnel: false, bgShift: 0,
         spawnAst: 0, spawnCry: 0, spawnPick: 0, spawnObj: 0,
         touchTarget: null, touchTargetX: null,
     };
@@ -393,7 +397,9 @@
         st.shield = 0; st.missiles = 0; st.bombs = 0;
         st.shimmer = 0; st.pitchDip = 0; st.shake = 0; st.shieldFlash = 0;
         st.banner = ''; st.bannerTtl = 0; st.touchTarget = null; st.touchTargetX = null;
-        st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = []; st.particles = []; st.objs3d = [];
+        st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = []; st.particles = [];
+        st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
+        clearTrackObjs();
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
         loadTerrain('space');
         relabelButtons();
@@ -475,18 +481,20 @@
         if (st.level === 1) {
             st.shots.push({ x: SHIP_X + 18 * k, y: st.shipY });
         } else {
-            // 3D: destruye la roca más cercana en tu carril (por delante)
-            let best = -1, bestZ = 2;
-            for (let i = 0; i < st.objs3d.length; i++) {
-                const o = st.objs3d[i];
-                if (o.type === 'rock' && o.z > 0.05 && Math.abs(o.lane - st.laneX) < 0.5 && o.z < bestZ) { bestZ = o.z; best = i; }
-            }
-            if (best >= 0) {
-                const o = st.objs3d[best];
-                const p = project(o.z, o.lane);
-                burst(p.x, p.y, [255, 140, 60], 20);
-                st.objs3d.splice(best, 1);
-                st.score += 40;
+            // Circuito: destruye la primera holo-barrera por delante en tu carril
+            const N = track.length, segI = Math.floor(st.pos / SEG_L) % N;
+            outer:
+            for (let n = 1; n <= 16; n++) {
+                const seg = track[(segI + n) % N];
+                for (let oi = seg.objs.length - 1; oi >= 0; oi--) {
+                    const o = seg.objs[oi];
+                    if (o.type === 'rock' && Math.abs(o.offset - st.laneX) < 0.55) {
+                        burst(o._sx || W / 2, o._sy || H * 0.5, [255, 140, 60], 20);
+                        seg.objs.splice(oi, 1);
+                        st.score += 40;
+                        break outer;
+                    }
+                }
             }
         }
         vibrate(25);
@@ -503,13 +511,17 @@
             for (const a of st.asteroids) { burst(a.x, a.y, [255, 170, 60], 10); st.score += 20; }
             st.asteroids = [];
         } else {
-            for (const o of st.objs3d) {
-                if (o.type !== 'rock') continue;
-                const p = project(o.z, o.lane);
-                burst(p.x, p.y, [255, 170, 60], 10);
-                st.score += 20;
+            const N = track.length, segI = Math.floor(st.pos / SEG_L) % N;
+            for (let n = 0; n <= DRAW_N; n++) {
+                const seg = track[(segI + n) % N];
+                for (let oi = seg.objs.length - 1; oi >= 0; oi--) {
+                    if (seg.objs[oi].type !== 'rock') continue;
+                    const o = seg.objs[oi];
+                    burst(o._sx || W / 2, o._sy || H * 0.5, [255, 170, 60], 10);
+                    seg.objs.splice(oi, 1);
+                    st.score += 20;
+                }
             }
-            st.objs3d = st.objs3d.filter((o) => o.type !== 'rock');
         }
         vibrate([50, 30, 80]);
         updateHud();
@@ -521,7 +533,7 @@
         st.combo = Math.min(10, st.combo + 1);
         st.score += 50 + st.combo * 10;
         st.shimmer = 1;
-        const p = st.level === 1 ? { x: SHIP_X + 20 * k, y: st.shipY } : project(0.08, st.laneX);
+        const p = st.level === 1 ? { x: SHIP_X + 20 * k, y: st.shipY } : { x: W / 2, y: H * 0.82 };
         burst(p.x, p.y, [40, 230, 220], 14);
         vibrate(15);
         updateHud();
@@ -542,7 +554,7 @@
         st.shake = 1;
         if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 3, refl: 0.7, feedback: 0.1 });
         setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 1200);
-        const p = st.level === 1 ? { x: SHIP_X, y: st.shipY } : project(0.05, st.laneX);
+        const p = st.level === 1 ? { x: SHIP_X, y: st.shipY } : { x: W / 2, y: H * 0.84 };
         burst(p.x, p.y, [255, 80, 80], 22);
         vibrate([60, 40, 60]);
         updateHud();
@@ -623,7 +635,8 @@
         st.laneX = 0;
         st.touchTarget = null; st.touchTargetX = null;
         st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = [];
-        st.objs3d = [];
+        st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
+        clearTrackObjs();
         st.spawnObj = 1.2; st.spawnCry = 1.2; st.spawnPick = 6;
         loadTerrain('neon');
         banner('NIVEL 2 · CIRCUITO NEÓN');
@@ -712,15 +725,71 @@
         }
     }
 
-    // ── Proyección pseudo-3D del nivel 2 (estilo kart: carretera al horizonte) ─
-    function horizonY() { return H * 0.36; }
-    function project(z, lane) {
-        // z: 1 = horizonte, 0 = encima del jugador. Curva de perspectiva ^2.2.
-        const t = Math.pow(1 - clamp(z, 0, 1), 2.2);
-        const y = horizonY() + (H * 0.94 - horizonY()) * t;
-        const half = 10 * k + (W * 0.42 - 10 * k) * t;
-        const x = W / 2 + lane * half * 0.75;
-        return { x, y, s: half / (W * 0.42) };
+    // ════════════════════════════════════════════════════════════════════════
+    // Nivel 2: circuito por SEGMENTOS (la técnica pseudo-3D de los racers
+    // clásicos): la pista es una lista cerrada de segmentos, cada uno con su
+    // curvatura, elevación, superficie (asfalto/tierra) y bandera de túnel.
+    // Curvas = flexión acumulada al proyectar; rasantes = recestas que OCULTAN
+    // la pista de detrás (clip por cresta); una vuelta = una pasada entera por
+    // el sample del motor (sector de pista = zona musical).
+    // ════════════════════════════════════════════════════════════════════════
+    const SEG_L = 190;      // longitud de segmento (unidades de mundo)
+    const ROAD_W = 1150;    // semiancho de calzada (unidades de mundo)
+    const CAM_H = 1150;     // altura de la cámara sobre la pista
+    const CAM_D = 0.82;     // "profundidad" de proyección (fov)
+    const DRAW_N = 55;      // segmentos visibles por delante
+    let track = [];
+    function easeIO(a, b, t) { return a + (b - a) * (0.5 - 0.5 * Math.cos(Math.PI * t)); }
+    // Añade un tramo: rampas de entrada/salida de la curvatura + elevación suave.
+    function addRoad(enter, hold, leave, curve, dy, opt = {}) {
+        const startY = track.length ? track[track.length - 1].y : 0;
+        const total = enter + hold + leave;
+        for (let i = 0; i < total; i++) {
+            const c = i < enter ? curve * (i / enter)
+                : i >= enter + hold ? curve * (1 - (i - enter - hold) / leave)
+                : curve;
+            track.push({
+                curve: c,
+                y: easeIO(startY, startY + dy, (i + 1) / total),
+                tunnel: !!opt.tunnel,
+                surface: opt.surface || 'asphalt',
+                objs: [],
+            });
+        }
+    }
+    // El trazado: 4 sectores que coinciden con las 4 zonas musicales del sample.
+    function buildTrack() {
+        track = [];
+        // S1 · AMANECER NEÓN (asfalto): recta de salida, derechazo, rasante, izquierda
+        addRoad(10, 22, 10, 0, 0);
+        addRoad(8, 14, 8, 2.4, 420);
+        addRoad(6, 8, 6, 0, -420);
+        addRoad(8, 16, 8, -3.0, 0);
+        addRoad(6, 8, 6, 0, 0);
+        // S2 · BARRIO CALIPSO: chicanes (S-S) con lomos
+        addRoad(5, 6, 5, 2.6, 0); addRoad(5, 6, 5, -2.6, 0);
+        addRoad(5, 6, 5, 2.2, 320); addRoad(5, 6, 5, -2.2, -320);
+        addRoad(6, 12, 6, 0, 0);
+        // S3 · NIEBLA ESTÁTICA: bajada, TÚNEL curvado, salida
+        addRoad(6, 8, 6, 0, -260);
+        addRoad(6, 42, 6, 1.6, 0, { tunnel: true });
+        addRoad(4, 8, 4, 0, 260);
+        // S4 · FARO 2077 (tierra): rasantes fuertes + curvón + recta de meta
+        addRoad(6, 10, 6, -2.0, 680, { surface: 'dirt' });
+        addRoad(4, 6, 4, 0, -950, { surface: 'dirt' });
+        addRoad(6, 12, 6, 2.8, 520, { surface: 'dirt' });
+        addRoad(6, 10, 6, 0, -450, { surface: 'dirt' });
+        addRoad(8, 20, 8, 0, 0);
+    }
+    buildTrack();
+    const trackLen = () => track.length * SEG_L;
+    function clearTrackObjs() { for (const seg of track) seg.objs.length = 0; }
+    function roadYAt(pos) {
+        const N = track.length;
+        const i = Math.floor(pos / SEG_L) % N;
+        const f = (pos % SEG_L) / SEG_L;
+        const y0 = track[(i - 1 + N) % N].y;
+        return y0 + (track[i].y - y0) * f;
     }
 
     // ── Bucle ─────────────────────────────────────────────────────────────────
@@ -734,7 +803,7 @@
     }
 
     function stepCommon(dt) {
-        st.worldT += 0.35 * dt;
+        if (st.level === 1) st.worldT += 0.35 * dt; // en el circuito, worldT = posición en pista
         const zone = Math.floor((st.worldT % TERRAIN_SECS) / (TERRAIN_SECS / 4));
         if (zone !== st.zone) {
             st.zone = zone;
@@ -838,42 +907,78 @@
     }
 
     function stepLevel2(dt) {
-        // Timón: arrastre horizontal o teclas ◀ ▶
+        const N = track.length, len = trackLen();
+        const prevPos = st.pos;
+        const segI = Math.floor(st.pos / SEG_L) % N;
+        const seg = track[segI];
+        st.inTunnel = seg.tunnel;
+        const onDirt = seg.surface === 'dirt';
+        const offRoad = Math.abs(st.laneX) > 1.12;
+        st.speed2 = 2300 + st.lap * 170;
+        const speedF = (offRoad ? 0.55 : 1) * (onDirt ? 0.88 : 1);
+        st.pos += st.speed2 * speedF * dt;
+        // Vuelta completada = una pasada entera por el sample
+        if (Math.floor(st.pos / len) > Math.floor(prevPos / len)) {
+            st.lap += 1;
+            st.score += 250;
+            banner(`VUELTA ${st.lap + 1}`);
+        }
+        st.worldT = (st.pos / len) * TERRAIN_SECS; // sector de pista = zona musical
+        // Timón: en tierra hay menos agarre; la curva te empuja hacia fuera
         if (st.touchTargetX !== null) {
-            st.laneX += (st.touchTargetX - st.laneX) * Math.min(1, 10 * dt);
+            st.laneX += (st.touchTargetX - st.laneX) * Math.min(1, (onDirt ? 6 : 10) * dt);
         } else {
             const dir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
-            st.laneX = clamp(st.laneX + dir * 1.9 * dt, -1, 1);
+            st.laneX += dir * (onDirt ? 1.25 : 1.9) * dt;
         }
-        st.zSpeed = Math.min(0.34, 0.20 + st.worldT * 0.004);
+        st.laneX -= seg.curve * st.speed2 * speedF * 0.0000125; // centrífuga
+        st.laneX = clamp(st.laneX, -1.6, 1.6);
+        if (offRoad) {
+            st.shake = Math.max(st.shake, 0.22);
+            if (Math.random() < 14 * dt) {
+                burst(W / 2 + (Math.random() - 0.5) * 80 * k, H * 0.9,
+                      onDirt ? [210, 170, 110] : [150, 150, 190], 2);
+            }
+        }
         st.score += Math.round(12 * dt);
-        // Spawns 3D
+        // Desplazamiento del fondo con la curva (parallax del skyline)
+        st.bgShift -= seg.curve * speedF * dt * 26;
+        // Spawns: se colocan sobre un segmento lejano por delante
+        const farSeg = () => track[(segI + DRAW_N - 8) % N];
         st.spawnObj -= dt;
         if (st.spawnObj <= 0) {
-            st.spawnObj = Math.max(0.5, 1.2 - st.worldT * 0.02);
-            st.objs3d.push({ z: 1, lane: Math.random() * 1.7 - 0.85, type: 'rock', seed: Math.random() * 7 });
+            st.spawnObj = Math.max(0.55, 1.15 - st.lap * 0.12);
+            const tgt = farSeg();
+            if (tgt.objs.length < 2 && !tgt.tunnel) tgt.objs.push({ offset: Math.random() * 1.5 - 0.75, type: 'rock' });
+            else if (tgt.objs.length < 2) tgt.objs.push({ offset: Math.random() * 1.0 - 0.5, type: 'rock' });
         }
         st.spawnCry -= dt;
         if (st.spawnCry <= 0) {
-            st.spawnCry = 1.4 + Math.random() * 0.9;
-            st.objs3d.push({ z: 1, lane: Math.random() * 1.7 - 0.85, type: 'crystal', seed: Math.random() * 7 });
+            st.spawnCry = 1.3 + Math.random() * 0.9;
+            const tgt = track[(segI + DRAW_N - 12) % N];
+            if (tgt.objs.length < 2) tgt.objs.push({ offset: Math.random() * 1.4 - 0.7, type: 'crystal' });
         }
         st.spawnPick -= dt;
         if (st.spawnPick <= 0) {
             st.spawnPick = 7 + Math.random() * 4;
-            st.objs3d.push({ z: 1, lane: Math.random() * 1.5 - 0.75, type: PICKUP_KINDS[Math.floor(Math.random() * PICKUP_KINDS.length)], seed: 0 });
+            const tgt = track[(segI + DRAW_N - 10) % N];
+            if (tgt.objs.length < 2) tgt.objs.push({ offset: Math.random() * 1.2 - 0.6, type: PICKUP_KINDS[Math.floor(Math.random() * PICKUP_KINDS.length)] });
         }
-        for (let i = st.objs3d.length - 1; i >= 0; i--) {
-            const o = st.objs3d[i];
-            o.z -= st.zSpeed * dt * (1 + (1 - o.z) * 0.8); // acelera al acercarse
-            if (o.z <= 0.02) { st.objs3d.splice(i, 1); continue; }
-            if (o.z < 0.07 && Math.abs(o.lane - st.laneX) < 0.30) {
-                st.objs3d.splice(i, 1);
-                if (o.type === 'rock') hitShip();
-                else if (o.type === 'crystal') collectCrystal();
-                else give(o.type);
+        // Colisiones: todos los segmentos cruzados este frame + limpiar los pasados
+        const from = Math.floor(prevPos / SEG_L), to = Math.floor(st.pos / SEG_L);
+        for (let si = from; si <= to; si++) {
+            const cs = track[si % N];
+            for (let oi = cs.objs.length - 1; oi >= 0; oi--) {
+                const o = cs.objs[oi];
+                if (Math.abs(o.offset - st.laneX) < 0.32) {
+                    cs.objs.splice(oi, 1);
+                    if (o.type === 'rock') hitShip();
+                    else if (o.type === 'crystal') collectCrystal();
+                    else give(o.type);
+                }
             }
         }
+        track[(to - 1 + N * 4) % N].objs.length = 0; // lo ya pasado no vuelve en la siguiente vuelta
     }
 
     // ── Dibujo · nivel 1 (espacio, lateral) ──────────────────────────────────
@@ -935,21 +1040,35 @@
         g.restore();
     }
 
-    // ── Dibujo · nivel 2 (Circuito Neón: kart pseudo-3D synthwave) ───────────
+    // ── Dibujo · nivel 2: renderer por segmentos (curvas, rasantes, túnel) ───
     function drawCircuit(t) {
         g.save();
         if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
         g.clearRect(-20, -20, W + 40, H + 40);
-        const hy = horizonY();
+        const N = track.length;
+        const base = Math.floor(st.pos / SEG_L) % N;
+        const frac = (st.pos % SEG_L) / SEG_L;
+        const camY = roadYAt(st.pos) + CAM_H;
         const tint = ZONES_NEON[Math.max(0, st.zone)].tint;
-        // Cielo synthwave: violeta profundo → magenta en el horizonte
+        // Horizonte con "pitch": mirar la pendiente próxima sube/baja la línea
+        const slope = roadYAt(st.pos + SEG_L * 6) - roadYAt(st.pos);
+        const hy = clamp(H * 0.40 - slope * 0.10 * (H / 340), H * 0.22, H * 0.58);
+
+        // ── Cielo synthwave (dentro del túnel no hay cielo: interior oscuro) ──
+        if (st.inTunnel) {
+            const inn = g.createLinearGradient(0, 0, 0, H);
+            inn.addColorStop(0, '#060410');
+            inn.addColorStop(1, '#0a0714');
+            g.fillStyle = inn;
+            g.fillRect(-20, -20, W + 40, H + 40);
+        }
+        if (!st.inTunnel) {
         const sky = g.createLinearGradient(0, 0, 0, hy);
         sky.addColorStop(0, '#0d0420');
         sky.addColorStop(0.65, '#33104a');
         sky.addColorStop(1, '#6e1550');
         g.fillStyle = sky;
         g.fillRect(-20, -20, W + 40, hy + 20);
-        // Estrellas fijas del cielo
         g.fillStyle = 'rgba(255,255,255,0.5)';
         for (let i = 0; i < 40; i++) {
             const sx = (Math.sin(i * 12.9898) * 0.5 + 0.5) * W;
@@ -958,8 +1077,8 @@
             g.fillRect(sx, sy2, 1.4 * k, 1.4 * k);
         }
         g.globalAlpha = 1;
-        // Sol gigante de rayas (el icono synthwave)
-        const sunX = W * 0.5, sunY = hy - 6 * k, sunR = 62 * k;
+        // Sol de rayas, con parallax suave de la curva
+        const sunX = W * 0.5 + (st.bgShift % W) * 0.18, sunY = hy - 4 * k, sunR = 62 * k;
         g.save();
         g.beginPath(); g.arc(sunX, sunY, sunR, 0, 7); g.clip();
         const sun = g.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
@@ -968,127 +1087,215 @@
         sun.addColorStop(1, '#ff355e');
         g.fillStyle = sun;
         g.fillRect(sunX - sunR, sunY - sunR, sunR * 2, sunR * 2);
-        // franjas horizontales que "escanean" hacia abajo
         g.fillStyle = '#33104a';
         for (let i = 0; i < 6; i++) {
             const fy = sunY - sunR * 0.1 + i * sunR * 0.22 + ((t * 8) % (sunR * 0.22));
             g.fillRect(sunX - sunR, fy, sunR * 2, (1.5 + i * 1.6) * k);
         }
         g.restore();
-        // Skyline: siluetas de edificios con ventanas encendidas (determinista)
+        // Skyline con ventanas, desplazándose con la curva (parallax)
+        const bw = W / 14;
+        const shift = ((st.bgShift * 0.55) % bw + bw) % bw;
         g.fillStyle = '#0a0616';
-        for (let i = 0; i < 14; i++) {
-            const bw = W / 14;
-            const bh = (0.12 + (Math.sin(i * 7.31) * 0.5 + 0.5) * 0.35) * hy;
-            g.fillRect(i * bw, hy - bh, bw - 3 * k, bh);
+        for (let i = -1; i < 15; i++) {
+            const bh = (0.12 + (Math.sin(((i + Math.round(st.bgShift * 0.55 / bw)) % 14) * 7.31) * 0.5 + 0.5) * 0.35) * hy;
+            g.fillRect(i * bw + shift, hy - bh, bw - 3 * k, bh);
         }
         for (let i = 0; i < 60; i++) {
             const bi = i % 14;
-            const bw = W / 14;
             const bh = (0.12 + (Math.sin(bi * 7.31) * 0.5 + 0.5) * 0.35) * hy;
-            const wx = bi * bw + (Math.sin(i * 3.3) * 0.5 + 0.5) * (bw - 8 * k);
+            const wx = bi * bw + shift + (Math.sin(i * 3.3) * 0.5 + 0.5) * (bw - 8 * k);
             const wy = hy - bh + (Math.sin(i * 9.1) * 0.5 + 0.5) * (bh - 6 * k);
-            const on = Math.sin(i * 5.7 + Math.floor(t * 0.5)) > -0.3;
-            if (!on) continue;
+            if (Math.sin(i * 5.7 + Math.floor(t * 0.5)) <= -0.3 || wy > hy - 4) continue;
             g.fillStyle = i % 3 ? 'rgba(40,230,220,0.65)' : 'rgba(255,53,94,0.65)';
             g.fillRect(wx, wy, 2.2 * k, 2.8 * k);
         }
-        // Suelo: rejilla en perspectiva (clásico synthwave), teñida por la zona
+        // Suelo base bajo el horizonte
         const ground = g.createLinearGradient(0, hy, 0, H);
-        ground.addColorStop(0, '#120826');
+        ground.addColorStop(0, '#150a28');
         ground.addColorStop(1, '#05060b');
         g.fillStyle = ground;
         g.fillRect(-20, hy, W + 40, H - hy + 20);
         g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.05)`;
         g.fillRect(-20, hy, W + 40, H - hy + 20);
-        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.28)`;
-        g.lineWidth = 1 * k;
-        // verticales convergentes al punto de fuga
-        for (let i = -10; i <= 10; i++) {
-            if (i === 0) continue;
-            g.beginPath();
-            g.moveTo(W / 2 + i * W * 0.011, hy);
-            g.lineTo(W / 2 + i * W * 0.16, H + 20);
-            g.stroke();
-        }
-        // horizontales que avanzan hacia el jugador
-        for (let r = 0; r < 10; r++) {
-            const ph = (t * 0.55 + r / 10) % 1;
-            const tt = Math.pow(ph, 2.2);
-            const y = hy + (H - hy) * tt;
-            g.globalAlpha = 0.08 + tt * 0.3;
-            g.beginPath(); g.moveTo(-20, y); g.lineTo(W + 20, y); g.stroke();
-        }
-        g.globalAlpha = 1;
-        // Pista: asfalto oscuro con bordes neón (magenta/cian) y guiones centrales
-        const rl0 = project(1, -1.05), rl1 = project(0, -1.05);
-        const rr0 = project(1, 1.05), rr1 = project(0, 1.05);
-        g.fillStyle = 'rgba(8,8,18,0.92)';
-        g.beginPath();
-        g.moveTo(rl0.x, rl0.y); g.lineTo(rl1.x, rl1.y);
-        g.lineTo(rr1.x, rr1.y); g.lineTo(rr0.x, rr0.y);
-        g.closePath(); g.fill();
-        g.lineWidth = 2.4 * k;
-        g.shadowBlur = 12 * k;
-        g.strokeStyle = '#ff355e'; g.shadowColor = '#ff355e';
-        g.beginPath(); g.moveTo(rl0.x, rl0.y); g.lineTo(rl1.x, rl1.y); g.stroke();
-        g.strokeStyle = '#28e6dc'; g.shadowColor = '#28e6dc';
-        g.beginPath(); g.moveTo(rr0.x, rr0.y); g.lineTo(rr1.x, rr1.y); g.stroke();
-        g.shadowBlur = 0;
-        // guiones centrales avanzando
-        g.fillStyle = 'rgba(240,240,255,0.55)';
-        for (let d = 0; d < 8; d++) {
-            const ph = (t * 0.9 + d / 8) % 1;
-            const p = project(1 - ph, 0);
-            const wd = 3.5 * k * (0.15 + p.s), ln = 16 * k * (0.15 + p.s);
-            g.fillRect(p.x - wd / 2, p.y - ln / 2, wd, ln);
-        }
-        // Pilones de luz a los lados (alternando magenta/cian)
-        for (const side of [-1, 1]) {
-            for (let b = 0; b < 6; b++) {
-                const z = ((t * 0.14 + b / 6) % 1);
-                const p = project(1 - z, side * 1.28);
-                const hpx = 34 * k * (0.12 + p.s);
-                const col = (b + (side < 0 ? 0 : 1)) % 2 ? '#28e6dc' : '#ff355e';
-                g.strokeStyle = col;
-                g.shadowColor = col; g.shadowBlur = 8 * k;
-                g.lineWidth = 2 * k * (0.3 + p.s);
-                g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x, p.y - hpx); g.stroke();
-                g.shadowBlur = 0;
+        } // fin cielo/suelo exterior
+
+        // ── Bucle de segmentos (de cerca a lejos, con clip por crestas) ──
+        const ROADF = 1.06 * (W / 1000);
+        const curvePx = 0.46 * k * (W / 1000) * 2;
+        let x = 0;
+        let dx = -(track[base].curve * frac) * curvePx;
+        let clipY = H + 60;
+        let prevY = H + 60, prevC = W / 2, prevW = W;
+        // Si el segmento anterior a la cámara ya era túnel, estamos DENTRO:
+        // la primera fila debe dibujar interior (techo), no la boca de entrada.
+        let prevTunnel = track[(base - 1 + N) % N].tunnel, prevCeil = 0, firstRow = true;
+        const sprites = [];
+        for (let n = 0; n < DRAW_N; n++) {
+            const i = (base + n) % N;
+            const seg = track[i];
+            const z = Math.max(46, (n + (1 - frac)) * SEG_L);
+            const scale = (CAM_D * H) / z;
+            x += dx;
+            dx += seg.curve * curvePx;
+            const w = scale * ROAD_W * ROADF;
+            const cx = W / 2 + x - st.laneX * w * 0.72;
+            const sy = Math.min(H + 60, hy + scale * (camY - seg.y) * 0.5);
+            const dirt = seg.surface === 'dirt';
+            const alt = Math.floor(i / 3) % 2; // franjas alternas
+            if (firstRow && sy < clipY) {
+                // el primer tramo visible arranca desde abajo con su anchura real
+                prevY = H + 40; prevC = cx; prevW = w * 1.12;
+                firstRow = false;
             }
+            if (sy < clipY) {
+                // laterales (arena en tierra, violeta oscuro en asfalto)
+                g.fillStyle = dirt ? (alt ? '#33291a' : '#2b2216') : (alt ? '#181031' : '#120a26');
+                g.fillRect(-20, sy, W + 40, clipY - sy);
+                // calzada
+                g.fillStyle = dirt ? (alt ? '#4a3520' : '#40301d') : (alt ? '#15151f' : '#101019');
+                g.beginPath();
+                g.moveTo(prevC - prevW, prevY); g.lineTo(prevC + prevW, prevY);
+                g.lineTo(cx + w, sy); g.lineTo(cx - w, sy);
+                g.closePath(); g.fill();
+                // bandas de borde (neón en asfalto, tierra clara en dirt)
+                g.fillStyle = dirt ? (alt ? '#6b4a2a' : '#59401f')
+                    : (alt ? 'rgba(255,53,94,0.85)' : 'rgba(20,20,32,1)');
+                for (const sd of [-1, 1]) {
+                    g.beginPath();
+                    g.moveTo(prevC + sd * prevW, prevY); g.lineTo(prevC + sd * prevW * 1.10, prevY);
+                    g.lineTo(cx + sd * w * 1.10, sy); g.lineTo(cx + sd * w, sy);
+                    g.closePath(); g.fill();
+                }
+                // línea central discontinua (solo asfalto)
+                if (!dirt && Math.floor(i / 2) % 2) {
+                    g.fillStyle = 'rgba(235,235,255,0.5)';
+                    g.beginPath();
+                    g.moveTo(prevC - prevW * 0.012, prevY); g.lineTo(prevC + prevW * 0.012, prevY);
+                    g.lineTo(cx + w * 0.012, sy); g.lineTo(cx - w * 0.012, sy);
+                    g.closePath(); g.fill();
+                }
+                // TÚNEL: paredes + techo por segmento, luces cada pocos segmentos
+                if (seg.tunnel) {
+                    const ceil = sy - w * 0.85;
+                    g.fillStyle = alt ? '#0a0714' : '#080610';
+                    for (const sd of [-1, 1]) { // paredes
+                        g.beginPath();
+                        g.moveTo(prevC + sd * prevW * 1.10, prevY); g.lineTo(prevC + sd * prevW * 1.28, prevCeil || prevY - prevW * 0.85);
+                        g.lineTo(cx + sd * w * 1.28, ceil); g.lineTo(cx + sd * w * 1.10, sy);
+                        g.closePath(); g.fill();
+                    }
+                    if (prevTunnel) { // techo
+                        g.fillStyle = alt ? '#0c0918' : '#0a0714';
+                        g.beginPath();
+                        g.moveTo(prevC - prevW * 1.28, prevCeil); g.lineTo(prevC + prevW * 1.28, prevCeil);
+                        g.lineTo(cx + w * 1.28, ceil); g.lineTo(cx - w * 1.28, ceil);
+                        g.closePath(); g.fill();
+                        if (i % 6 === 0) { // luz de techo
+                            g.fillStyle = 'rgba(40,230,220,0.85)';
+                            g.fillRect(cx - w * 0.25, ceil + 2 * k, w * 0.5, Math.max(1.5 * k, w * 0.02));
+                        }
+                    } else {
+                        // Boca del túnel: portal con arco neón
+                        g.fillStyle = '#07050e';
+                        g.fillRect(cx - w * 1.6, ceil - w * 0.5, w * 3.2, w * 0.5 + 4);
+                        g.strokeStyle = '#28e6dc';
+                        g.shadowColor = '#28e6dc'; g.shadowBlur = 10 * k;
+                        g.lineWidth = 3 * k;
+                        g.strokeRect(cx - w * 1.28, ceil, w * 2.56, sy - ceil);
+                        g.shadowBlur = 0;
+                    }
+                    prevCeil = ceil;
+                } else {
+                    if (prevTunnel) {
+                        // La salida: luz cálida enmarcando el tramo abierto
+                        const gl = g.createLinearGradient(0, sy - w * 0.8, 0, sy);
+                        gl.addColorStop(0, 'rgba(255,180,120,0.0)');
+                        gl.addColorStop(1, 'rgba(255,200,140,0.35)');
+                        g.fillStyle = gl;
+                        g.fillRect(cx - w * 1.1, sy - w * 0.8, w * 2.2, w * 0.8);
+                    }
+                    prevCeil = 0;
+                }
+                // Pilones de luz en los tramos abiertos de asfalto
+                if (!seg.tunnel && !dirt && i % 7 === 0) {
+                    const col = (i / 7) % 2 ? '#28e6dc' : '#ff355e';
+                    for (const sd of [-1, 1]) {
+                        g.strokeStyle = col;
+                        g.shadowColor = col; g.shadowBlur = 6 * k;
+                        g.lineWidth = Math.max(1.2 * k, w * 0.012);
+                        g.beginPath();
+                        g.moveTo(cx + sd * w * 1.22, sy);
+                        g.lineTo(cx + sd * w * 1.22, sy - w * 0.30);
+                        g.stroke();
+                        g.shadowBlur = 0;
+                    }
+                }
+                // Arco de meta en el segmento 0
+                if (i === 0 && n > 2) sprites.push({ type: 'meta', x: cx, y: sy, w });
+                // sprites del segmento (si la fila está tras una cresta, tapados)
+                for (const o of seg.objs) {
+                    const ox = cx + o.offset * w;
+                    o._sx = ox; o._sy = sy;
+                    sprites.push({ type: o.type, x: ox, y: sy, w, o });
+                }
+                // Solo una fila visible pasa a ser el borde cercano de la
+                // siguiente; tras una cresta (sy >= clipY) el trazado queda
+                // oculto hasta reaparecer más alto — eso ES el cambio de rasante.
+                prevY = sy; prevC = cx; prevW = w;
+                clipY = sy;
+            }
+            prevTunnel = seg.tunnel;
         }
-        // Objetos 3D, de lejos a cerca
-        const sorted = [...st.objs3d].sort((a, b) => b.z - a.z);
-        for (const o of sorted) {
-            const p = project(o.z, o.lane);
-            const size = (26 + Math.sin(o.seed) * 4) * k * (0.15 + p.s);
-            if (o.type === 'rock') {
-                // Holo-barrera: pirámide wireframe magenta con núcleo oscuro
+        // Sprites de lejos a cerca (los cercanos tapan a los lejanos)
+        for (let si = sprites.length - 1; si >= 0; si--) {
+            const sp = sprites[si];
+            const sc = sp.w / (W * 0.42);
+            if (sp.type === 'meta') {
+                g.strokeStyle = '#ff355e';
+                g.shadowColor = '#ff355e'; g.shadowBlur = 8 * k;
+                g.lineWidth = Math.max(2 * k, sp.w * 0.02);
+                g.beginPath();
+                g.moveTo(sp.x - sp.w, sp.y); g.lineTo(sp.x - sp.w, sp.y - sp.w * 0.55);
+                g.lineTo(sp.x + sp.w, sp.y - sp.w * 0.55); g.lineTo(sp.x + sp.w, sp.y);
+                g.stroke();
+                g.shadowBlur = 0;
+                g.fillStyle = 'rgba(240,226,230,0.9)';
+                g.font = `bold ${Math.max(9, sp.w * 0.14)}px monospace`;
+                g.textAlign = 'center';
+                g.fillText('META', sp.x, sp.y - sp.w * 0.58);
+            } else if (sp.type === 'rock') {
+                const size = sp.w * 0.30;
                 g.save();
-                g.translate(p.x, p.y);
+                g.translate(sp.x, sp.y);
                 g.fillStyle = 'rgba(26,6,20,0.92)';
                 g.strokeStyle = 'rgba(255,53,94,0.95)';
                 g.shadowColor = '#ff355e'; g.shadowBlur = 10 * k;
-                g.lineWidth = 1.8 * k;
+                g.lineWidth = Math.max(1.2 * k, size * 0.06);
                 g.beginPath();
-                g.moveTo(0, -size * 0.62); g.lineTo(size * 0.55, size * 0.3); g.lineTo(-size * 0.55, size * 0.3);
+                g.moveTo(0, -size * 0.95); g.lineTo(size * 0.8, 0); g.lineTo(-size * 0.8, 0);
                 g.closePath(); g.fill(); g.stroke();
-                g.beginPath(); g.moveTo(0, -size * 0.62); g.lineTo(0, size * 0.3); g.stroke();
+                g.beginPath(); g.moveTo(0, -size * 0.95); g.lineTo(0, 0); g.stroke();
                 g.restore();
-            } else if (o.type === 'crystal') {
-                drawCrystal(p.x, p.y, size * 0.4);
+            } else if (sp.type === 'crystal') {
+                drawCrystal(sp.x, sp.y - sp.w * 0.08, sp.w * 0.13);
             } else {
-                drawPickup(p.x, p.y, o.type, t * 3, 0.3 + p.s);
+                drawPickup(sp.x, sp.y - sp.w * 0.10, sp.type, t * 3, Math.max(0.25, sc * 1.6));
             }
         }
-        // Hover-kart del jugador (visto desde atrás), con estelas de luz
-        const kart = project(0.045, st.laneX);
-        const tilt = st.touchTargetX !== null ? (st.touchTargetX - st.laneX) : ((keys.b ? 1 : 0) - (keys.a ? 1 : 0)) * 0.4;
+        // Oscuridad del túnel cuando estás dentro
+        if (st.inTunnel) {
+            g.fillStyle = 'rgba(4,3,10,0.18)';
+            g.fillRect(-20, -20, W + 40, H + 40);
+        }
+        // ── Hover-kart del jugador (fijo abajo; el mundo se mueve a su alrededor)
+        const kx = W / 2, ky = H * 0.86;
+        const steer = st.touchTargetX !== null ? (st.touchTargetX - st.laneX) : ((keys.b ? 1 : 0) - (keys.a ? 1 : 0)) * 0.4;
+        const bounce = (track[base].surface === 'dirt' ? Math.sin(t * 34) * 2.2 : Math.sin(t * 18) * 0.8) * k;
         g.save();
-        g.translate(kart.x, kart.y);
-        g.rotate(clamp(tilt, -0.5, 0.5) * 0.35);
-        g.scale(k * 1.15, k * 1.15);
-        // estelas de luz traseras (∝ N: cuanto más converge la música, más luz)
+        g.translate(kx, ky + bounce);
+        g.rotate(clamp(steer, -0.5, 0.5) * 0.35 + track[base].curve * 0.04);
+        g.scale(k * 2.4, k * 2.4);
         const trail = 10 + (st.rate / 400) * 26;
         for (const [dx2, col] of [[-9, '#ff355e'], [9, '#28e6dc']]) {
             const tg = g.createLinearGradient(0, 12, 0, 12 + trail);
@@ -1097,21 +1304,18 @@
             g.fillStyle = tg;
             g.fillRect(dx2 - 2, 12, 4, trail);
         }
-        // carrocería
         g.fillStyle = '#0f1320';
         g.strokeStyle = '#28e6dc';
         g.lineWidth = 2;
         g.shadowColor = '#28e6dc'; g.shadowBlur = 10 + st.combo * 1.5;
         g.beginPath(); g.moveTo(-13, 10); g.lineTo(-9, -8); g.lineTo(9, -8); g.lineTo(13, 10); g.closePath();
         g.fill(); g.stroke();
-        // cabina
         g.fillStyle = 'rgba(255,220,150,0.9)';
         g.beginPath(); g.moveTo(-4, -8); g.lineTo(4, -8); g.lineTo(3, -14); g.lineTo(-3, -14); g.closePath(); g.fill();
-        // alerón
         g.strokeStyle = '#ff355e';
         g.beginPath(); g.moveTo(-12, 2); g.lineTo(12, 2); g.stroke();
         g.restore();
-        drawShield(kart.x, kart.y, 26 * k);
+        drawShield(kx, ky, 26 * k);
         drawFxOverlays(t, tint);
         g.restore();
     }
@@ -1188,7 +1392,8 @@
             g.font = `${Math.round(12 * k)}px monospace`;
             g.textAlign = 'left';
             g.fillStyle = 'rgba(240,226,230,0.75)';
-            g.fillText(`${'♥'.repeat(Math.max(0, st.lives))}  ${st.score} pts  🛡${st.shield} 🚀${st.missiles} 💣${st.bombs}`, 10 * k, 18 * k);
+            const lapTag = st.level === 2 ? ` · V${st.lap + 1}` : '';
+            g.fillText(`${'♥'.repeat(Math.max(0, st.lives))}  ${st.score} pts${lapTag}  🛡${st.shield} 🚀${st.missiles} 💣${st.bombs}`, 10 * k, 18 * k);
             g.fillStyle = 'rgba(40,230,220,0.75)';
             g.textAlign = 'right';
             g.fillText(`N=${Math.round(st.rate)}`, W - 52 * k, 18 * k);
@@ -1208,7 +1413,9 @@
                 else if (type === 'crystal') st.crystals.push({ x: SHIP_X + 30 * k, y: st.shipY, ph: 0 });
                 else st.pickups.push({ x: SHIP_X + 30 * k, y: st.shipY, ph: 0, kind: type });
             } else {
-                st.objs3d.push({ z: type === 'rock' ? 0.5 : 0.06, lane: st.laneX, type, seed: 0 });
+                const N = track.length, segI = Math.floor(st.pos / SEG_L) % N;
+                const tgt = track[(segI + (type === 'rock' ? 6 : 2)) % N];
+                tgt.objs.push({ offset: st.laneX, type });
             }
         },
         lb,
