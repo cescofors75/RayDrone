@@ -29,6 +29,7 @@ necesita acceso a crates.io**. Solo `rustc` + el target `wasm32-unknown-unknown`
 | `lab-worker.js` | Web Worker del Convergence Lab: otra instancia del mismo wasm para medir convergencia sin congelar la UI. |
 | `index.html` | La página (UI sencilla: Original/Drone/Shimmer + Carácter + Volumen). |
 | `build.sh` | Compila `../core` → `libraydrone_core.rlib` y luego `raydrone.rs` → `raydrone.wasm` (lo enlaza con `--extern`). |
+| `vendor/` | Three.js r185 vendorizado (motor 3D del Nivel 2 de RayRunner) + `three-addons/` (postprocesado: `EffectComposer`/`RenderPass`/`UnrealBloomPass`/`OutputPass`, extraídos del paquete oficial). Sin CDN, offline. El motor de audio sigue sin depender de nada de esto. |
 
 ## Compilar
 
@@ -167,7 +168,11 @@ Motor con paridad casi completa con la versión JS:
   (si te adelantan ellos, te atraviesan), disiparlos con un arma da +80 y un
   destello shimmer, y reaparecen más adelante. El coche del jugador es un
   GT low-poly con casco extruido, cabina, alerón, llantas neón, faros y
-  underglow. **Ranking local** con nick (se pide una vez); la interfaz `lb`
+  underglow, con **sombra propia** (luz direccional que sigue al kart, mapa
+  512² ajustado) y **bloom** (Three.js `UnrealBloomPass`, resolución interna
+  fija y barata para no penalizar el móvil) sobre el neón — el mayor salto
+  de acabado visual por el mínimo coste, ya que los materiales ya eran
+  colores saturados. **Ranking local** con nick (se pide una vez); la interfaz `lb`
   está aislada para enchufar un backend y compartirlo entre dispositivos.
   Sin capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
   táctil (vertical en N1, horizontal en N2), canvas retina ~56vh, pantalla

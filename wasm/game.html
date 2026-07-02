@@ -943,10 +943,19 @@
     // ── Construcción de la escena ──
     async function ensureThree() {
         if (T3) return;
-        if (!THREE) THREE = await import('./vendor/three.module.min.js');
+        const [THREE_, EC, RP, UBP, OP] = await Promise.all([
+            THREE ? Promise.resolve(THREE) : import('./vendor/three.module.min.js'),
+            import('./vendor/three-addons/postprocessing/EffectComposer.js'),
+            import('./vendor/three-addons/postprocessing/RenderPass.js'),
+            import('./vendor/three-addons/postprocessing/UnrealBloomPass.js'),
+            import('./vendor/three-addons/postprocessing/OutputPass.js'),
+        ]);
+        THREE = THREE_;
         const cv = $('game3d');
         const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, preserveDrawingBuffer: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         const scene = new THREE.Scene();
         scene.fog = new THREE.Fog(0x140826, 120, 900);
         const camera = new THREE.PerspectiveCamera(74, 2, 0.1, 3000);
@@ -1002,6 +1011,7 @@
             gme.setIndex(idx);
             gme.computeVertexNormals();
             const mesh = new THREE.Mesh(gme, new THREE.MeshLambertMaterial({ map: tex }));
+            mesh.receiveShadow = true;
             scene.add(mesh);
         }
         const roadTex = makeRoadTex(), dirtTex = makeDirtTex();
@@ -1014,6 +1024,7 @@
             new THREE.CircleGeometry(1500, 40).rotateX(-Math.PI / 2),
             new THREE.MeshLambertMaterial({ map: makeGridTex() }));
         ground.position.y = -0.4;
+        ground.receiveShadow = true;
         scene.add(ground);
         const sandTex = makeSandTex();
         for (let i = 0; i < 9; i++) {
@@ -1133,11 +1144,36 @@
         scene.add(kart);
 
         scene.add(new THREE.HemisphereLight(0x8a5cff, 0x140826, 0.95));
+        const sunDir = new THREE.Vector3(0.4, 0.5, -1).normalize();
         const sunLight = new THREE.DirectionalLight(0xff9a5a, 1.1);
-        sunLight.position.set(0.4, 0.5, -1);
+        sunLight.position.copy(sunDir).multiplyScalar(30);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.set(512, 512); // frustum pequeño (32×32u): 512 basta y es barato
+        sunLight.shadow.camera.near = 1;
+        sunLight.shadow.camera.far = 55;
+        sunLight.shadow.camera.left = -16; sunLight.shadow.camera.right = 16;
+        sunLight.shadow.camera.top = 16; sunLight.shadow.camera.bottom = -16;
+        sunLight.shadow.bias = -0.0018;
         scene.add(sunLight);
+        const sunTarget = new THREE.Object3D();
+        scene.add(sunTarget);
+        sunLight.target = sunTarget;
 
-        T3 = { renderer, scene, camera, curve, kart, up, hemiFog: scene.fog };
+        // Postprocesado: bloom sobre el neón (los materiales ya son colores saturados,
+        // no hace falta re-texturizar nada — el bloom es lo que más "AAA" compra barato)
+        const composer = new EC.EffectComposer(renderer);
+        composer.addPass(new RP.RenderPass(scene, camera));
+        const bloom = new UBP.UnrealBloomPass(new THREE.Vector2(320, 180), 0.55, 0.42, 0.4);
+        // El resto del composer se redimensiona a resolución nativa (retina incluida)
+        // en cada resize3D(), pero el bloom es la pasada cara (varias difuminadas en
+        // cadena): la fijamos a un presupuesto bajo y fijo — el halo se ve igual de bien
+        // borroso, y así no escala con el DPI del móvil.
+        const bloomSetSize = bloom.setSize.bind(bloom);
+        bloom.setSize = () => bloomSetSize(320, 180);
+        composer.addPass(bloom);
+        composer.addPass(new OP.OutputPass());
+
+        T3 = { renderer, scene, camera, curve, kart, up, hemiFog: scene.fog, composer, bloom, sunLight, sunTarget, sunDir };
         resize3D();
     }
     function resize3D() {
@@ -1147,6 +1183,7 @@
         T3.renderer.setSize(r.width, r.height, false);
         T3.camera.aspect = r.width / r.height;
         T3.camera.updateProjectionMatrix();
+        T3.composer.setSize(r.width, r.height);
     }
 
     // Coche GT low-poly: casco extruido desde el perfil lateral, cabina de
@@ -1224,6 +1261,7 @@
         glow.position.y = 0.06;
         car.add(glow);
         car.scale.setScalar(1.18);
+        if (!ghostCol) car.traverse((n) => { if (n.isMesh) n.castShadow = true; });
         if (ghostCol) {
             // Fantasma: todo el coche en un solo material aditivo translúcido
             car.userData.ghostMats = [];
@@ -1721,7 +1759,12 @@
             if (o.type === 'shield') o.mesh.rotation.y = t * 1.6;
             o.mesh.position.y = o.baseY + 1.0 + Math.sin(t * 3 + o.s) * 0.22;
         }
-        T3.renderer.render(T3.scene, cam);
+        // El sol direccional (y su sombra) siguen al kart — la escena es demasiado
+        // grande para una sola sombra fija; el shimmer del combo hace respirar el bloom.
+        T3.sunLight.position.copy(kartPos).addScaledVector(T3.sunDir, 30);
+        T3.sunTarget.position.copy(kartPos);
+        T3.bloom.strength = 0.5 + st.shimmer * 0.35;
+        T3.composer.render();
     }
     // Altura de la calzada un poco por detrás del kart (para la cámara en crestas)
     function roadHeightAt(frac, back) {
