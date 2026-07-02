@@ -18,6 +18,12 @@
         #stage { position:relative; }
         canvas { display:block; width:100%; height:340px; background:#05060b; border-radius:10px;
                  border:1px solid rgba(255,53,94,0.15); touch-action:none; }
+        /* Nivel 2 (3D): el WebGL vive debajo y el canvas 2D queda encima como
+           overlay transparente (HUD, partículas, banners). */
+        #game3d { position:absolute; left:0; top:0; z-index:0; display:none; border:none; }
+        #game { position:relative; z-index:1; }
+        #stage.mode3d #game3d { display:block; }
+        #stage.mode3d #game { background:transparent; border-color:transparent; }
         .hud { display:flex; justify-content:space-between; gap:10px; font-family:monospace;
                font-size:0.88rem; margin:10px 0; flex-wrap:wrap; }
         .hud b { color:var(--accent); }
@@ -57,6 +63,7 @@
             h1 { font-size:1.15rem; }
             .sub { font-size:0.72rem; margin:4px 0 10px; }
             canvas { height:min(56vh, 460px); }
+            #game3d { height:min(56vh, 460px); }
             .hud { font-size:0.7rem; gap:6px; }
             .keys { gap:8px; }
             .kbtn { flex:1; min-width:0; padding:18px 6px; font-size:1.3rem; }
@@ -81,13 +88,14 @@
     </div>
 
     <div id="stage">
+        <canvas id="game3d" width="1000" height="340"></canvas>
         <canvas id="game" width="1000" height="340"></canvas>
         <button id="fs-btn" title="Pantalla completa">⛶</button>
         <div class="overlay" id="start-overlay">
             <div style="max-width:560px; line-height:1.6;">
                 <b>Nivel 1 · Espacio</b>: pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides, recoge
                 cristales <b style="color:var(--cyan)">◆</b> y power-ups (🛡 escudo · 🚀 misil con <b>X</b> ·
-                💣 bomba con <b>C</b>). Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito de verdad estilo kart, con
+                💣 bomba con <b>C</b>). Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito 3D de verdad (WebGL) estilo kart, con
                 curvas, chicanes, túnel, cambios de rasante, asfalto y tierra — y otra música, alegre y
                 luminosa, renderizada por el mismo motor. Cada vuelta recorre el sample entero. Tu <b>combo</b> decide N, la densidad de rayos:
                 juega bien y la música converge; recibe impactos y se rompe.
@@ -341,6 +349,13 @@
         node.port.postMessage({ type: 'sample', data: which === 'neon' ? terrainNeon : terrainSpace, sampleRate: SR });
     }
 
+    // Estado 3D (declarado aquí arriba: resizeCanvas() corre al cargar la página
+    // y llama a resize3D(), que consulta T3 — evita la zona muerta temporal).
+    let THREE = null, T3 = null;  // módulo + escena {renderer,scene,camera,curve,...}
+    let LAP_LEN = 1;              // longitud real de la vuelta (curve.getLength())
+    let curvK = null;             // curvatura firmada muestreada (para la centrífuga)
+    const objs2 = [];             // {s, lane, type, mesh}
+
     // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
     let W = 0, H = 0, k = 1, SHIP_X = 0;
     const sf = () => W / 1000;
@@ -364,6 +379,7 @@
         for (const m of st.shots) { m.x *= sx; m.y *= sy; }
         for (const p of st.particles) { p.x *= sx; p.y *= sy; }
         for (const s of st.stars) { s.x *= sx; s.y *= sy; }
+        resize3D();
     }
 
     // ── Estado ────────────────────────────────────────────────────────────────
@@ -379,7 +395,7 @@
         shimmer: 0, pitchDip: 0, shake: 0, shieldFlash: 0,
         zoneFlash: 0, zoneFlashName: '', banner: '', bannerTtl: 0,
         asteroids: [], crystals: [], pickups: [], shots: [], particles: [], stars: [],
-        // Nivel 2 (racer por segmentos): posición sobre la pista, vuelta, etc.
+        // Nivel 2 (racer 3D): posición sobre la pista (arco), vuelta, etc.
         pos: 0, lap: 0, speed2: 2300, inTunnel: false, bgShift: 0,
         spawnAst: 0, spawnCry: 0, spawnPick: 0, spawnObj: 0,
         touchTarget: null, touchTargetX: null,
@@ -399,7 +415,8 @@
         st.banner = ''; st.bannerTtl = 0; st.touchTarget = null; st.touchTargetX = null;
         st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = []; st.particles = [];
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
-        clearTrackObjs();
+        clearObjs2();
+        $('stage').classList.remove('mode3d');
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
         loadTerrain('space');
         relabelButtons();
@@ -482,19 +499,18 @@
             st.shots.push({ x: SHIP_X + 18 * k, y: st.shipY });
         } else {
             // Circuito: destruye la primera holo-barrera por delante en tu carril
-            const N = track.length, segI = Math.floor(st.pos / SEG_L) % N;
-            outer:
-            for (let n = 1; n <= 16; n++) {
-                const seg = track[(segI + n) % N];
-                for (let oi = seg.objs.length - 1; oi >= 0; oi--) {
-                    const o = seg.objs[oi];
-                    if (o.type === 'rock' && Math.abs(o.offset - st.laneX) < 0.55) {
-                        burst(o._sx || W / 2, o._sy || H * 0.5, [255, 140, 60], 20);
-                        seg.objs.splice(oi, 1);
-                        st.score += 40;
-                        break outer;
-                    }
-                }
+            let best = -1, bestD = 1e9;
+            for (let i = 0; i < objs2.length; i++) {
+                const o = objs2[i];
+                if (o.type !== 'rock' || Math.abs(o.lane - st.laneX) >= 0.55) continue;
+                const d = wrapS(o.s - st.pos);
+                if (d > 2 && d < 150 && d < bestD) { bestD = d; best = i; }
+            }
+            if (best >= 0) {
+                const pxy = screenOf(objs2[best].mesh);
+                burst(pxy.x, pxy.y, [255, 140, 60], 20);
+                removeObj2(best);
+                st.score += 40;
             }
         }
         vibrate(25);
@@ -511,16 +527,14 @@
             for (const a of st.asteroids) { burst(a.x, a.y, [255, 170, 60], 10); st.score += 20; }
             st.asteroids = [];
         } else {
-            const N = track.length, segI = Math.floor(st.pos / SEG_L) % N;
-            for (let n = 0; n <= DRAW_N; n++) {
-                const seg = track[(segI + n) % N];
-                for (let oi = seg.objs.length - 1; oi >= 0; oi--) {
-                    if (seg.objs[oi].type !== 'rock') continue;
-                    const o = seg.objs[oi];
-                    burst(o._sx || W / 2, o._sy || H * 0.5, [255, 170, 60], 10);
-                    seg.objs.splice(oi, 1);
-                    st.score += 20;
-                }
+            for (let i = objs2.length - 1; i >= 0; i--) {
+                const o = objs2[i];
+                if (o.type !== 'rock') continue;
+                if (wrapS(o.s - st.pos) > 420) continue; // solo lo visible por delante
+                const pxy = screenOf(o.mesh);
+                burst(pxy.x, pxy.y, [255, 170, 60], 10);
+                removeObj2(i);
+                st.score += 20;
             }
         }
         vibrate([50, 30, 80]);
@@ -622,6 +636,7 @@
         }
         resizeCanvas();
         resetRound();
+        ensureThree().catch((err) => { statusEl.innerText = `3D no disponible: ${(err && err.message) || err}`; });
         st.playing = true; st.paused = false;
         banner('NIVEL 1 · ESPACIO');
         $('start-overlay').style.display = 'none';
@@ -636,7 +651,9 @@
         st.touchTarget = null; st.touchTargetX = null;
         st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = [];
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
-        clearTrackObjs();
+        clearObjs2();
+        $('stage').classList.add('mode3d');
+        resize3D();
         st.spawnObj = 1.2; st.spawnCry = 1.2; st.spawnPick = 6;
         loadTerrain('neon');
         banner('NIVEL 2 · CIRCUITO NEÓN');
@@ -726,70 +743,405 @@
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Nivel 2: circuito por SEGMENTOS (la técnica pseudo-3D de los racers
-    // clásicos): la pista es una lista cerrada de segmentos, cada uno con su
-    // curvatura, elevación, superficie (asfalto/tierra) y bandera de túnel.
-    // Curvas = flexión acumulada al proyectar; rasantes = recestas que OCULTAN
-    // la pista de detrás (clip por cresta); una vuelta = una pasada entera por
-    // el sample del motor (sector de pista = zona musical).
+    // Nivel 2 · CIRCUITO 3D REAL (Three.js, vendorizado en ./vendor — offline).
+    // La pista es una curva Catmull-Rom CERRADA en 3D: curvas, chicane, túnel,
+    // crestas (rasantes) y un sector de tierra. La geometría es una cinta con
+    // TEXTURAS procedurales (asfalto con pianos y línea discontinua, tierra
+    // arenosa) — sin descargar ni un asset. El kart es low-poly con neón.
+    // La jugabilidad vive en el arco s (posición sobre la vuelta) + carril.
+    // Una vuelta = una pasada entera por el sample (sector = zona musical).
     // ════════════════════════════════════════════════════════════════════════
-    const SEG_L = 190;      // longitud de segmento (unidades de mundo)
-    const ROAD_W = 1150;    // semiancho de calzada (unidades de mundo)
-    const CAM_H = 1150;     // altura de la cámara sobre la pista
-    const CAM_D = 0.82;     // "profundidad" de proyección (fov)
-    const DRAW_N = 55;      // segmentos visibles por delante
-    let track = [];
-    function easeIO(a, b, t) { return a + (b - a) * (0.5 - 0.5 * Math.cos(Math.PI * t)); }
-    // Añade un tramo: rampas de entrada/salida de la curvatura + elevación suave.
-    function addRoad(enter, hold, leave, curve, dy, opt = {}) {
-        const startY = track.length ? track[track.length - 1].y : 0;
-        const total = enter + hold + leave;
-        for (let i = 0; i < total; i++) {
-            const c = i < enter ? curve * (i / enter)
-                : i >= enter + hold ? curve * (1 - (i - enter - hold) / leave)
-                : curve;
-            track.push({
-                curve: c,
-                y: easeIO(startY, startY + dy, (i + 1) / total),
-                tunnel: !!opt.tunnel,
-                surface: opt.surface || 'asphalt',
-                objs: [],
-            });
+    const ROAD_HALF = 7;          // semiancho de calzada (unidades de mundo)
+    const S3D = 0.028;            // velocidad del juego → unidades de mundo/s
+    const TUN0 = 0.55, TUN1 = 0.71;              // tramo de túnel (fracción de vuelta)
+    const DIRT0 = 0.75, DIRT1 = 0.96;            // tramo de tierra
+    const surfaceAt = (f) => (f >= DIRT0 && f < DIRT1) ? 'dirt' : 'asphalt';
+    const tunnelAt = (f) => f >= TUN0 && f < TUN1;
+    function clearObjs2() {
+        for (const o of objs2) if (o.mesh && T3) T3.scene.remove(o.mesh);
+        objs2.length = 0;
+    }
+    const wrapS = (d) => ((d % LAP_LEN) + LAP_LEN) % LAP_LEN;
+
+    // ── Texturas procedurales (nada que descargar) ──
+    function canvasTex(w, h, draw, repX = 1, repY = 1) {
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        draw(c.getContext('2d'), w, h);
+        const tx = new THREE.CanvasTexture(c);
+        tx.wrapS = THREE.RepeatWrapping; tx.wrapT = THREE.RepeatWrapping;
+        tx.repeat.set(repX, repY);
+        tx.colorSpace = THREE.SRGBColorSpace;
+        return tx;
+    }
+    function noiseRect(c2, x, y, w, h, base, amp, n) {
+        for (let i = 0; i < n; i++) {
+            const v = base + (Math.random() - 0.5) * amp;
+            c2.fillStyle = `rgb(${v | 0},${v | 0},${(v * 1.08) | 0})`;
+            c2.fillRect(x + Math.random() * w, y + Math.random() * h, 2, 2);
         }
     }
-    // El trazado: 4 sectores que coinciden con las 4 zonas musicales del sample.
-    function buildTrack() {
-        track = [];
-        // S1 · AMANECER NEÓN (asfalto): recta de salida, derechazo, rasante, izquierda
-        addRoad(10, 22, 10, 0, 0);
-        addRoad(8, 14, 8, 2.4, 420);
-        addRoad(6, 8, 6, 0, -420);
-        addRoad(8, 16, 8, -3.0, 0);
-        addRoad(6, 8, 6, 0, 0);
-        // S2 · BARRIO CALIPSO: chicanes (S-S) con lomos
-        addRoad(5, 6, 5, 2.6, 0); addRoad(5, 6, 5, -2.6, 0);
-        addRoad(5, 6, 5, 2.2, 320); addRoad(5, 6, 5, -2.2, -320);
-        addRoad(6, 12, 6, 0, 0);
-        // S3 · NIEBLA ESTÁTICA: bajada, TÚNEL curvado, salida
-        addRoad(6, 8, 6, 0, -260);
-        addRoad(6, 42, 6, 1.6, 0, { tunnel: true });
-        addRoad(4, 8, 4, 0, 260);
-        // S4 · FARO 2077 (tierra): rasantes fuertes + curvón + recta de meta
-        addRoad(6, 10, 6, -2.0, 680, { surface: 'dirt' });
-        addRoad(4, 6, 4, 0, -950, { surface: 'dirt' });
-        addRoad(6, 12, 6, 2.8, 520, { surface: 'dirt' });
-        addRoad(6, 10, 6, 0, -450, { surface: 'dirt' });
-        addRoad(8, 20, 8, 0, 0);
+    function makeRoadTex() { // asfalto: grano + pianos magenta/oscuro + línea central
+        return canvasTex(256, 256, (c2, w, h) => {
+            c2.fillStyle = '#17171f'; c2.fillRect(0, 0, w, h);
+            noiseRect(c2, 0, 0, w, h, 30, 26, 2600);
+            for (const [x0, x1] of [[0, 18], [w - 18, w]]) { // pianos
+                for (let y = 0; y < h; y += 32) {
+                    c2.fillStyle = (y / 32) % 2 ? '#ff355e' : '#101018';
+                    c2.fillRect(x0, y, x1 - x0, 32);
+                }
+            }
+            c2.fillStyle = 'rgba(235,235,255,0.75)'; // discontinua central
+            for (let y = 0; y < h; y += 64) c2.fillRect(w / 2 - 3, y, 6, 34);
+        }, 1, 1);
     }
-    buildTrack();
-    const trackLen = () => track.length * SEG_L;
-    function clearTrackObjs() { for (const seg of track) seg.objs.length = 0; }
-    function roadYAt(pos) {
-        const N = track.length;
-        const i = Math.floor(pos / SEG_L) % N;
-        const f = (pos % SEG_L) / SEG_L;
-        const y0 = track[(i - 1 + N) % N].y;
-        return y0 + (track[i].y - y0) * f;
+    function makeDirtTex() { // tierra arenosa con rodadas
+        return canvasTex(256, 256, (c2, w, h) => {
+            c2.fillStyle = '#5a4226'; c2.fillRect(0, 0, w, h);
+            for (let i = 0; i < 3200; i++) {
+                const v = 70 + Math.random() * 60;
+                c2.fillStyle = `rgb(${v | 0},${(v * 0.74) | 0},${(v * 0.45) | 0})`;
+                c2.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+            }
+            c2.fillStyle = 'rgba(40,28,14,0.5)'; // rodadas
+            c2.fillRect(w * 0.28, 0, 14, h);
+            c2.fillRect(w * 0.66, 0, 14, h);
+            for (const [x0, x1] of [[0, 14], [w - 14, w]]) {
+                c2.fillStyle = '#3a2a16';
+                c2.fillRect(x0, 0, x1 - x0, h);
+            }
+        }, 1, 1);
+    }
+    function makeGridTex() { // rejilla neón del suelo
+        return canvasTex(128, 128, (c2, w, h) => {
+            c2.fillStyle = '#0c0618'; c2.fillRect(0, 0, w, h);
+            c2.strokeStyle = 'rgba(120,60,190,0.55)';
+            c2.lineWidth = 2;
+            c2.strokeRect(1, 1, w - 2, h - 2);
+        }, 90, 90);
+    }
+    function makeSandTex() {
+        return canvasTex(128, 128, (c2, w, h) => {
+            c2.fillStyle = '#4c3a20'; c2.fillRect(0, 0, w, h);
+            for (let i = 0; i < 900; i++) {
+                const v = 66 + Math.random() * 50;
+                c2.fillStyle = `rgb(${v | 0},${(v * 0.76) | 0},${(v * 0.46) | 0})`;
+                c2.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+            }
+        }, 24, 24);
+    }
+    function makeWindowsTex() {
+        return canvasTex(64, 128, (c2, w, h) => {
+            c2.fillStyle = '#0a0616'; c2.fillRect(0, 0, w, h);
+            for (let i = 0; i < 46; i++) {
+                c2.fillStyle = i % 3 ? 'rgba(40,230,220,0.9)' : 'rgba(255,53,94,0.9)';
+                if (Math.random() < 0.55) c2.fillRect(6 + Math.random() * (w - 12), 6 + Math.random() * (h - 12), 3, 4);
+            }
+        }, 1, 1);
+    }
+    function makeSunTex() {
+        return canvasTex(256, 256, (c2, w, h) => {
+            const gr = c2.createLinearGradient(0, 0, 0, h);
+            gr.addColorStop(0, '#ffd36e'); gr.addColorStop(0.55, '#ff8f5a'); gr.addColorStop(1, '#ff355e');
+            c2.fillStyle = gr;
+            c2.beginPath(); c2.arc(w / 2, h / 2, w / 2 - 2, 0, 7); c2.fill();
+            c2.globalCompositeOperation = 'destination-out';
+            for (let i = 0; i < 6; i++) c2.fillRect(0, h * 0.5 + i * h * 0.09, w, 3 + i * 2.5);
+        }, 1, 1);
+    }
+    function makeSkyTex() {
+        return canvasTex(4, 256, (c2, w, h) => {
+            const gr = c2.createLinearGradient(0, 0, 0, h);
+            gr.addColorStop(0, '#06020f'); gr.addColorStop(0.55, '#1d0a33'); gr.addColorStop(0.78, '#54123f'); gr.addColorStop(1, '#140826');
+            c2.fillStyle = gr; c2.fillRect(0, 0, w, h);
+        }, 1, 1);
+    }
+
+    // ── Construcción de la escena ──
+    async function ensureThree() {
+        if (T3) return;
+        if (!THREE) THREE = await import('./vendor/three.module.min.js');
+        const cv = $('game3d');
+        const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, preserveDrawingBuffer: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x140826, 120, 900);
+        const camera = new THREE.PerspectiveCamera(74, 2, 0.1, 3000);
+
+        // Trazado: curva cerrada con recta, curvas, chicane, túnel, crestas y tierra
+        const CP = [
+            [0, 0, 0], [0, 0, 180],
+            [40, 6, 300], [140, 14, 360], [240, 6, 330],   // curva dcha + cresta
+            [300, 0, 220],
+            [258, 4, 130], [330, 11, 60], [430, 4, 40],    // chicane con lomo
+            [520, 0, 120], [560, 2, 260],                   // enlaza al túnel
+            [480, 10, 400],                                 // interior del túnel (curvado)
+            [340, 24, 460],                                 // tierra: subidón
+            [180, 3, 470],                                  // rasante fuerte (bajada)
+            [60, 17, 400],                                  // segunda cresta
+            [-60, 2, 240],                                  // retorno a meta
+        ].map(([x, y, z]) => new THREE.Vector3(x, y, z));
+        const curve = new THREE.CatmullRomCurve3(CP, true, 'catmullrom', 0.5);
+        LAP_LEN = curve.getLength();
+
+        // Curvatura firmada muestreada (empuje centrífugo + inclinación del kart)
+        const KS = 512;
+        curvK = new Float32Array(KS);
+        for (let i = 0; i < KS; i++) {
+            const t0 = i / KS, t1 = (i + 1) / KS;
+            const a = curve.getTangentAt(t0), b = curve.getTangentAt(t1);
+            const cross = a.x * b.z - a.z * b.x;
+            curvK[i] = Math.asin(clamp(cross, -1, 1)) / (LAP_LEN / KS);
+        }
+
+        // Cinta de calzada por tramos de superficie (UV: u = través, v = a lo largo)
+        const up = new THREE.Vector3(0, 1, 0);
+        function buildRibbon(f0, f1, tex) {
+            const M = Math.max(8, Math.round((f1 - f0) * 700));
+            const pos = [], uv = [], idx = [];
+            for (let i = 0; i <= M; i++) {
+                const f = f0 + (f1 - f0) * (i / M);
+                const P = curve.getPointAt(f % 1);
+                const Tg = curve.getTangentAt(f % 1);
+                const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
+                const L = P.clone().addScaledVector(side, ROAD_HALF);
+                const R = P.clone().addScaledVector(side, -ROAD_HALF);
+                pos.push(L.x, L.y + 0.05, L.z, R.x, R.y + 0.05, R.z);
+                uv.push(0, f * LAP_LEN / 9, 1, f * LAP_LEN / 9);
+                if (i < M) {
+                    const b2 = i * 2;
+                    idx.push(b2, b2 + 1, b2 + 2, b2 + 1, b2 + 3, b2 + 2);
+                }
+            }
+            const gme = new THREE.BufferGeometry();
+            gme.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            gme.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+            gme.setIndex(idx);
+            gme.computeVertexNormals();
+            const mesh = new THREE.Mesh(gme, new THREE.MeshLambertMaterial({ map: tex }));
+            scene.add(mesh);
+        }
+        const roadTex = makeRoadTex(), dirtTex = makeDirtTex();
+        buildRibbon(0, DIRT0, roadTex);
+        buildRibbon(DIRT0, DIRT1, dirtTex);
+        buildRibbon(DIRT1, 1.0001, roadTex);
+
+        // Suelo con rejilla neón + dunas de arena junto al sector de tierra
+        const ground = new THREE.Mesh(
+            new THREE.CircleGeometry(1500, 40).rotateX(-Math.PI / 2),
+            new THREE.MeshLambertMaterial({ map: makeGridTex() }));
+        ground.position.y = -0.4;
+        scene.add(ground);
+        const sandTex = makeSandTex();
+        for (let i = 0; i < 9; i++) {
+            const f = DIRT0 + (DIRT1 - DIRT0) * (i / 9);
+            const P = curve.getPointAt(f);
+            const dune = new THREE.Mesh(
+                new THREE.ConeGeometry(26 + Math.random() * 30, 10 + Math.random() * 14, 8),
+                new THREE.MeshLambertMaterial({ map: sandTex }));
+            const side = Math.random() < 0.5 ? 1 : -1;
+            dune.position.set(P.x + side * (40 + Math.random() * 60), 0, P.z + (Math.random() - 0.5) * 60);
+            scene.add(dune);
+        }
+
+        // Cielo, sol de rayas, estrellas, skyline con ventanas
+        const sky = new THREE.Mesh(
+            new THREE.SphereGeometry(1600, 20, 12),
+            new THREE.MeshBasicMaterial({ map: makeSkyTex(), side: THREE.BackSide, fog: false }));
+        scene.add(sky);
+        const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeSunTex(), fog: false, transparent: true }));
+        sun.scale.set(420, 420, 1);
+        sun.position.set(260, 130, -1250);
+        scene.add(sun);
+        {
+            const n = 320, sp = [];
+            for (let i = 0; i < n; i++) {
+                const a = Math.random() * Math.PI * 2, e = Math.random() * Math.PI * 0.45;
+                sp.push(1400 * Math.cos(e) * Math.cos(a), 240 + 1200 * Math.sin(e), 1400 * Math.cos(e) * Math.sin(a));
+            }
+            const gsp = new THREE.BufferGeometry();
+            gsp.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+            scene.add(new THREE.Points(gsp, new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, sizeAttenuation: false, fog: false })));
+        }
+        const winTex = makeWindowsTex();
+        for (let i = 0; i < 40; i++) {
+            const a = (i / 40) * Math.PI * 2;
+            const r = 820 + Math.random() * 320;
+            const hgt = 50 + Math.random() * 130;
+            const b = new THREE.Mesh(
+                new THREE.BoxGeometry(46 + Math.random() * 50, hgt, 46 + Math.random() * 50),
+                new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x223038, emissiveMap: winTex }));
+            b.position.set(250 + Math.cos(a) * r, hgt / 2 - 1, 230 + Math.sin(a) * r);
+            scene.add(b);
+        }
+
+        // Túnel: tubo oscuro sobre su tramo + luces de techo + portales neón
+        {
+            const pts = [];
+            for (let i = 0; i <= 40; i++) pts.push(curve.getPointAt(TUN0 + (TUN1 - TUN0) * (i / 40)).clone().add(new THREE.Vector3(0, 3.2, 0)));
+            const tcurve = new THREE.CatmullRomCurve3(pts);
+            const tube = new THREE.Mesh(
+                new THREE.TubeGeometry(tcurve, 60, 10.5, 12, false),
+                new THREE.MeshBasicMaterial({ color: 0x1b1133, side: THREE.BackSide }));
+            scene.add(tube);
+            for (let i = 0; i <= 14; i++) {
+                const f = TUN0 + (TUN1 - TUN0) * (i / 14);
+                const P = curve.getPointAt(f);
+                const light = new THREE.Mesh(
+                    new THREE.BoxGeometry(2.6, 0.2, 0.7),
+                    new THREE.MeshBasicMaterial({ color: 0x28e6dc }));
+                light.position.set(P.x, P.y + 9.6, P.z);
+                scene.add(light);
+            }
+            for (const f of [TUN0, TUN1]) {
+                const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
+                const ring = new THREE.Mesh(
+                    new THREE.TorusGeometry(10.2, 0.55, 8, 28),
+                    new THREE.MeshBasicMaterial({ color: 0x28e6dc }));
+                ring.position.copy(P).add(new THREE.Vector3(0, 3.2, 0));
+                ring.lookAt(P.clone().add(Tg));
+                scene.add(ring);
+            }
+        }
+
+        // Arco de META + pilones neón alternos
+        {
+            const P = curve.getPointAt(0), Tg = curve.getTangentAt(0);
+            const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
+            const arch = new THREE.Group();
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff355e });
+            for (const sd of [-1, 1]) {
+                const pil = new THREE.Mesh(new THREE.BoxGeometry(0.8, 11, 0.8), mat);
+                pil.position.copy(P).addScaledVector(side, sd * (ROAD_HALF + 1.2)).add(new THREE.Vector3(0, 5.5, 0));
+                arch.add(pil);
+            }
+            const bar = new THREE.Mesh(new THREE.BoxGeometry((ROAD_HALF + 1.2) * 2 + 0.8, 1.4, 0.8), mat);
+            bar.position.copy(P).add(new THREE.Vector3(0, 11, 0));
+            bar.setRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), side));
+            arch.add(bar);
+            scene.add(arch);
+        }
+        for (let i = 0; i < 44; i++) {
+            const f = i / 44;
+            if (tunnelAt(f) || surfaceAt(f) === 'dirt') continue;
+            const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
+            const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
+            for (const sd of [-1, 1]) {
+                const py = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.35, 5.5, 0.35),
+                    new THREE.MeshBasicMaterial({ color: (i + (sd > 0 ? 1 : 0)) % 2 ? 0x28e6dc : 0xff355e }));
+                py.position.copy(P).addScaledVector(side, sd * (ROAD_HALF + 2.4)).add(new THREE.Vector3(0, 2.7, 0));
+                scene.add(py);
+            }
+        }
+
+        // Kart low-poly con neón y estelas
+        const kart = new THREE.Group();
+        {
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(1.9, 0.55, 2.6),
+                new THREE.MeshLambertMaterial({ color: 0x0f1320 }));
+            body.position.y = 0.45;
+            kart.add(body);
+            const edge = new THREE.LineSegments(
+                new THREE.EdgesGeometry(body.geometry),
+                new THREE.LineBasicMaterial({ color: 0x28e6dc }));
+            edge.position.copy(body.position);
+            kart.add(edge);
+            const cab = new THREE.Mesh(
+                new THREE.BoxGeometry(0.9, 0.5, 1.0),
+                new THREE.MeshLambertMaterial({ color: 0x2b2233, emissive: 0x604020 }));
+            cab.position.set(0, 0.95, -0.2);
+            kart.add(cab);
+            const wing = new THREE.Mesh(
+                new THREE.BoxGeometry(2.2, 0.12, 0.5),
+                new THREE.MeshBasicMaterial({ color: 0xff355e }));
+            wing.position.set(0, 0.95, 1.25);
+            kart.add(wing);
+            kart.userData.trails = [];
+            for (const [dx, col] of [[-0.7, 0xff355e], [0.7, 0x28e6dc]]) {
+                const tr = new THREE.Mesh(
+                    new THREE.PlaneGeometry(0.28, 6),
+                    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+                tr.rotation.x = Math.PI / 2;
+                tr.position.set(dx, 0.35, 1.4 + 3);
+                kart.add(tr);
+                kart.userData.trails.push(tr);
+            }
+        }
+        scene.add(kart);
+
+        scene.add(new THREE.HemisphereLight(0x8a5cff, 0x140826, 0.95));
+        const sunLight = new THREE.DirectionalLight(0xff9a5a, 1.1);
+        sunLight.position.set(0.4, 0.5, -1);
+        scene.add(sunLight);
+
+        T3 = { renderer, scene, camera, curve, kart, up, hemiFog: scene.fog };
+        resize3D();
+    }
+    function resize3D() {
+        if (!T3) return;
+        const r = $('game3d').getBoundingClientRect();
+        if (r.width < 10) return;
+        T3.renderer.setSize(r.width, r.height, false);
+        T3.camera.aspect = r.width / r.height;
+        T3.camera.updateProjectionMatrix();
+    }
+
+    // Meshes de objetos del circuito
+    function makeObjMesh(type) {
+        let m;
+        if (type === 'rock') {
+            m = new THREE.Group();
+            const cone = new THREE.Mesh(
+                new THREE.ConeGeometry(1.7, 3.0, 4),
+                new THREE.MeshLambertMaterial({ color: 0x1a0614 }));
+            cone.position.y = 1.5;
+            m.add(cone);
+            const e = new THREE.LineSegments(new THREE.EdgesGeometry(cone.geometry), new THREE.LineBasicMaterial({ color: 0xff355e }));
+            e.position.copy(cone.position);
+            m.add(e);
+        } else if (type === 'crystal') {
+            m = new THREE.Mesh(new THREE.OctahedronGeometry(1.15), new THREE.MeshBasicMaterial({ color: 0x28e6dc }));
+            m.position.y = 1.4;
+        } else if (type === 'shield') {
+            m = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.26, 8, 18), new THREE.MeshBasicMaterial({ color: 0x7bffbe }));
+            m.position.y = 1.5;
+        } else if (type === 'missile') {
+            m = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.9, 8), new THREE.MeshBasicMaterial({ color: 0xffa050 }));
+            m.rotation.z = -Math.PI / 2;
+            m.position.y = 1.3;
+        } else {
+            m = new THREE.Mesh(new THREE.SphereGeometry(0.95, 10, 10), new THREE.MeshBasicMaterial({ color: 0xff7878 }));
+            m.position.y = 1.2;
+        }
+        return m;
+    }
+    function placeObj(o) {
+        const f = wrapS(o.s) / LAP_LEN;
+        const P = T3.curve.getPointAt(f);
+        const Tg = T3.curve.getTangentAt(f);
+        const side = new THREE.Vector3().crossVectors(T3.up, Tg).setY(0).normalize();
+        const base = o.mesh.position.y - (o.baseY || 0);
+        o.baseY = P.y;
+        o.mesh.position.set(P.x, P.y, P.z).addScaledVector(side, -o.lane * ROAD_HALF * 0.86);
+    }
+    function spawnObj2(type, sAhead, lane) {
+        const o = { s: wrapS(st.pos + sAhead), lane, type, mesh: makeObjMesh(type) };
+        objs2.push(o);
+        T3.scene.add(o.mesh);
+        placeObj(o);
+        return o;
+    }
+    function removeObj2(i) {
+        T3.scene.remove(objs2[i].mesh);
+        objs2.splice(i, 1);
+    }
+    // Proyección de un punto 3D a coordenadas del canvas 2D (para estallidos)
+    function screenOf(mesh) {
+        if (!T3) return { x: W / 2, y: H * 0.5 };
+        const v = mesh.getWorldPosition(new THREE.Vector3()).project(T3.camera);
+        return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H };
     }
 
     // ── Bucle ─────────────────────────────────────────────────────────────────
@@ -798,7 +1150,12 @@
         const dt = Math.min(0.05, (t - lastT) / 1000 || 0.016);
         lastT = t;
         if (st.playing && !st.paused) step(dt);
-        if (st.level === 1) drawSpace(t / 1000); else drawCircuit(t / 1000);
+        if (st.level === 1) {
+            drawSpace(t / 1000);
+        } else {
+            render3D(t / 1000);
+            drawOverlay2D(t / 1000);
+        }
         requestAnimationFrame(frame);
     }
 
@@ -907,31 +1264,32 @@
     }
 
     function stepLevel2(dt) {
-        const N = track.length, len = trackLen();
-        const prevPos = st.pos;
-        const segI = Math.floor(st.pos / SEG_L) % N;
-        const seg = track[segI];
-        st.inTunnel = seg.tunnel;
-        const onDirt = seg.surface === 'dirt';
+        if (!T3) return; // la escena 3D aún carga (se precarga al despegar)
+        const frac = wrapS(st.pos) / LAP_LEN;
+        st.inTunnel = tunnelAt(frac);
+        const onDirt = surfaceAt(frac) === 'dirt';
         const offRoad = Math.abs(st.laneX) > 1.12;
         st.speed2 = 2300 + st.lap * 170;
         const speedF = (offRoad ? 0.55 : 1) * (onDirt ? 0.88 : 1);
-        st.pos += st.speed2 * speedF * dt;
-        // Vuelta completada = una pasada entera por el sample
-        if (Math.floor(st.pos / len) > Math.floor(prevPos / len)) {
+        const sSpeed = st.speed2 * S3D * speedF;
+        const prevPos = st.pos;
+        st.pos += sSpeed * dt;
+        if (st.pos >= LAP_LEN) {
+            st.pos -= LAP_LEN;
             st.lap += 1;
             st.score += 250;
             banner(`VUELTA ${st.lap + 1}`);
         }
-        st.worldT = (st.pos / len) * TERRAIN_SECS; // sector de pista = zona musical
-        // Timón: en tierra hay menos agarre; la curva te empuja hacia fuera
+        st.worldT = (wrapS(st.pos) / LAP_LEN) * TERRAIN_SECS; // sector = zona musical
+        // Timón (menos agarre en tierra) + centrífuga desde la curvatura real
         if (st.touchTargetX !== null) {
             st.laneX += (st.touchTargetX - st.laneX) * Math.min(1, (onDirt ? 6 : 10) * dt);
         } else {
             const dir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
             st.laneX += dir * (onDirt ? 1.25 : 1.9) * dt;
         }
-        st.laneX -= seg.curve * st.speed2 * speedF * 0.0000125; // centrífuga
+        const kIdx = Math.floor(frac * curvK.length) % curvK.length;
+        st.laneX += curvK[kIdx] * sSpeed * dt * 0.6; // la curva te empuja hacia fuera
         st.laneX = clamp(st.laneX, -1.6, 1.6);
         if (offRoad) {
             st.shake = Math.max(st.shake, 0.22);
@@ -941,44 +1299,39 @@
             }
         }
         st.score += Math.round(12 * dt);
-        // Desplazamiento del fondo con la curva (parallax del skyline)
-        st.bgShift -= seg.curve * speedF * dt * 26;
-        // Spawns: se colocan sobre un segmento lejano por delante
-        const farSeg = () => track[(segI + DRAW_N - 8) % N];
+        // Spawns por delante (unidades de arco)
         st.spawnObj -= dt;
         if (st.spawnObj <= 0) {
             st.spawnObj = Math.max(0.55, 1.15 - st.lap * 0.12);
-            const tgt = farSeg();
-            if (tgt.objs.length < 2 && !tgt.tunnel) tgt.objs.push({ offset: Math.random() * 1.5 - 0.75, type: 'rock' });
-            else if (tgt.objs.length < 2) tgt.objs.push({ offset: Math.random() * 1.0 - 0.5, type: 'rock' });
+            spawnObj2('rock', 260 + Math.random() * 60, Math.random() * 1.5 - 0.75);
         }
         st.spawnCry -= dt;
         if (st.spawnCry <= 0) {
             st.spawnCry = 1.3 + Math.random() * 0.9;
-            const tgt = track[(segI + DRAW_N - 12) % N];
-            if (tgt.objs.length < 2) tgt.objs.push({ offset: Math.random() * 1.4 - 0.7, type: 'crystal' });
+            spawnObj2('crystal', 240 + Math.random() * 60, Math.random() * 1.4 - 0.7);
         }
         st.spawnPick -= dt;
         if (st.spawnPick <= 0) {
             st.spawnPick = 7 + Math.random() * 4;
-            const tgt = track[(segI + DRAW_N - 10) % N];
-            if (tgt.objs.length < 2) tgt.objs.push({ offset: Math.random() * 1.2 - 0.6, type: PICKUP_KINDS[Math.floor(Math.random() * PICKUP_KINDS.length)] });
+            spawnObj2(PICKUP_KINDS[Math.floor(Math.random() * PICKUP_KINDS.length)], 250 + Math.random() * 60, Math.random() * 1.2 - 0.6);
         }
-        // Colisiones: todos los segmentos cruzados este frame + limpiar los pasados
-        const from = Math.floor(prevPos / SEG_L), to = Math.floor(st.pos / SEG_L);
-        for (let si = from; si <= to; si++) {
-            const cs = track[si % N];
-            for (let oi = cs.objs.length - 1; oi >= 0; oi--) {
-                const o = cs.objs[oi];
-                if (Math.abs(o.offset - st.laneX) < 0.32) {
-                    cs.objs.splice(oi, 1);
-                    if (o.type === 'rock') hitShip();
-                    else if (o.type === 'crystal') collectCrystal();
-                    else give(o.type);
+        // Colisiones: objetos cuyo arco quedó cruzado este frame
+        const ds = wrapS(st.pos - prevPos);
+        for (let i = objs2.length - 1; i >= 0; i--) {
+            const o = objs2[i];
+            const rel = wrapS(o.s - prevPos);
+            if (rel <= ds + 2.2) {
+                if (Math.abs(o.lane - st.laneX) < 0.34) {
+                    const type = o.type;
+                    removeObj2(i);
+                    if (type === 'rock') hitShip();
+                    else if (type === 'crystal') collectCrystal();
+                    else give(type);
+                } else if (rel <= ds) {
+                    removeObj2(i); // pasado de largo: fuera (no reaparece en la vuelta)
                 }
             }
         }
-        track[(to - 1 + N * 4) % N].objs.length = 0; // lo ya pasado no vuelve en la siguiente vuelta
     }
 
     // ── Dibujo · nivel 1 (espacio, lateral) ──────────────────────────────────
@@ -1040,282 +1393,64 @@
         g.restore();
     }
 
-    // ── Dibujo · nivel 2: renderer por segmentos (curvas, rasantes, túnel) ───
-    function drawCircuit(t) {
+    // ── Nivel 2: render 3D (cámara de kart) + overlay 2D transparente ────────
+    const V3 = () => new THREE.Vector3();
+    function render3D(t) {
+        if (!T3) return;
+        const frac = wrapS(st.pos) / LAP_LEN;
+        const P = T3.curve.getPointAt(frac);
+        const Tg = T3.curve.getTangentAt(frac);
+        const side = V3().crossVectors(T3.up, Tg).setY(0).normalize();
+        const kartPos = P.clone().addScaledVector(side, -st.laneX * ROAD_HALF * 0.86);
+        kartPos.y += 0.25;
+        // Kart: posición, rumbo e inclinación (curva + timón), botes en tierra
+        const kart = T3.kart;
+        kart.position.copy(kartPos);
+        const ahead = T3.curve.getPointAt((frac + 6 / LAP_LEN) % 1).addScaledVector(side, -st.laneX * ROAD_HALF * 0.86);
+        kart.lookAt(ahead.x, kartPos.y, ahead.z);
+        const steer = st.touchTargetX !== null ? (st.touchTargetX - st.laneX) : ((keys.b ? 1 : 0) - (keys.a ? 1 : 0)) * 0.4;
+        const kIdx = Math.floor(frac * curvK.length) % curvK.length;
+        kart.rotation.z = clamp(-steer * 0.5 - curvK[kIdx] * 11, -0.38, 0.38);
+        if (surfaceAt(frac) === 'dirt') kart.position.y += Math.abs(Math.sin(t * 34)) * 0.12;
+        // Estelas ∝ N (la música convergiendo se VE en el kart)
+        for (const tr of kart.userData.trails) {
+            const L = 2.5 + (st.rate / 400) * 8;
+            tr.scale.y = L / 6;
+            tr.position.z = 1.4 + (L / 2);
+            tr.material.opacity = 0.35 + (st.rate / 400) * 0.45;
+        }
+        // Cámara: detrás y por encima, mirando por delante del kart
+        const cam = T3.camera;
+        const camPos = kartPos.clone().addScaledVector(Tg, -8.4).add(new THREE.Vector3(0, 3.4, 0));
+        camPos.y = Math.max(camPos.y, roadHeightAt(frac, -8.4) + 1.4); // no hundirse tras una cresta
+        cam.position.lerp(camPos, Math.min(1, 8 * 0.016 * 60 * 0.016 + 0.35));
+        const look = kartPos.clone().addScaledVector(Tg, 14).add(new THREE.Vector3(0, 1.1, 0));
+        cam.lookAt(look);
+        // Túnel: niebla cerrada y luz baja dentro; fuera, la noche synthwave
+        const fog = T3.scene.fog;
+        const tgtNear = st.inTunnel ? 14 : 120, tgtFar = st.inTunnel ? 130 : 900;
+        fog.near += (tgtNear - fog.near) * 0.08;
+        fog.far += (tgtFar - fog.far) * 0.08;
+        // Objetos: flotan/rotan; los pasados de largo se limpian en step
+        for (const o of objs2) {
+            if (o.type === 'crystal') o.mesh.rotation.y = t * 2 + o.s;
+            if (o.type === 'shield') o.mesh.rotation.y = t * 1.6;
+            o.mesh.position.y = o.baseY + 1.0 + Math.sin(t * 3 + o.s) * 0.22;
+        }
+        T3.renderer.render(T3.scene, cam);
+    }
+    // Altura de la calzada un poco por detrás del kart (para la cámara en crestas)
+    function roadHeightAt(frac, back) {
+        const f = ((frac + back / LAP_LEN) % 1 + 1) % 1;
+        return T3.curve.getPointAt(f).y;
+    }
+    // Overlay 2D en el nivel 3D: sin fondo — partículas, banners, HUD y escudo
+    function drawOverlay2D(t) {
         g.save();
         if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
         g.clearRect(-20, -20, W + 40, H + 40);
-        const N = track.length;
-        const base = Math.floor(st.pos / SEG_L) % N;
-        const frac = (st.pos % SEG_L) / SEG_L;
-        const camY = roadYAt(st.pos) + CAM_H;
+        drawShield(W / 2, H * 0.80, 34 * k);
         const tint = ZONES_NEON[Math.max(0, st.zone)].tint;
-        // Horizonte con "pitch": mirar la pendiente próxima sube/baja la línea
-        const slope = roadYAt(st.pos + SEG_L * 6) - roadYAt(st.pos);
-        const hy = clamp(H * 0.40 - slope * 0.10 * (H / 340), H * 0.22, H * 0.58);
-
-        // ── Cielo synthwave (dentro del túnel no hay cielo: interior oscuro) ──
-        if (st.inTunnel) {
-            const inn = g.createLinearGradient(0, 0, 0, H);
-            inn.addColorStop(0, '#060410');
-            inn.addColorStop(1, '#0a0714');
-            g.fillStyle = inn;
-            g.fillRect(-20, -20, W + 40, H + 40);
-        }
-        if (!st.inTunnel) {
-        const sky = g.createLinearGradient(0, 0, 0, hy);
-        sky.addColorStop(0, '#0d0420');
-        sky.addColorStop(0.65, '#33104a');
-        sky.addColorStop(1, '#6e1550');
-        g.fillStyle = sky;
-        g.fillRect(-20, -20, W + 40, hy + 20);
-        g.fillStyle = 'rgba(255,255,255,0.5)';
-        for (let i = 0; i < 40; i++) {
-            const sx = (Math.sin(i * 12.9898) * 0.5 + 0.5) * W;
-            const sy2 = (Math.sin(i * 78.233) * 0.5 + 0.5) * hy * 0.7;
-            g.globalAlpha = 0.2 + (Math.sin(i * 3.7 + t * 2) * 0.5 + 0.5) * 0.4;
-            g.fillRect(sx, sy2, 1.4 * k, 1.4 * k);
-        }
-        g.globalAlpha = 1;
-        // Sol de rayas, con parallax suave de la curva
-        const sunX = W * 0.5 + (st.bgShift % W) * 0.18, sunY = hy - 4 * k, sunR = 62 * k;
-        g.save();
-        g.beginPath(); g.arc(sunX, sunY, sunR, 0, 7); g.clip();
-        const sun = g.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
-        sun.addColorStop(0, '#ffd36e');
-        sun.addColorStop(0.55, '#ff8f5a');
-        sun.addColorStop(1, '#ff355e');
-        g.fillStyle = sun;
-        g.fillRect(sunX - sunR, sunY - sunR, sunR * 2, sunR * 2);
-        g.fillStyle = '#33104a';
-        for (let i = 0; i < 6; i++) {
-            const fy = sunY - sunR * 0.1 + i * sunR * 0.22 + ((t * 8) % (sunR * 0.22));
-            g.fillRect(sunX - sunR, fy, sunR * 2, (1.5 + i * 1.6) * k);
-        }
-        g.restore();
-        // Skyline con ventanas, desplazándose con la curva (parallax)
-        const bw = W / 14;
-        const shift = ((st.bgShift * 0.55) % bw + bw) % bw;
-        g.fillStyle = '#0a0616';
-        for (let i = -1; i < 15; i++) {
-            const bh = (0.12 + (Math.sin(((i + Math.round(st.bgShift * 0.55 / bw)) % 14) * 7.31) * 0.5 + 0.5) * 0.35) * hy;
-            g.fillRect(i * bw + shift, hy - bh, bw - 3 * k, bh);
-        }
-        for (let i = 0; i < 60; i++) {
-            const bi = i % 14;
-            const bh = (0.12 + (Math.sin(bi * 7.31) * 0.5 + 0.5) * 0.35) * hy;
-            const wx = bi * bw + shift + (Math.sin(i * 3.3) * 0.5 + 0.5) * (bw - 8 * k);
-            const wy = hy - bh + (Math.sin(i * 9.1) * 0.5 + 0.5) * (bh - 6 * k);
-            if (Math.sin(i * 5.7 + Math.floor(t * 0.5)) <= -0.3 || wy > hy - 4) continue;
-            g.fillStyle = i % 3 ? 'rgba(40,230,220,0.65)' : 'rgba(255,53,94,0.65)';
-            g.fillRect(wx, wy, 2.2 * k, 2.8 * k);
-        }
-        // Suelo base bajo el horizonte
-        const ground = g.createLinearGradient(0, hy, 0, H);
-        ground.addColorStop(0, '#150a28');
-        ground.addColorStop(1, '#05060b');
-        g.fillStyle = ground;
-        g.fillRect(-20, hy, W + 40, H - hy + 20);
-        g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.05)`;
-        g.fillRect(-20, hy, W + 40, H - hy + 20);
-        } // fin cielo/suelo exterior
-
-        // ── Bucle de segmentos (de cerca a lejos, con clip por crestas) ──
-        const ROADF = 1.06 * (W / 1000);
-        const curvePx = 0.46 * k * (W / 1000) * 2;
-        let x = 0;
-        let dx = -(track[base].curve * frac) * curvePx;
-        let clipY = H + 60;
-        let prevY = H + 60, prevC = W / 2, prevW = W;
-        // Si el segmento anterior a la cámara ya era túnel, estamos DENTRO:
-        // la primera fila debe dibujar interior (techo), no la boca de entrada.
-        let prevTunnel = track[(base - 1 + N) % N].tunnel, prevCeil = 0, firstRow = true;
-        const sprites = [];
-        for (let n = 0; n < DRAW_N; n++) {
-            const i = (base + n) % N;
-            const seg = track[i];
-            const z = Math.max(46, (n + (1 - frac)) * SEG_L);
-            const scale = (CAM_D * H) / z;
-            x += dx;
-            dx += seg.curve * curvePx;
-            const w = scale * ROAD_W * ROADF;
-            const cx = W / 2 + x - st.laneX * w * 0.72;
-            const sy = Math.min(H + 60, hy + scale * (camY - seg.y) * 0.5);
-            const dirt = seg.surface === 'dirt';
-            const alt = Math.floor(i / 3) % 2; // franjas alternas
-            if (firstRow && sy < clipY) {
-                // el primer tramo visible arranca desde abajo con su anchura real
-                prevY = H + 40; prevC = cx; prevW = w * 1.12;
-                firstRow = false;
-            }
-            if (sy < clipY) {
-                // laterales (arena en tierra, violeta oscuro en asfalto)
-                g.fillStyle = dirt ? (alt ? '#33291a' : '#2b2216') : (alt ? '#181031' : '#120a26');
-                g.fillRect(-20, sy, W + 40, clipY - sy);
-                // calzada
-                g.fillStyle = dirt ? (alt ? '#4a3520' : '#40301d') : (alt ? '#15151f' : '#101019');
-                g.beginPath();
-                g.moveTo(prevC - prevW, prevY); g.lineTo(prevC + prevW, prevY);
-                g.lineTo(cx + w, sy); g.lineTo(cx - w, sy);
-                g.closePath(); g.fill();
-                // bandas de borde (neón en asfalto, tierra clara en dirt)
-                g.fillStyle = dirt ? (alt ? '#6b4a2a' : '#59401f')
-                    : (alt ? 'rgba(255,53,94,0.85)' : 'rgba(20,20,32,1)');
-                for (const sd of [-1, 1]) {
-                    g.beginPath();
-                    g.moveTo(prevC + sd * prevW, prevY); g.lineTo(prevC + sd * prevW * 1.10, prevY);
-                    g.lineTo(cx + sd * w * 1.10, sy); g.lineTo(cx + sd * w, sy);
-                    g.closePath(); g.fill();
-                }
-                // línea central discontinua (solo asfalto)
-                if (!dirt && Math.floor(i / 2) % 2) {
-                    g.fillStyle = 'rgba(235,235,255,0.5)';
-                    g.beginPath();
-                    g.moveTo(prevC - prevW * 0.012, prevY); g.lineTo(prevC + prevW * 0.012, prevY);
-                    g.lineTo(cx + w * 0.012, sy); g.lineTo(cx - w * 0.012, sy);
-                    g.closePath(); g.fill();
-                }
-                // TÚNEL: paredes + techo por segmento, luces cada pocos segmentos
-                if (seg.tunnel) {
-                    const ceil = sy - w * 0.85;
-                    g.fillStyle = alt ? '#0a0714' : '#080610';
-                    for (const sd of [-1, 1]) { // paredes
-                        g.beginPath();
-                        g.moveTo(prevC + sd * prevW * 1.10, prevY); g.lineTo(prevC + sd * prevW * 1.28, prevCeil || prevY - prevW * 0.85);
-                        g.lineTo(cx + sd * w * 1.28, ceil); g.lineTo(cx + sd * w * 1.10, sy);
-                        g.closePath(); g.fill();
-                    }
-                    if (prevTunnel) { // techo
-                        g.fillStyle = alt ? '#0c0918' : '#0a0714';
-                        g.beginPath();
-                        g.moveTo(prevC - prevW * 1.28, prevCeil); g.lineTo(prevC + prevW * 1.28, prevCeil);
-                        g.lineTo(cx + w * 1.28, ceil); g.lineTo(cx - w * 1.28, ceil);
-                        g.closePath(); g.fill();
-                        if (i % 6 === 0) { // luz de techo
-                            g.fillStyle = 'rgba(40,230,220,0.85)';
-                            g.fillRect(cx - w * 0.25, ceil + 2 * k, w * 0.5, Math.max(1.5 * k, w * 0.02));
-                        }
-                    } else {
-                        // Boca del túnel: portal con arco neón
-                        g.fillStyle = '#07050e';
-                        g.fillRect(cx - w * 1.6, ceil - w * 0.5, w * 3.2, w * 0.5 + 4);
-                        g.strokeStyle = '#28e6dc';
-                        g.shadowColor = '#28e6dc'; g.shadowBlur = 10 * k;
-                        g.lineWidth = 3 * k;
-                        g.strokeRect(cx - w * 1.28, ceil, w * 2.56, sy - ceil);
-                        g.shadowBlur = 0;
-                    }
-                    prevCeil = ceil;
-                } else {
-                    if (prevTunnel) {
-                        // La salida: luz cálida enmarcando el tramo abierto
-                        const gl = g.createLinearGradient(0, sy - w * 0.8, 0, sy);
-                        gl.addColorStop(0, 'rgba(255,180,120,0.0)');
-                        gl.addColorStop(1, 'rgba(255,200,140,0.35)');
-                        g.fillStyle = gl;
-                        g.fillRect(cx - w * 1.1, sy - w * 0.8, w * 2.2, w * 0.8);
-                    }
-                    prevCeil = 0;
-                }
-                // Pilones de luz en los tramos abiertos de asfalto
-                if (!seg.tunnel && !dirt && i % 7 === 0) {
-                    const col = (i / 7) % 2 ? '#28e6dc' : '#ff355e';
-                    for (const sd of [-1, 1]) {
-                        g.strokeStyle = col;
-                        g.shadowColor = col; g.shadowBlur = 6 * k;
-                        g.lineWidth = Math.max(1.2 * k, w * 0.012);
-                        g.beginPath();
-                        g.moveTo(cx + sd * w * 1.22, sy);
-                        g.lineTo(cx + sd * w * 1.22, sy - w * 0.30);
-                        g.stroke();
-                        g.shadowBlur = 0;
-                    }
-                }
-                // Arco de meta en el segmento 0
-                if (i === 0 && n > 2) sprites.push({ type: 'meta', x: cx, y: sy, w });
-                // sprites del segmento (si la fila está tras una cresta, tapados)
-                for (const o of seg.objs) {
-                    const ox = cx + o.offset * w;
-                    o._sx = ox; o._sy = sy;
-                    sprites.push({ type: o.type, x: ox, y: sy, w, o });
-                }
-                // Solo una fila visible pasa a ser el borde cercano de la
-                // siguiente; tras una cresta (sy >= clipY) el trazado queda
-                // oculto hasta reaparecer más alto — eso ES el cambio de rasante.
-                prevY = sy; prevC = cx; prevW = w;
-                clipY = sy;
-            }
-            prevTunnel = seg.tunnel;
-        }
-        // Sprites de lejos a cerca (los cercanos tapan a los lejanos)
-        for (let si = sprites.length - 1; si >= 0; si--) {
-            const sp = sprites[si];
-            const sc = sp.w / (W * 0.42);
-            if (sp.type === 'meta') {
-                g.strokeStyle = '#ff355e';
-                g.shadowColor = '#ff355e'; g.shadowBlur = 8 * k;
-                g.lineWidth = Math.max(2 * k, sp.w * 0.02);
-                g.beginPath();
-                g.moveTo(sp.x - sp.w, sp.y); g.lineTo(sp.x - sp.w, sp.y - sp.w * 0.55);
-                g.lineTo(sp.x + sp.w, sp.y - sp.w * 0.55); g.lineTo(sp.x + sp.w, sp.y);
-                g.stroke();
-                g.shadowBlur = 0;
-                g.fillStyle = 'rgba(240,226,230,0.9)';
-                g.font = `bold ${Math.max(9, sp.w * 0.14)}px monospace`;
-                g.textAlign = 'center';
-                g.fillText('META', sp.x, sp.y - sp.w * 0.58);
-            } else if (sp.type === 'rock') {
-                const size = sp.w * 0.30;
-                g.save();
-                g.translate(sp.x, sp.y);
-                g.fillStyle = 'rgba(26,6,20,0.92)';
-                g.strokeStyle = 'rgba(255,53,94,0.95)';
-                g.shadowColor = '#ff355e'; g.shadowBlur = 10 * k;
-                g.lineWidth = Math.max(1.2 * k, size * 0.06);
-                g.beginPath();
-                g.moveTo(0, -size * 0.95); g.lineTo(size * 0.8, 0); g.lineTo(-size * 0.8, 0);
-                g.closePath(); g.fill(); g.stroke();
-                g.beginPath(); g.moveTo(0, -size * 0.95); g.lineTo(0, 0); g.stroke();
-                g.restore();
-            } else if (sp.type === 'crystal') {
-                drawCrystal(sp.x, sp.y - sp.w * 0.08, sp.w * 0.13);
-            } else {
-                drawPickup(sp.x, sp.y - sp.w * 0.10, sp.type, t * 3, Math.max(0.25, sc * 1.6));
-            }
-        }
-        // Oscuridad del túnel cuando estás dentro
-        if (st.inTunnel) {
-            g.fillStyle = 'rgba(4,3,10,0.18)';
-            g.fillRect(-20, -20, W + 40, H + 40);
-        }
-        // ── Hover-kart del jugador (fijo abajo; el mundo se mueve a su alrededor)
-        const kx = W / 2, ky = H * 0.86;
-        const steer = st.touchTargetX !== null ? (st.touchTargetX - st.laneX) : ((keys.b ? 1 : 0) - (keys.a ? 1 : 0)) * 0.4;
-        const bounce = (track[base].surface === 'dirt' ? Math.sin(t * 34) * 2.2 : Math.sin(t * 18) * 0.8) * k;
-        g.save();
-        g.translate(kx, ky + bounce);
-        g.rotate(clamp(steer, -0.5, 0.5) * 0.35 + track[base].curve * 0.04);
-        g.scale(k * 2.4, k * 2.4);
-        const trail = 10 + (st.rate / 400) * 26;
-        for (const [dx2, col] of [[-9, '#ff355e'], [9, '#28e6dc']]) {
-            const tg = g.createLinearGradient(0, 12, 0, 12 + trail);
-            tg.addColorStop(0, col);
-            tg.addColorStop(1, 'rgba(0,0,0,0)');
-            g.fillStyle = tg;
-            g.fillRect(dx2 - 2, 12, 4, trail);
-        }
-        g.fillStyle = '#0f1320';
-        g.strokeStyle = '#28e6dc';
-        g.lineWidth = 2;
-        g.shadowColor = '#28e6dc'; g.shadowBlur = 10 + st.combo * 1.5;
-        g.beginPath(); g.moveTo(-13, 10); g.lineTo(-9, -8); g.lineTo(9, -8); g.lineTo(13, 10); g.closePath();
-        g.fill(); g.stroke();
-        g.fillStyle = 'rgba(255,220,150,0.9)';
-        g.beginPath(); g.moveTo(-4, -8); g.lineTo(4, -8); g.lineTo(3, -14); g.lineTo(-3, -14); g.closePath(); g.fill();
-        g.strokeStyle = '#ff355e';
-        g.beginPath(); g.moveTo(-12, 2); g.lineTo(12, 2); g.stroke();
-        g.restore();
-        drawShield(kx, ky, 26 * k);
         drawFxOverlays(t, tint);
         g.restore();
     }
@@ -1407,15 +1542,15 @@
         collectCrystal, hitShip, give, fireMissile, useBomb,
         start: startRound, pause: pauseGame, resume: resumeGame, resize: resizeCanvas,
         setWorldT(t) { st.worldT = t; },
+        get lapLen() { return LAP_LEN; },
+        setPos(p2) { st.pos = p2; },
         spawnAhead(type) {
             if (st.level === 1) {
                 if (type === 'rock') st.asteroids.push({ x: SHIP_X + 200 * k, y: st.shipY, r: 16 * k, rot: 0, vr: 0 });
                 else if (type === 'crystal') st.crystals.push({ x: SHIP_X + 30 * k, y: st.shipY, ph: 0 });
                 else st.pickups.push({ x: SHIP_X + 30 * k, y: st.shipY, ph: 0, kind: type });
             } else {
-                const N = track.length, segI = Math.floor(st.pos / SEG_L) % N;
-                const tgt = track[(segI + (type === 'rock' ? 6 : 2)) % N];
-                tgt.objs.push({ offset: st.laneX, type });
+                spawnObj2(type, type === 'rock' ? 60 : 22, st.laneX);
             }
         },
         lb,

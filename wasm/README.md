@@ -142,11 +142,13 @@ Motor con paridad casi completa con la versión JS:
 - ✅ **RayRunner (`game.html`)**: arcade de **2 niveles** cuya banda sonora la
   renderiza RayDrone en vivo — la demo de "audio adaptativo para videojuegos".
   Nivel 1 (nave espacial, lateral) y Nivel 2 (**Circuito Neón**: un circuito
-  cerrado de verdad renderizado por segmentos al estilo de los kart racers
-  clásicos — curvas que doblan la carretera, chicanes, un túnel con luces,
-  cambios de rasante que ocultan el trazado tras las crestas, asfalto y
-  tierra, arco de meta y contador de vueltas; sol de rayas, skyline con
-  parallax y pilones neón), cada nivel con su propio sample sintetizado de
+  cerrado **3D de verdad** — WebGL con **Three.js vendorizado** en
+  `vendor/` (sin CDN, sigue funcionando offline; el motor de audio continúa
+  sin dependencias) — trazado como spline Catmull-Rom cerrada con curvas,
+  chicanes, un túnel con luces, cambios de rasante, asfalto y tierra
+  (texturas procedurales por canvas), arco de meta, contador de vueltas,
+  fuerza centrífuga desde la curvatura real de la spline, sol de rayas,
+  skyline y pilones neón), cada nivel con su propio sample sintetizado de
   24 s y 4 zonas — el espacio (pad → campanas → tormenta → coro) y el
   circuito (amanecer → calipso → niebla → faro 2077, en tono mayor y
   alegre). En el circuito, **cada sector de pista es una zona musical**: una
