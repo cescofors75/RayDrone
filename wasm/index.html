@@ -126,7 +126,11 @@
                 <div class="panel-title"><span>Scene<span class="info-badge" tabindex="0">i<span class="info-tip">Carga el WAV/MP3 que los rayos van a granular. Arriba: dónde caen los rayos sobre la onda de origen. Abajo: la señal que realmente suena (osciloscopio + espectro).</span></span></span><span>Source · Rays · Output</span></div>
 
                 <label class="file-label" id="file-label" for="file">📁 Cargar WAV / MP3</label>
-                <input type="file" id="file" accept="audio/*">
+                <!-- iOS Safari con `audio/*` a secas abre el selector de FOTOS
+                     (o deja el audio en gris); listar extensiones + MIME
+                     concretos hace que ofrezca la app Archivos con los
+                     audios seleccionables. -->
+                <input type="file" id="file" accept="audio/*,audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/flac,audio/ogg,.wav,.mp3,.m4a,.aac,.flac,.ogg,.aif,.aiff">
 
                 <div id="viz-wrap" style="position:relative;">
                     <canvas id="wave" width="700" height="150"></canvas>
