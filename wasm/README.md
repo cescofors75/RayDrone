@@ -163,18 +163,29 @@ Motor con paridad casi completa con la versión JS:
   💣 bomba (C), más un **bláster ilimitado** con cadencia que se dispara con
   **clic de ratón, Z/espacio o un toque corto**. **Enemigos fantasma** en los
   dos niveles: naves translúcidas que persiguen tu altura en el espacio y
-  tres coches espectrales (mismo modelo GT que el tuyo, en material aditivo
-  parpadeante) que dan vueltas solos al circuito — alcanzarlos es un golpe
-  (si te adelantan ellos, te atraviesan), disiparlos con un arma da +80 y un
-  destello shimmer, y reaparecen más adelante. El coche del jugador es un
-  GT low-poly con casco extruido, cabina, alerón, llantas neón, faros y
-  underglow, con **sombra propia** (luz direccional que sigue al kart, mapa
-  512² ajustado) y **bloom** (Three.js `UnrealBloomPass`, resolución interna
-  fija y barata para no penalizar el móvil) sobre el neón — el mayor salto
-  de acabado visual por el mínimo coste, ya que los materiales ya eran
-  colores saturados. **Ranking local** con nick (se pide una vez); la interfaz `lb`
-  está aislada para enchufar un backend y compartirlo entre dispositivos.
-  Sin capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
+  tres coches GT espectrales (material aditivo parpadeante) que dan vueltas
+  solos al circuito — alcanzarlos es un golpe (si te adelantan ellos, te
+  atraviesan: el barrido de colisión usa el mismo arco recorrido en el
+  frame que las barreras, así un bajón de fps nunca "salta" el golpe),
+  disiparlos con un arma da +80 y un destello shimmer, y reaparecen más
+  adelante. El vehículo del jugador en el circuito es una **moto Tron**:
+  lightcycle azul neón (casco bajo extruido, aleta dorsal, visor, piloto
+  agachado, una sola vía de ruedas con llanta de disco y buje blanco,
+  manillar, faro/piloto) con **doble muro de luz** trasero (de pie, no un
+  ribbon plano) cuya longitud es la misma visualización de N que antes —
+  **sombra propia** (luz direccional que sigue a la moto, mapa 512²
+  ajustado) y **bloom** (Three.js `UnrealBloomPass`, resolución interna fija
+  y barata para no penalizar el móvil) sobre el neón. **Conducción con
+  inercia**: el mando/dedo acelera el carril (no lo teletransporta), la
+  tierra agarra menos (acelera menos y frena más despacio → derrape), la
+  curva empuja como una centrífuga real sobre la velocidad lateral (no
+  sobre la posición) y el muro de la pista da un rebote suave en vez de un
+  tope duro; la física corre en un **paso fijo con acumulador** (hasta 8
+  subpasos por frame) para que un renderizado lento (móvil flojo) nunca
+  meta el juego en cámara lenta — solo se pintan menos fotogramas.
+  **Ranking local** con nick (se pide una vez); la interfaz `lb` está
+  aislada para enchufar un backend y compartirlo entre dispositivos. Sin
+  capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
   táctil (vertical en N1, horizontal en N2), canvas retina ~56vh, pantalla
   completa, mini-HUD en el lienzo, vibración y pausa automática.
 

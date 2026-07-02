@@ -97,7 +97,7 @@
                 <b style="color:#7bdcff">fantasmas</b> 👻, recoge cristales <b style="color:var(--cyan)">◆</b> y power-ups
                 (🛡 escudo · 🚀 misil con <b>X</b> · 💣 bomba con <b>C</b>). Dispara el <b>bláster</b> —ilimitado— con
                 <b>clic de ratón</b>, <b>Z</b>/<b>espacio</b> o un <b>toque corto</b>.
-                Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito 3D de verdad (WebGL) estilo kart, con
+                Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito 3D de verdad (WebGL) sobre una moto Tron, con
                 curvas, chicanes, túnel, cambios de rasante, asfalto y tierra, rivales fantasma que rondan la pista — y otra
                 música, alegre y luminosa, renderizada por el mismo motor. Cada vuelta recorre el sample entero.
                 Tu <b>combo</b> decide N, la densidad de rayos: juega bien y la música converge; recibe impactos y se rompe.
@@ -392,7 +392,7 @@
     const PICKUP_KINDS = ['shield', 'missile', 'bomb'];
     const st = {
         playing: false, paused: false, level: 1,
-        shipY: 170, vy: 0, laneX: 0,                 // nave: Y en nivel 1, carril X en nivel 2
+        shipY: 170, vy: 0, laneX: 0, laneV: 0,        // nave: Y en nivel 1, carril X + inercia lateral en nivel 2
         worldT: 0, speed: 150, zSpeed: 0.2,
         combo: 0, score: 0, lives: 3, rate: 0, zone: -1,
         shield: 0, missiles: 0, bombs: 0,
@@ -413,7 +413,7 @@
 
     function resetRound() {
         st.level = 1;
-        st.shipY = H / 2; st.vy = 0; st.laneX = 0; st.worldT = 0; st.speed = 150; st.zSpeed = 0.2;
+        st.shipY = H / 2; st.vy = 0; st.laneX = 0; st.laneV = 0; st.worldT = 0; st.speed = 150; st.zSpeed = 0.2;
         st.combo = 0; st.score = 0; st.lives = 3; st.zone = -1;
         st.shield = 0; st.missiles = 0; st.bombs = 0;
         st.shimmer = 0; st.pitchDip = 0; st.shake = 0; st.shieldFlash = 0;
@@ -683,7 +683,7 @@
         st.level = 2;
         st.zone = -1;
         st.worldT = 0;
-        st.laneX = 0;
+        st.laneX = 0; st.laneV = 0;
         st.touchTarget = null; st.touchTargetX = null;
         st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = [];
         st.ghosts = [];
@@ -821,7 +821,6 @@
         bolts2.length = 0;
     }
     const wrapS = (d) => ((d % LAP_LEN) + LAP_LEN) % LAP_LEN;
-    const signedS = (d) => { d = wrapS(d); return d > LAP_LEN / 2 ? d - LAP_LEN : d; }; // distancia con signo
 
     // Rivales fantasma: coches translúcidos que dan vueltas solos. Tocarlos = golpe
     // (el escudo lo absorbe); un arma los disipa (+80) y reaparecen más adelante.
@@ -1027,14 +1026,25 @@
         ground.receiveShadow = true;
         scene.add(ground);
         const sandTex = makeSandTex();
+        // Centro aproximado del trazado: las dunas se alejan RADIALMENTE hacia fuera
+        // desde ahí, no con un lateral arbitrario — el circuito se curva sobre sí
+        // mismo (la recta de salida pasa cerca del sector de tierra en el espacio,
+        // aunque estén lejos en distancia de vuelta) y un lateral fijo podía meter
+        // una duna encima de OTRO tramo de la pista sin que tuviera nada que ver.
+        const trackCentroid = new THREE.Vector3();
+        for (let i = 0; i < 64; i++) trackCentroid.add(curve.getPointAt(i / 64));
+        trackCentroid.multiplyScalar(1 / 64);
         for (let i = 0; i < 9; i++) {
             const f = DIRT0 + (DIRT1 - DIRT0) * (i / 9);
             const P = curve.getPointAt(f);
+            const outward = P.clone().sub(trackCentroid).setY(0).normalize();
             const dune = new THREE.Mesh(
                 new THREE.ConeGeometry(26 + Math.random() * 30, 10 + Math.random() * 14, 8),
                 new THREE.MeshLambertMaterial({ map: sandTex }));
-            const side = Math.random() < 0.5 ? 1 : -1;
-            dune.position.set(P.x + side * (40 + Math.random() * 60), 0, P.z + (Math.random() - 0.5) * 60);
+            dune.position.set(
+                P.x + outward.x * (70 + Math.random() * 70) + (Math.random() - 0.5) * 30,
+                0,
+                P.z + outward.z * (70 + Math.random() * 70) + (Math.random() - 0.5) * 30);
             scene.add(dune);
         }
 
@@ -1129,15 +1139,15 @@
             }
         }
 
-        // Coche del jugador (GT synthwave) + estelas ∝ N
-        const kart = buildCar(0x28e6dc, 0xff355e, 0);
+        // Moto del jugador: lightcycle Tron azul neón + doble muro de luz ∝ N
+        const kart = buildBike(0x2fd3ff, 0xbdfbff);
         kart.userData.trails = [];
-        for (const [dx, col] of [[-0.7, 0xff355e], [0.7, 0x28e6dc]]) {
+        for (const [dx, col] of [[-0.36, 0xbdfbff], [0.36, 0x2fd3ff]]) {
             const tr = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.28, 6),
-                new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-            tr.rotation.x = Math.PI / 2;
-            tr.position.set(dx, 0.35, -(1.4 + 3)); // detrás del coche (el morro mira a +z)
+                new THREE.PlaneGeometry(6, 1.15), // ancho(=largo tras la moto), alto(=muro)
+                new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.72, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+            tr.rotation.y = Math.PI / 2; // de pie, alargándose hacia atrás (no plano en el suelo)
+            tr.position.set(dx, 0.58, -1.3);
             kart.add(tr);
             kart.userData.trails.push(tr);
         }
@@ -1186,10 +1196,111 @@
         T3.composer.setSize(r.width, r.height);
     }
 
-    // Coche GT low-poly: casco extruido desde el perfil lateral, cabina de
-    // cristal, alerón, ruedas con llanta neón, faros, piloto trasero y
-    // underglow. ghostCol != 0 → variante fantasma (aditiva y translúcida).
-    // Convención: el MORRO mira a +z (Object3D.lookAt orienta +z al objetivo).
+    // Moto Tron del jugador: lightcycle azul neón — casco bajo y estrecho
+    // extruido desde el perfil lateral, aleta dorsal luminosa, visor, piloto
+    // agachado (torso + casco), una sola vía de ruedas con llanta de disco
+    // neón y buje blanco, manillar, faro/piloto y underglow. Misma
+    // convención que buildCar: el MORRO mira a +z.
+    function buildBike(accent, accent2) {
+        const bike = new THREE.Group();
+        const pf = new THREE.Shape();
+        pf.moveTo(-1.95, 0.22);
+        pf.lineTo(-1.95, 0.40);  // morro
+        pf.lineTo(-1.35, 0.58);  // carenado
+        pf.lineTo(-0.75, 0.80);  // bajo el visor
+        pf.lineTo(-0.15, 0.62);  // asiento
+        pf.lineTo(0.55, 0.74);   // joroba del motor
+        pf.lineTo(1.35, 0.62);   // colín
+        pf.lineTo(1.75, 0.42);
+        pf.lineTo(1.75, 0.22);
+        pf.closePath();
+        const hullGeo = new THREE.ExtrudeGeometry(pf, { depth: 0.62, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 1 });
+        hullGeo.translate(0, 0, -0.31);
+        hullGeo.rotateY(Math.PI / 2); // morro (x−) pasa a +z
+        const hull = new THREE.Mesh(hullGeo, new THREE.MeshLambertMaterial({ color: 0x081018, emissive: 0x041826 }));
+        hull.castShadow = true;
+        bike.add(hull);
+        const hullEdges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(hullGeo, 18),
+            new THREE.LineBasicMaterial({ color: accent }));
+        bike.add(hullEdges);
+
+        // Aleta dorsal luminosa — la firma visual de un lightcycle
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 1.9), new THREE.MeshBasicMaterial({ color: accent }));
+        fin.position.set(0, 1.0, -0.05);
+        bike.add(fin);
+
+        // Visor/parabrisas inclinado
+        const visor = new THREE.Mesh(
+            new THREE.BoxGeometry(0.5, 0.32, 0.06),
+            new THREE.MeshLambertMaterial({ color: 0x0a2330, emissive: 0x0e4256 }));
+        visor.position.set(0, 0.92, 1.12);
+        visor.rotation.x = -0.5;
+        bike.add(visor);
+
+        // Piloto agachado: torso inclinado + casco con visera
+        const rider = new THREE.Group();
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.6), new THREE.MeshLambertMaterial({ color: 0x0c1120, emissive: 0x060912 }));
+        torso.position.set(0, 1.08, -0.18);
+        torso.rotation.x = 0.42;
+        rider.add(torso);
+        const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), new THREE.MeshLambertMaterial({ color: 0x0c1120, emissive: 0x081226 }));
+        helmet.position.set(0, 1.42, 0.24);
+        rider.add(helmet);
+        const visorStripe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.07), new THREE.MeshBasicMaterial({ color: accent }));
+        visorStripe.position.set(0, 1.44, 0.42);
+        rider.add(visorStripe);
+        bike.add(rider);
+
+        // Ruedas: una sola vía, llanta de disco neón + buje blanco (giran en render3D)
+        bike.userData.wheels = [];
+        const tireGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.26, 16);
+        tireGeo.rotateZ(Math.PI / 2); // eje de giro = x local
+        const rimGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.28, 12);
+        rimGeo.rotateZ(Math.PI / 2);
+        const hubGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.3, 8);
+        hubGeo.rotateZ(Math.PI / 2);
+        const tireMat = new THREE.MeshLambertMaterial({ color: 0x030405 });
+        const rimMat = new THREE.MeshBasicMaterial({ color: accent });
+        const hubMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        for (const wz of [1.42, -1.42]) {
+            const wheel = new THREE.Group();
+            wheel.add(new THREE.Mesh(tireGeo, tireMat));
+            wheel.add(new THREE.Mesh(rimGeo, rimMat));
+            wheel.add(new THREE.Mesh(hubGeo, hubMat));
+            wheel.position.set(0, 0.5, wz);
+            bike.add(wheel);
+            bike.userData.wheels.push(wheel);
+        }
+
+        // Manillar, faro delantero y piloto trasero
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 0.05), new THREE.MeshBasicMaterial({ color: accent2 }));
+        bar.position.set(0, 0.96, 1.32);
+        bike.add(bar);
+        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.08), new THREE.MeshBasicMaterial({ color: 0xdffcff }));
+        lamp.position.set(0, 0.5, 1.88);
+        bike.add(lamp);
+        const tail = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.06), new THREE.MeshBasicMaterial({ color: accent2 }));
+        tail.position.set(0, 0.62, -1.75);
+        bike.add(tail);
+
+        // Underglow
+        const glow = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.1, 3.6),
+            new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }));
+        glow.rotation.x = -Math.PI / 2;
+        glow.position.y = 0.05;
+        bike.add(glow);
+
+        bike.scale.setScalar(1.22);
+        bike.traverse((n) => { if (n.isMesh) n.castShadow = true; });
+        return bike;
+    }
+
+    // Coche GT low-poly (rivales fantasma): casco extruido desde el perfil
+    // lateral, cabina de cristal, alerón, ruedas con llanta neón, faros,
+    // piloto trasero y underglow. ghostCol != 0 → variante fantasma (aditiva
+    // y translúcida). Convención: el MORRO mira a +z.
     function buildCar(accent, accent2, ghostCol) {
         const car = new THREE.Group();
         // Perfil lateral (x = largo con el morro en x−, y = alto), extruido a lo ancho
@@ -1335,11 +1446,25 @@
     }
 
     // ── Bucle ─────────────────────────────────────────────────────────────────
-    let lastT = 0;
+    // Paso de física fijo con acumulador: la conducción (y sus colisiones) no
+    // deben ir más lentas si el dibujado (bloom/sombras en el circuito) se
+    // atasca en un móvil flojo — antes, un frame lento recortaba dt y el juego
+    // entero pasaba a cámara lenta; ahora solo se pintan menos frames, pero el
+    // reloj del juego sigue yendo a tiempo real (con un tope de 8 subpasos por
+    // rAF para no entrar en espiral si la pestaña estuvo en segundo plano).
+    let lastT = 0, accT = 0;
+    const STEP = 1 / 60;
     function frame(t) {
-        const dt = Math.min(0.05, (t - lastT) / 1000 || 0.016);
+        let dt = (t - lastT) / 1000 || STEP;
         lastT = t;
-        if (st.playing && !st.paused) step(dt);
+        dt = Math.min(dt, 0.25);
+        if (st.playing && !st.paused) {
+            accT += dt;
+            let n = 0;
+            while (accT >= STEP && n < 8) { step(STEP); accT -= STEP; n++; }
+        } else {
+            accT = 0;
+        }
         if (st.level === 1) {
             drawSpace(t / 1000);
         } else {
@@ -1503,16 +1628,26 @@
             banner(`VUELTA ${st.lap + 1}`);
         }
         st.worldT = (wrapS(st.pos) / LAP_LEN) * TERRAIN_SECS; // sector = zona musical
-        // Timón (menos agarre en tierra) + centrífuga desde la curvatura real
-        if (st.touchTargetX !== null) {
-            st.laneX += (st.touchTargetX - st.laneX) * Math.min(1, (onDirt ? 6 : 10) * dt);
-        } else {
-            const dir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
-            st.laneX += dir * (onDirt ? 1.25 : 1.9) * dt;
-        }
+        // Timón con inercia: el mando/dedo acelera el carril, no lo teletransporta.
+        // La tierra agarra menos (acelera menos y frena más despacio → derrape) y
+        // la curva empuja hacia fuera como una centrífuga real sobre la velocidad,
+        // no sobre la posición — así no se puede "clavar" el carril de golpe.
+        const steerAccel = onDirt ? 3.4 : 5.4;
+        const grip = onDirt ? 0.025 : 0.0009; // fricción/seg (menor = más derrape)
         const kIdx = Math.floor(frac * curvK.length) % curvK.length;
-        st.laneX += curvK[kIdx] * sSpeed * dt * 0.6; // la curva te empuja hacia fuera
-        st.laneX = clamp(st.laneX, -1.6, 1.6);
+        if (st.touchTargetX !== null) {
+            // El dedo marca la posición objetivo directamente (no solo dirección):
+            // ganancia más firme para que el táctil responda al toque, no a medias.
+            st.laneV += (st.touchTargetX - st.laneX) * (onDirt ? 11 : 18) * dt;
+        } else {
+            const inputDir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
+            st.laneV += inputDir * steerAccel * dt;
+        }
+        st.laneV += curvK[kIdx] * sSpeed * dt * 0.16; // empuje centrífugo (acelera, no desplaza)
+        st.laneV *= Math.pow(grip, dt);
+        st.laneV = clamp(st.laneV, -3.6, 3.6);
+        st.laneX += st.laneV * dt;
+        if (Math.abs(st.laneX) > 1.7) { st.laneX = clamp(st.laneX, -1.7, 1.7); st.laneV *= -0.2; } // rebote suave del muro
         if (offRoad) {
             st.shake = Math.max(st.shake, 0.22);
             if (Math.random() < 14 * dt) {
@@ -1537,13 +1672,17 @@
             st.spawnPick = 7 + Math.random() * 4;
             spawnObj2(PICKUP_KINDS[Math.floor(Math.random() * PICKUP_KINDS.length)], 250 + Math.random() * 60, Math.random() * 1.2 - 0.6);
         }
-        // Colisiones: objetos cuyo arco quedó cruzado este frame
+        // Colisiones: objetos cuyo arco quedó cruzado este frame.
+        // La moto es más estrecha que el kart de antes: el hueco para esquivar una
+        // barrera es más ajustado (exige más precisión), pero recoger cristales y
+        // power-ups sigue siendo generoso (no se penaliza la puntería para eso).
         const ds = wrapS(st.pos - prevPos);
         for (let i = objs2.length - 1; i >= 0; i--) {
             const o = objs2[i];
             const rel = wrapS(o.s - prevPos);
             if (rel <= ds + 2.2) {
-                if (Math.abs(o.lane - st.laneX) < 0.34) {
+                const hitW = o.type === 'rock' ? 0.24 : 0.4;
+                if (Math.abs(o.lane - st.laneX) < hitW) {
                     const type = o.type;
                     removeObj2(i);
                     if (type === 'rock') hitShip();
@@ -1565,10 +1704,13 @@
             gh.t += dt;
             gh.s = wrapS(gh.s + gh.spd * dt);
             gh.lane += (Math.sin(gh.t * 0.4 + gh.ph) * 0.85 - gh.lane) * Math.min(1, 1.1 * dt);
-            // Choque: solo si TÚ lo alcanzas (un fantasma que te adelanta por
-            // detrás no se ve venir — te atraviesa, que para eso es fantasma)
-            const dS = signedS(gh.s - st.pos);
-            if (dS > 0.3 && dS < 2.6 && Math.abs(gh.lane - st.laneX) < 0.5 && sSpeed > gh.spd - 0.5) {
+            // Choque: mismo barrido que las barreras (antes usaba una ventana de arco
+            // fija de 0.3–2.6u que un salto de dt grande —lag, portátil lento— podía
+            // saltarse enteramente sin registrar el golpe). Barrido = correcto y además
+            // ya da la equidad gratis: si el fantasma iba detrás y te alcanza a ti, su
+            // arco no cae dentro de lo que TÚ recorriste este frame → te atraviesa.
+            const rel = wrapS(gh.s - prevPos);
+            if (rel <= ds + 2.4 && Math.abs(gh.lane - st.laneX) < 0.44) {
                 hitShip();
                 gh.dead = 2.2; // se desvanece un instante tras el golpe
                 gh.mesh.visible = false;
@@ -1697,24 +1839,24 @@
         const side = V3().crossVectors(T3.up, Tg).setY(0).normalize();
         const kartPos = P.clone().addScaledVector(side, -st.laneX * ROAD_HALF * 0.86);
         kartPos.y += 0.25;
-        // Kart: posición, rumbo e inclinación (curva + timón), botes en tierra
+        // Moto: posición, rumbo e inclinación (banking real de la moto, atado
+        // a su velocidad lateral de verdad — no a una aproximación del mando)
         const kart = T3.kart;
         kart.position.copy(kartPos);
         const ahead = T3.curve.getPointAt((frac + 6 / LAP_LEN) % 1).addScaledVector(side, -st.laneX * ROAD_HALF * 0.86);
         kart.lookAt(ahead.x, kartPos.y, ahead.z);
-        const steer = st.touchTargetX !== null ? (st.touchTargetX - st.laneX) : ((keys.b ? 1 : 0) - (keys.a ? 1 : 0)) * 0.4;
         const kIdx = Math.floor(frac * curvK.length) % curvK.length;
-        kart.rotation.z = clamp(-steer * 0.5 - curvK[kIdx] * 11, -0.38, 0.38);
+        kart.rotation.z = clamp(-st.laneV * 0.17 - curvK[kIdx] * 15, -0.55, 0.55);
         if (surfaceAt(frac) === 'dirt') kart.position.y += Math.abs(Math.sin(t * 34)) * 0.12;
         // Ruedas girando ∝ velocidad
         const spin = st.speed2 * S3D * t;
         for (const wh of kart.userData.wheels) wh.rotation.x = spin;
-        // Estelas ∝ N (la música convergiendo se VE en el kart) — detrás (−z)
+        // Doble muro de luz Tron ∝ N (la música convergiendo se VE en la moto) — detrás
         for (const tr of kart.userData.trails) {
             const L = 2.5 + (st.rate / 400) * 8;
-            tr.scale.y = L / 6;
-            tr.position.z = -(1.4 + L / 2);
-            tr.material.opacity = 0.35 + (st.rate / 400) * 0.45;
+            tr.scale.x = L / 6;
+            tr.position.z = -(1.3 + L / 2);
+            tr.material.opacity = 0.4 + (st.rate / 400) * 0.5;
         }
         // Rivales fantasma: sobre la pista, parpadeando; miran a su propio rumbo
         for (const gh of ghosts2) {
