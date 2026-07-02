@@ -147,7 +147,10 @@ Motor con paridad casi completa con la versión JS:
   apertura — jugar bien = la textura converge densa y nítida (error ∝ 1/√N);
   un impacto desploma el combo (polvo granular), hunde el tono un instante y
   dispara una cola de rebotes; cada cristal enciende un destello de shimmer.
-  Sin capas pregrabadas: un solo motor, parámetros vivos.
+  Sin capas pregrabadas: un solo motor, parámetros vivos. En móvil: se pilota
+  arrastrando el dedo por la pantalla, canvas nítido (retina) que crece a
+  ~56vh, pantalla completa (⛶, donde el navegador lo permita), mini-HUD dentro
+  del lienzo, vibración háptica y pausa automática al cambiar de app.
 
 Paridad completa con la versión JS.
 

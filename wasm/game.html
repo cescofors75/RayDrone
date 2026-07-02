@@ -17,7 +17,7 @@
         .sub { text-align:center; color:#8a99ad; font-size:0.82rem; margin:6px 0 14px; }
         #stage { position:relative; }
         canvas { display:block; width:100%; height:340px; background:#05060b; border-radius:10px;
-                 border:1px solid rgba(255,53,94,0.15); }
+                 border:1px solid rgba(255,53,94,0.15); touch-action:none; }
         .hud { display:flex; justify-content:space-between; gap:12px; font-family:monospace;
                font-size:0.88rem; margin:10px 0; flex-wrap:wrap; }
         .hud b { color:var(--accent); }
@@ -28,6 +28,12 @@
         .btn { border:none; padding:13px 26px; border-radius:10px; font-size:1rem; font-weight:bold;
                text-transform:uppercase; letter-spacing:1px; cursor:pointer;
                background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; }
+        #fs-btn { position:absolute; right:8px; top:8px; z-index:6; padding:4px 10px; font-size:15px;
+                  border-radius:8px; border:1px solid rgba(255,53,94,0.3); background:rgba(15,19,32,0.7);
+                  color:var(--text); cursor:pointer; }
+        /* En pantalla completa el escenario ocupa todo y el canvas crece con él */
+        #stage:fullscreen, #stage:-webkit-full-screen { background:#05060b; width:100vw; height:100vh; }
+        #stage:fullscreen canvas, #stage:-webkit-full-screen canvas { height:100vh; border-radius:0; border:none; }
         .keys { display:flex; gap:10px; justify-content:center; margin-top:10px; }
         .kbtn { min-width:86px; padding:14px 10px; border-radius:10px; border:1px solid rgba(255,53,94,0.3);
                 background:#0f1320; color:var(--text); font-size:1.1rem; cursor:pointer; user-select:none;
@@ -37,6 +43,20 @@
         .how b { color:var(--cyan); }
         .status { text-align:center; font-family:monospace; font-size:0.74rem; color:#c6d2e5; min-height:1em; margin-top:8px; }
         a.back { color:var(--accent-dim); font-size:0.75rem; text-decoration:none; display:block; text-align:center; margin-top:12px; }
+
+        /* ── Móvil: canvas más alto (el juego manda), controles grandes, texto compacto ── */
+        @media (max-width: 700px) {
+            body { padding:8px 6px; }
+            .container { padding:12px 10px; border-radius:12px; }
+            h1 { font-size:1.15rem; }
+            .sub { font-size:0.72rem; margin:4px 0 10px; }
+            canvas { height:min(56vh, 460px); }
+            .hud { font-size:0.72rem; gap:8px; }
+            .keys { gap:12px; }
+            .kbtn { flex:1; min-width:0; padding:18px 10px; font-size:1.4rem; }
+            .overlay { padding:12px; gap:10px; font-size:0.85rem; }
+            .how { font-size:0.72rem; }
+        }
     </style>
 </head>
 <body>
@@ -54,15 +74,21 @@
 
     <div id="stage">
         <canvas id="game" width="1000" height="340"></canvas>
+        <button id="fs-btn" title="Pantalla completa">⛶</button>
         <div class="overlay" id="start-overlay">
             <div style="max-width:560px; line-height:1.65;">
-                Pilota la nave con <b>↑ ↓</b>. Esquiva asteroides, recoge cristales <b style="color:var(--cyan)">◆</b>.
-                La banda sonora la renderiza <b style="color:var(--accent)">RayDrone en vivo</b>:
-                la <b>zona</b> que atraviesas decide el sonido (el mundo es un sample: pad → campanas →
-                tormenta → coro), y tu <b>combo</b> decide N, la densidad de rayos — juega bien y la música
-                converge, densa y nítida; recibe impactos y se rompe en polvo granular.
+                Pilota con <b>↑ ↓</b> o <b>arrastrando el dedo</b> por la pantalla. Esquiva asteroides,
+                recoge cristales <b style="color:var(--cyan)">◆</b>. La banda sonora la renderiza
+                <b style="color:var(--accent)">RayDrone en vivo</b>: la <b>zona</b> que atraviesas decide el
+                sonido (el mundo es un sample: pad → campanas → tormenta → coro), y tu <b>combo</b> decide N,
+                la densidad de rayos — juega bien y la música converge, densa y nítida; recibe impactos y se
+                rompe en polvo granular.
             </div>
             <button class="btn" id="start-btn">▶ Despegar</button>
+        </div>
+        <div class="overlay" id="pause-overlay" style="display:none;">
+            <div style="font-size:1.2rem;">⏸ Pausa</div>
+            <button class="btn" id="resume-btn">▶ Seguir</button>
         </div>
         <div class="overlay" id="end-overlay" style="display:none;">
             <div style="font-size:1.4rem;">💥 Nave destruida</div>
@@ -100,7 +126,6 @@
     const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
 
     // ── El mundo sonoro: un sample sintetizado de 24 s con 4 zonas ───────────
-    // (pad cálido → campanas → tormenta de ruido → coro). Determinista.
     const SR = 44100, TERRAIN_SECS = 24;
     const ZONES = [
         { name: 'NEBULOSA PAD',      tint: [255, 53, 94] },
@@ -200,25 +225,48 @@
         node.port.postMessage({ type: 'sample', data: makeTerrain(), sampleRate: SR });
     }
 
+    // ── Lienzo adaptativo ─────────────────────────────────────────────────────
+    // El tamaño interno sigue al tamaño visible × dpr (nítido en pantallas
+    // retina, tope ×2 por rendimiento). Todo lo dependiente del tamaño usa
+    // W/H/k en vivo; al redimensionar (girar el móvil, pantalla completa) las
+    // entidades existentes se reescalan para que la partida no salte.
+    let W = 0, H = 0, k = 1, SHIP_X = 0;
+    const sf = () => W / 1000; // factor de velocidad horizontal (diseño: 1000 px)
+    function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width < 10 || rect.height < 10) return;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const nw = Math.round(rect.width * dpr), nh = Math.round(rect.height * dpr);
+        if (nw === W && nh === H) return;
+        const sx = W ? nw / W : 1, sy = H ? nh / H : 1;
+        W = nw; H = nh;
+        canvas.width = W; canvas.height = H;
+        k = clamp(H / 340, 0.75, 2.4); // escala de sprites/fuentes (diseño: 340 px de alto)
+        SHIP_X = W * 0.16;
+        st.shipY = W ? clamp(st.shipY * sy, 24 * k, H - 24 * k) : H / 2;
+        for (const a of st.asteroids) { a.x *= sx; a.y *= sy; a.r *= sy; }
+        for (const c of st.crystals) { c.x *= sx; c.y *= sy; }
+        for (const p of st.particles) { p.x *= sx; p.y *= sy; }
+        for (const s of st.stars) { s.x *= sx; s.y *= sy; }
+    }
+
     // ── Estado del juego ──────────────────────────────────────────────────────
-    const W = canvas.width, H = canvas.height;
-    const SHIP_X = W * 0.18, SHIP_R = 13;
+    const SHIP_R = 13; // radio de diseño; en colisiones/dibujo se multiplica por k
     const st = {
-        playing: false, shipY: H / 2, vy: 0, worldT: 0, speed: 150, // px/s de scroll
+        playing: false, paused: false, shipY: 170, vy: 0, worldT: 0, speed: 150,
         combo: 0, score: 0, lives: 3, rate: 0, zone: -1,
-        shimmer: 0,   // destello de octava al recoger cristal (decae)
-        pitchDip: 0,  // caída de tono al recibir impacto (decae)
-        shake: 0, zoneFlash: 0, zoneFlashName: '',
+        shimmer: 0, pitchDip: 0, shake: 0, zoneFlash: 0, zoneFlashName: '',
         asteroids: [], crystals: [], particles: [], stars: [],
-        spawnAst: 0, spawnCry: 0,
+        spawnAst: 0, spawnCry: 0, touchTarget: null,
     };
+    resizeCanvas();
     for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
     const keys = { up: false, down: false };
 
     function resetRound() {
         st.shipY = H / 2; st.vy = 0; st.worldT = 0; st.speed = 150;
         st.combo = 0; st.score = 0; st.lives = 3; st.zone = -1;
-        st.shimmer = 0; st.pitchDip = 0; st.shake = 0;
+        st.shimmer = 0; st.pitchDip = 0; st.shake = 0; st.touchTarget = null;
         st.asteroids = []; st.crystals = []; st.particles = [];
         st.spawnAst = 1.2; st.spawnCry = 0.8;
         updateHud();
@@ -229,35 +277,36 @@
         hudLives.innerText = '♥'.repeat(st.lives) || '—';
         hudN.innerText = Math.round(st.rate);
     }
+    const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
 
     // ── Acciones → sonido ─────────────────────────────────────────────────────
     function collectCrystal() {
         st.combo = Math.min(10, st.combo + 1);
         st.score += 50 + st.combo * 10;
-        st.shimmer = 1; // ráfaga de granos una octava arriba (decae en el bucle)
-        burst(SHIP_X + 20, st.shipY, [40, 230, 220], 14);
+        st.shimmer = 1;
+        burst(SHIP_X + 20 * k, st.shipY, [40, 230, 220], 14);
+        vibrate(15);
         updateHud();
     }
     function hitShip() {
         st.combo = Math.max(0, st.combo - 4);
         st.lives -= 1;
-        st.pitchDip = 1; // el drone cae de tono y vuelve (decae en el bucle)
+        st.pitchDip = 1;
         st.shake = 1;
-        // Ráfaga de rebotes: el impacto deja una cola recursiva un instante
         if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 3, refl: 0.7, feedback: 0.1 });
         setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 1200);
         burst(SHIP_X, st.shipY, [255, 80, 80], 22);
+        vibrate([60, 40, 60]);
         updateHud();
         if (st.lives <= 0) endRound();
     }
     function sendAudio() {
         if (!node) return;
-        // Zona (posición del mundo en el buffer) → foco. Combo → N y apertura.
         const focusSec = st.worldT % TERRAIN_SECS;
         const c = st.combo / 10;
-        const rate = st.playing ? 60 + c * 340 : 0;   // N: 60..400 rayos/s
+        const rate = (st.playing && !st.paused) ? 60 + c * 340 : 0;
         st.rate = rate;
-        const aperture = 0.35 - c * 0.30;              // 350 ms caótico → 50 ms nítido
+        const aperture = 0.35 - c * 0.30;
         const grainMs = 140;
         const conc = Math.max(1, rate * grainMs / 1000);
         const gain = clamp(1.5 / Math.sqrt(conc), 0, 0.5);
@@ -269,7 +318,7 @@
 
     function endRound() {
         st.playing = false;
-        sendAudio(); // rate 0 → el motor se apaga en silencio
+        sendAudio();
         $('end-score').innerText = st.score;
         $('end-overlay').style.display = '';
     }
@@ -278,18 +327,35 @@
             statusEl.innerText = `Error al iniciar el motor: ${(err && err.message) || err}`;
             return;
         }
+        resizeCanvas();
         resetRound();
-        st.playing = true;
+        st.playing = true; st.paused = false;
         $('start-overlay').style.display = 'none';
         $('end-overlay').style.display = 'none';
+        $('pause-overlay').style.display = 'none';
+    }
+    function pauseGame() {
+        if (!st.playing || st.paused) return;
+        st.paused = true;
+        sendAudio(); // rate 0 → silencio mientras tanto
+        $('pause-overlay').style.display = '';
+    }
+    function resumeGame() {
+        if (!st.paused) return;
+        st.paused = false;
+        $('pause-overlay').style.display = 'none';
     }
     $('start-btn').addEventListener('click', startRound);
     $('restart-btn').addEventListener('click', startRound);
+    $('resume-btn').addEventListener('click', resumeGame);
+    // Móvil: una llamada/notificación o cambiar de pestaña pausa la partida.
+    document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
 
-    // ── Entrada ───────────────────────────────────────────────────────────────
+    // ── Entrada: teclado, botones táctiles y ARRASTRE sobre el lienzo ─────────
     window.addEventListener('keydown', (e) => {
         if (e.key === 'ArrowUp' || e.key === 'w') keys.up = true;
         else if (e.key === 'ArrowDown' || e.key === 's') keys.down = true;
+        else if (e.key === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
         else return;
         e.preventDefault();
     });
@@ -297,20 +363,50 @@
         if (e.key === 'ArrowUp' || e.key === 'w') keys.up = false;
         if (e.key === 'ArrowDown' || e.key === 's') keys.down = false;
     });
+    // setPointerCapture puede lanzar si el puntero ya se soltó entre el evento
+    // y la llamada (visto en iOS y con eventos sintéticos) — capturar es solo
+    // una mejora de seguimiento, nunca debe romper la entrada.
+    const capture = (el, e) => { try { el.setPointerCapture(e.pointerId); } catch (_) { /* sin captura, el drag sigue */ } };
     const holdBtn = (id, key) => {
         const el = $(id);
-        el.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[key] = true; el.setPointerCapture(e.pointerId); });
+        el.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[key] = true; capture(el, e); });
         const off = () => { keys[key] = false; };
         el.addEventListener('pointerup', off);
         el.addEventListener('pointercancel', off);
     };
     holdBtn('btn-up', 'up');
     holdBtn('btn-down', 'down');
+    // El control móvil principal: arrastra el dedo (o el ratón) y la nave sigue
+    // tu altura con un easing rápido. touch-action:none evita que la página
+    // haga scroll/zoom mientras pilotas.
+    let dragging = false;
+    function dragTo(e) {
+        const rect = canvas.getBoundingClientRect();
+        st.touchTarget = clamp((e.clientY - rect.top) / rect.height * H, 24 * k, H - 24 * k);
+    }
+    canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); dragging = true; dragTo(e); capture(canvas, e); });
+    canvas.addEventListener('pointermove', (e) => { if (dragging) dragTo(e); });
+    const dragEnd = () => { dragging = false; st.touchTarget = null; };
+    canvas.addEventListener('pointerup', dragEnd);
+    canvas.addEventListener('pointercancel', dragEnd);
+
+    // ── Pantalla completa (donde el navegador lo permita; iPhone Safari no) ──
+    const stage = $('stage'), fsBtn = $('fs-btn');
+    const fsSupported = stage.requestFullscreen || stage.webkitRequestFullscreen;
+    if (!fsSupported) fsBtn.style.display = 'none';
+    fsBtn.addEventListener('click', () => {
+        const cur = document.fullscreenElement || document.webkitFullscreenElement;
+        if (cur === stage) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        else (stage.requestFullscreen || stage.webkitRequestFullscreen).call(stage);
+    });
+    document.addEventListener('fullscreenchange', resizeCanvas);
+    document.addEventListener('webkitfullscreenchange', resizeCanvas);
+    window.addEventListener('resize', resizeCanvas);
 
     // ── Partículas ────────────────────────────────────────────────────────────
     function burst(x, y, col, n) {
         for (let i = 0; i < n; i++) {
-            const a = Math.random() * 6.283, sp = 40 + Math.random() * 160;
+            const a = Math.random() * 6.283, sp = (40 + Math.random() * 160) * k;
             st.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, col });
         }
     }
@@ -320,19 +416,24 @@
     function frame(t) {
         const dt = Math.min(0.05, (t - lastT) / 1000 || 0.016);
         lastT = t;
-        if (st.playing) step(dt);
+        if (st.playing && !st.paused) step(dt);
         draw(t / 1000);
         requestAnimationFrame(frame);
     }
     function step(dt) {
-        // Nave
-        const dir = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
-        st.vy += dir * 1400 * dt;
-        st.vy *= Math.pow(0.001, dt);
-        st.shipY = clamp(st.shipY + st.vy * dt, 24, H - 24);
-        // Mundo: el scroll recorre el buffer (0.35 s de sample por segundo real)
+        // Nave: el arrastre táctil manda; si no, teclas con inercia.
+        if (st.touchTarget !== null) {
+            st.shipY += (st.touchTarget - st.shipY) * Math.min(1, 14 * dt);
+            st.vy = 0;
+        } else {
+            const dir = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+            st.vy += dir * 1400 * k * dt;
+            st.vy *= Math.pow(0.001, dt);
+            st.shipY = clamp(st.shipY + st.vy * dt, 24 * k, H - 24 * k);
+        }
+        // Mundo
         st.worldT += 0.35 * dt;
-        st.speed = Math.min(320, st.speed + 2.5 * dt); // dificultad sube suave
+        st.speed = Math.min(320, st.speed + 2.5 * dt);
         st.score += Math.round(10 * dt);
         const zone = Math.floor((st.worldT % TERRAIN_SECS) / (TERRAIN_SECS / 4));
         if (zone !== st.zone) {
@@ -345,30 +446,33 @@
         st.spawnAst -= dt;
         if (st.spawnAst <= 0) {
             st.spawnAst = Math.max(0.45, 1.15 - st.worldT * 0.008);
-            st.asteroids.push({ x: W + 30, y: 30 + Math.random() * (H - 60), r: 12 + Math.random() * 15, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 2 });
+            st.asteroids.push({ x: W + 40 * k, y: (30 + Math.random() * 280) / 340 * H, r: (12 + Math.random() * 15) * k, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 2 });
         }
         st.spawnCry -= dt;
         if (st.spawnCry <= 0) {
             st.spawnCry = 1.3 + Math.random() * 0.8;
-            st.crystals.push({ x: W + 20, y: 30 + Math.random() * (H - 60), ph: Math.random() * 6.28 });
+            st.crystals.push({ x: W + 20 * k, y: (30 + Math.random() * 280) / 340 * H, ph: Math.random() * 6.28 });
         }
-        // Mover + colisiones
+        // Mover + colisiones (velocidad horizontal ∝ anchura del lienzo)
+        const vx = st.speed * sf();
         for (let i = st.asteroids.length - 1; i >= 0; i--) {
             const a = st.asteroids[i];
-            a.x -= st.speed * dt; a.rot += a.vr * dt;
-            if (a.x < -40) { st.asteroids.splice(i, 1); continue; }
+            a.x -= vx * dt; a.rot += a.vr * dt;
+            if (a.x < -50 * k) { st.asteroids.splice(i, 1); continue; }
             const dx = a.x - SHIP_X, dy = a.y - st.shipY;
-            if (dx * dx + dy * dy < (a.r + SHIP_R) * (a.r + SHIP_R)) {
+            const rr = a.r + SHIP_R * k;
+            if (dx * dx + dy * dy < rr * rr) {
                 st.asteroids.splice(i, 1);
                 hitShip();
             }
         }
         for (let i = st.crystals.length - 1; i >= 0; i--) {
             const c = st.crystals[i];
-            c.x -= st.speed * dt; c.ph += 4 * dt;
-            if (c.x < -20) { st.crystals.splice(i, 1); continue; }
+            c.x -= vx * dt; c.ph += 4 * dt;
+            if (c.x < -20 * k) { st.crystals.splice(i, 1); continue; }
             const dx = c.x - SHIP_X, dy = c.y - st.shipY;
-            if (dx * dx + dy * dy < (10 + SHIP_R) * (10 + SHIP_R)) {
+            const rr = (10 + SHIP_R) * k;
+            if (dx * dx + dy * dy < rr * rr) {
                 st.crystals.splice(i, 1);
                 collectCrystal();
             }
@@ -378,7 +482,6 @@
             p.x += p.vx * dt; p.y += p.vy * dt; p.life -= 2.2 * dt;
             if (p.life <= 0) st.particles.splice(i, 1);
         }
-        // Decaimiento de los efectos sonoros de acción
         st.shimmer = Math.max(0, st.shimmer - 0.9 * dt);
         st.pitchDip = Math.max(0, st.pitchDip - 1.1 * dt);
         st.shake = Math.max(0, st.shake - 3 * dt);
@@ -390,32 +493,32 @@
 
     function draw(t) {
         g.save();
-        if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10, (Math.random() - 0.5) * st.shake * 10);
-        g.clearRect(-10, -10, W + 20, H + 20);
-        // Fondo teñido por la zona actual
+        if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
+        g.clearRect(-20, -20, W + 40, H + 40);
         const tint = ZONES[Math.max(0, st.zone)].tint;
         const bg = g.createLinearGradient(0, 0, 0, H);
         bg.addColorStop(0, `rgba(${tint[0]},${tint[1]},${tint[2]},0.10)`);
         bg.addColorStop(0.5, '#05060b');
         bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.06)`);
         g.fillStyle = bg;
-        g.fillRect(-10, -10, W + 20, H + 20);
-        // Estrellas (parallax)
+        g.fillRect(-20, -20, W + 40, H + 40);
+        // Estrellas
         g.fillStyle = 'rgba(255,255,255,0.6)';
         for (const s of st.stars) {
-            s.x -= st.speed * s.z * 0.02;
+            s.x -= st.speed * sf() * s.z * 0.02;
             if (s.x < 0) { s.x = W; s.y = Math.random() * H; }
             g.globalAlpha = 0.25 + s.z * 0.5;
-            g.fillRect(s.x, s.y, 1.6 * s.z + 0.4, 1.6 * s.z + 0.4);
+            const sz = (1.6 * s.z + 0.4) * k;
+            g.fillRect(s.x, s.y, sz, sz);
         }
         g.globalAlpha = 1;
         // Cristales
         for (const c of st.crystals) {
-            const r = 9 + Math.sin(c.ph) * 1.5;
+            const r = (9 + Math.sin(c.ph) * 1.5) * k;
             g.save();
             g.translate(c.x, c.y); g.rotate(0.785);
             g.fillStyle = 'rgba(40,230,220,0.9)';
-            g.shadowColor = '#28e6dc'; g.shadowBlur = 12;
+            g.shadowColor = '#28e6dc'; g.shadowBlur = 12 * k;
             g.fillRect(-r / 2, -r / 2, r, r);
             g.restore();
         }
@@ -425,22 +528,23 @@
             g.translate(a.x, a.y); g.rotate(a.rot);
             g.strokeStyle = 'rgba(255,120,120,0.85)';
             g.fillStyle = 'rgba(60,25,32,0.9)';
-            g.lineWidth = 1.6;
+            g.lineWidth = 1.6 * k;
             g.beginPath();
-            for (let k = 0; k < 7; k++) {
-                const an = k / 7 * 6.283;
-                const rr = a.r * (0.75 + 0.25 * Math.sin(k * 2.7));
-                k ? g.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) : g.moveTo(Math.cos(an) * rr, Math.sin(an) * rr);
+            for (let i = 0; i < 7; i++) {
+                const an = i / 7 * 6.283;
+                const rr = a.r * (0.75 + 0.25 * Math.sin(i * 2.7));
+                i ? g.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) : g.moveTo(Math.cos(an) * rr, Math.sin(an) * rr);
             }
             g.closePath(); g.fill(); g.stroke();
             g.restore();
         }
-        // Nave (triángulo neón con propulsor ∝ N: la propia nave enseña la densidad)
-        const flame = 6 + (st.rate / 400) * 22 + Math.random() * 4;
+        // Nave (propulsor ∝ N: la propia nave enseña la densidad de rayos)
+        const flame = (6 + (st.rate / 400) * 22 + Math.random() * 4) * k;
         g.save();
         g.translate(SHIP_X, st.shipY);
+        g.scale(k, k);
         g.fillStyle = 'rgba(255,140,60,0.8)';
-        g.beginPath(); g.moveTo(-14, 0); g.lineTo(-14 - flame, -4); g.lineTo(-14 - flame, 4); g.closePath(); g.fill();
+        g.beginPath(); g.moveTo(-14, 0); g.lineTo(-14 - flame / k, -4); g.lineTo(-14 - flame / k, 4); g.closePath(); g.fill();
         g.fillStyle = '#0f1320';
         g.strokeStyle = '#28e6dc';
         g.lineWidth = 2;
@@ -451,14 +555,26 @@
         // Partículas
         for (const p of st.particles) {
             g.fillStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.life})`;
-            g.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+            const sz = 3 * k;
+            g.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
         }
         // Nombre de zona al cruzar
         if (st.zoneFlash > 0) {
             g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${st.zoneFlash})`;
-            g.font = 'bold 26px monospace';
+            g.font = `bold ${Math.round(26 * k)}px monospace`;
             g.textAlign = 'center';
-            g.fillText(st.zoneFlashName, W / 2, 52);
+            g.fillText(st.zoneFlashName, W / 2, 52 * k);
+        }
+        // Mini-HUD dentro del lienzo (visible también en pantalla completa)
+        if (st.playing) {
+            g.font = `${Math.round(12 * k)}px monospace`;
+            g.textAlign = 'left';
+            g.fillStyle = 'rgba(240,226,230,0.75)';
+            g.fillText(`${'♥'.repeat(st.lives)}  ${st.score} pts`, 10 * k, 18 * k);
+            g.fillStyle = 'rgba(40,230,220,0.75)';
+            g.textAlign = 'right';
+            // Deja hueco a la derecha para el botón ⛶ de pantalla completa (DOM).
+            g.fillText(`N=${Math.round(st.rate)}`, W - 52 * k, 18 * k);
         }
         g.restore();
     }
@@ -467,7 +583,8 @@
     // Hook de test/depuración (usado por las verificaciones headless del repo).
     window.__ray_game = {
         get state() { return st; },
-        collectCrystal, hitShip, start: startRound,
+        collectCrystal, hitShip, start: startRound, pause: pauseGame, resume: resumeGame,
+        resize: resizeCanvas,
     };
 </script>
 </body>
