@@ -38,6 +38,10 @@
         #fs-btn { position:absolute; right:8px; top:8px; z-index:6; padding:4px 10px; font-size:15px;
                   border-radius:8px; border:1px solid rgba(255,53,94,0.3); background:rgba(15,19,32,0.7);
                   color:var(--text); cursor:pointer; }
+        #cam-btn { position:absolute; right:52px; top:8px; z-index:6; padding:4px 10px; font-size:15px;
+                   border-radius:8px; border:1px solid rgba(47,211,255,0.35); background:rgba(15,19,32,0.7);
+                   color:var(--text); cursor:pointer; display:none; }
+        #stage.mode3d #cam-btn { display:block; }
         #stage:fullscreen, #stage:-webkit-full-screen { background:#05060b; width:100vw; height:100vh; }
         #stage:fullscreen canvas, #stage:-webkit-full-screen canvas { height:100vh; border-radius:0; border:none; }
         .keys { display:flex; gap:8px; justify-content:center; margin-top:10px; }
@@ -91,6 +95,7 @@
         <canvas id="game3d" width="1000" height="340"></canvas>
         <canvas id="game" width="1000" height="340"></canvas>
         <button id="fs-btn" title="Pantalla completa">⛶</button>
+        <button id="cam-btn" title="Cámara (V): persecución / dentro / frontal">📷</button>
         <div class="overlay" id="start-overlay">
             <div style="max-width:560px; line-height:1.6;">
                 <b>Nivel 1 · Espacio</b>: pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides y
@@ -99,7 +104,8 @@
                 <b>clic de ratón</b>, <b>Z</b>/<b>espacio</b> o un <b>toque corto</b>.
                 Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito 3D de verdad (WebGL) sobre una moto Tron —
                 ← → giras, <b>↑ aceleras, ↓ frenas</b> (en móvil el dedo hace las dos cosas), pisa las <b style="color:#5dffc8">flechas turbo</b>,
-                pasa <b>rozando</b> las barreras (+25) y esquiva a los rivales fantasma. Ir a fondo multiplica los puntos — y otra
+                pasa <b>rozando</b> las barreras (+25) y esquiva a los rivales fantasma (síguelos en el <b>minimapa</b>).
+                Cambia de cámara con <b>V</b> o el botón 📷 (persecución / dentro / frontal). Ir a fondo multiplica los puntos — y otra
                 música, alegre y luminosa, renderizada por el mismo motor. Cada vuelta recorre el sample entero.
                 Tu <b>combo</b> decide N, la densidad de rayos: juega bien y la música converge; recibe impactos y se rompe.
             </div>
@@ -362,6 +368,7 @@
     const bolts2 = [];            // disparos de bláster en el circuito: {s, lane, spd, ttl, mesh}
     const pads2 = [];             // turbo pads fijos de la pista: {s, lane, mesh, cd}
     const frags2 = [];            // escombros 3D de un golpe: {mesh, vel, rot, ttl}
+    let miniPts = null;           // contorno del circuito normalizado (minimapa)
 
     // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
     let W = 0, H = 0, k = 1, SHIP_X = 0;
@@ -406,6 +413,7 @@
         // Nivel 2 (racer 3D): posición sobre la pista (arco), vuelta, etc.
         pos: 0, lap: 0, speed2: 2300, inTunnel: false, bgShift: 0,
         boost: 0, spin: 0, nearMiss: 0, // turbo pad · trompo tras golpe · destello de roce
+        camMode: 0, // 0 = persecución · 1 = dentro de la moto · 2 = frontal
         spawnAst: 0, spawnCry: 0, spawnPick: 0, spawnObj: 0,
         touchTarget: null, touchTargetX: null, touchThrottle: 0,
     };
@@ -426,6 +434,8 @@
         st.ghosts = []; st.spawnGhost = 7; st.blastCd = 0;
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
         st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
+        st.camMode = 0;
+        if (T3) T3.kart.visible = true;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
@@ -730,6 +740,7 @@
         else if (st.level === 2 && down) keys.d = true;  // freno
         else if (e.key === 'x') { if (!e.repeat) fireMissile(); }
         else if (e.key === 'c') { if (!e.repeat) useBomb(); }
+        else if (e.key === 'v') { if (!e.repeat && st.level === 2) cycleCamera(); }
         else if (e.key === 'z' || e.key === ' ') { fireBlaster(); } // mantener = autofuego (con cadencia)
         else if (e.key === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
         else return;
@@ -784,6 +795,15 @@
     });
     canvas.addEventListener('pointercancel', dragEnd);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // ── Cámara del circuito: persecución → dentro → frontal ─────────────────
+    const CAM_NAMES = ['PERSECUCIÓN', 'DENTRO', 'FRONTAL'];
+    function cycleCamera() {
+        st.camMode = (st.camMode + 1) % 3;
+        banner(`CÁMARA · ${CAM_NAMES[st.camMode]}`);
+        if (T3) T3.kart.visible = st.camMode !== 1; // dentro: la moto no tapa la vista
+    }
+    $('cam-btn').addEventListener('click', () => { if (st.level === 2) cycleCamera(); });
 
     // ── Pantalla completa ────────────────────────────────────────────────────
     const stage = $('stage'), fsBtn = $('fs-btn');
@@ -966,6 +986,14 @@
             }
         }, 24, 24);
     }
+    function makeStreetTex() { // calle de ciudad: asfalto apagado + discontinua tenue
+        return canvasTex(64, 256, (c2, w, h) => {
+            c2.fillStyle = '#141420'; c2.fillRect(0, 0, w, h);
+            noiseRect(c2, 0, 0, w, h, 26, 18, 500);
+            c2.fillStyle = 'rgba(150,160,210,0.28)';
+            for (let y = 0; y < h; y += 42) c2.fillRect(w / 2 - 2, y, 4, 22);
+        }, 1, 5);
+    }
     function makeWindowsTex() {
         return canvasTex(64, 128, (c2, w, h) => {
             c2.fillStyle = '#0a0616'; c2.fillRect(0, 0, w, h);
@@ -1037,6 +1065,25 @@
             const a = curve.getTangentAt(t0), b = curve.getTangentAt(t1);
             const cross = a.x * b.z - a.z * b.x;
             curvK[i] = Math.asin(clamp(cross, -1, 1)) / (LAP_LEN / KS);
+        }
+
+        // Contorno del minimapa: x,z muestreados y normalizados a 0..1
+        // conservando la proporción del trazado real.
+        {
+            const MPTS = 160, raw = [];
+            let mnx = 1e9, mxx = -1e9, mnz = 1e9, mxz = -1e9;
+            for (let i = 0; i < MPTS; i++) {
+                const p = curve.getPointAt(i / MPTS);
+                raw.push(p.x, p.z);
+                mnx = Math.min(mnx, p.x); mxx = Math.max(mxx, p.x);
+                mnz = Math.min(mnz, p.z); mxz = Math.max(mxz, p.z);
+            }
+            const span = Math.max(mxx - mnx, mxz - mnz);
+            miniPts = new Float32Array(MPTS * 2);
+            for (let i = 0; i < MPTS; i++) {
+                miniPts[i * 2] = (raw[i * 2] - (mnx + mxx) / 2) / span + 0.5;
+                miniPts[i * 2 + 1] = (raw[i * 2 + 1] - (mnz + mxz) / 2) / span + 0.5;
+            }
         }
 
         // Cinta de calzada por tramos de superficie (UV: u = través, v = a lo largo)
@@ -1159,6 +1206,60 @@
                 new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x223038, emissiveMap: winTex }));
             b.position.set(250 + Math.cos(a) * r, hgt / 2 - 1, 230 + Math.sin(a) * r);
             scene.add(b);
+        }
+
+        // Ciudad: calles cruzadas a nivel del suelo (el circuito las sobrevuela)
+        // + edificios cerca de la pista formando cañones de calle.
+        {
+            const streetTex = makeStreetTex();
+            for (let i = 0; i < 10; i++) {
+                const street = new THREE.Mesh(
+                    new THREE.PlaneGeometry(16, 1100),
+                    new THREE.MeshLambertMaterial({ map: streetTex }));
+                street.rotation.order = 'YXZ';
+                street.rotation.y = (i / 10) * Math.PI + (Math.random() - 0.5) * 0.3;
+                street.rotation.x = -Math.PI / 2;
+                street.position.set(
+                    trackCentroid.x + (Math.random() - 0.5) * 500,
+                    -0.34,
+                    trackCentroid.z + (Math.random() - 0.5) * 500);
+                scene.add(street);
+            }
+            // Muestreo del trazado para NO plantar un edificio encima de otro
+            // tramo (el circuito se cruza sobre sí mismo en el espacio).
+            const samples = [];
+            for (let i = 0; i < 256; i++) samples.push(curve.getPointAt(i / 256));
+            const clearOfTrack = (x, z, margin) => {
+                for (const s of samples) {
+                    const dx = s.x - x, dz = s.z - z;
+                    if (dx * dx + dz * dz < margin * margin) return false;
+                }
+                return true;
+            };
+            const N_BLD = 90;
+            const bldGeo = new THREE.BoxGeometry(1, 1, 1);
+            const bldMat = new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x223038, emissiveMap: winTex });
+            const bld = new THREE.InstancedMesh(bldGeo, bldMat, N_BLD);
+            const M4 = new THREE.Matrix4(), Q0 = new THREE.Quaternion();
+            const S3 = new THREE.Vector3(), P3 = new THREE.Vector3();
+            let nb = 0;
+            for (let tries = 0; tries < 600 && nb < N_BLD; tries++) {
+                const f = Math.random();
+                if (tunnelAt(f) || surfaceAt(f) === 'dirt') continue;
+                const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
+                const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
+                const sd = Math.random() < 0.5 ? 1 : -1;
+                const dist = ROAD_HALF + 10 + Math.random() * 16;
+                const x = P.x + side.x * sd * dist, z = P.z + side.z * sd * dist;
+                if (!clearOfTrack(x, z, 14)) continue;
+                const h2 = 8 + Math.random() * 20;
+                S3.set(6 + Math.random() * 6, h2, 6 + Math.random() * 6);
+                P3.set(x, h2 / 2 - 0.4, z);
+                M4.compose(P3, Q0, S3);
+                bld.setMatrixAt(nb++, M4);
+            }
+            bld.count = nb;
+            scene.add(bld);
         }
 
         // Túnel: tubo oscuro sobre su tramo + luces de techo + portales neón
@@ -1421,6 +1522,25 @@
         glow.rotation.x = -Math.PI / 2;
         glow.position.y = 0.05;
         bike.add(glow);
+
+        // Halo billboard: un resplandor suave alrededor de la moto para que se
+        // lea sobre CUALQUIER fondo (la tierra clara se la comía). Sprite =
+        // siempre de cara a la cámara, y con el bloom se enciende solo.
+        const haloCv = document.createElement('canvas');
+        haloCv.width = haloCv.height = 64;
+        const hc = haloCv.getContext('2d');
+        const grd = hc.createRadialGradient(32, 32, 4, 32, 32, 31);
+        grd.addColorStop(0, 'rgba(120,225,255,0.32)');
+        grd.addColorStop(0.55, 'rgba(60,180,255,0.10)');
+        grd.addColorStop(1, 'rgba(0,0,0,0)');
+        hc.fillStyle = grd;
+        hc.fillRect(0, 0, 64, 64);
+        const haloTex = new THREE.CanvasTexture(haloCv);
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: haloTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+        halo.scale.set(3.0, 3.0, 1);
+        halo.position.y = 0.85;
+        bike.add(halo);
 
         bike.scale.setScalar(1.22);
         bike.traverse((n) => { if (n.isMesh) n.castShadow = true; });
@@ -2097,18 +2217,36 @@
             b.mesh.position.y += 0.62;
             b.mesh.lookAt(bP.clone().add(bT));
         }
-        // Cámara viva: a más velocidad baja, se aleja un poco y abre el FOV —
-        // el truco más barato para que la velocidad SE SIENTA. Con turbo, extra.
+        // Cámara viva con 3 vistas (botón 📷 / tecla V):
+        //  0 persecución — baja, se aleja y abre el FOV con la velocidad
+        //  1 dentro      — primera persona desde el manillar (sin lerp: mareo)
+        //  2 frontal     — por delante mirando a la moto (para lucirla)
         const cam = T3.camera;
         const spdN = clamp((st.speed2 - 1500) / (4800 - 1500), 0, 1);
-        const camBack = -(7.6 + spdN * 2.4), camUp = 3.5 - spdN * 0.8;
-        const camPos = kartPos.clone().addScaledVector(Tg, camBack).add(new THREE.Vector3(0, camUp, 0));
-        camPos.y = Math.max(camPos.y, roadHeightAt(frac, camBack) + 1.3); // no hundirse tras una cresta
-        cam.position.lerp(camPos, Math.min(1, 8 * 0.016 * 60 * 0.016 + 0.35));
+        let fovTgt;
+        if (st.camMode === 1) {
+            cam.position.copy(kartPos).addScaledVector(Tg, 0.6).add(new THREE.Vector3(0, 1.28, 0));
+            const look = T3.curve.getPointAt((frac + 22 / LAP_LEN) % 1)
+                .addScaledVector(side, -st.laneX * ROAD_HALF * 0.86).add(new THREE.Vector3(0, 1.0, 0));
+            cam.lookAt(look);
+            cam.rotateZ(clamp(-st.laneV * 0.1, -0.2, 0.2)); // roll local: el horizonte se inclina contigo
+            fovTgt = 78 + spdN * 14 + (st.boost > 0 ? 6 : 0);
+        } else if (st.camMode === 2) {
+            const camPos = kartPos.clone().addScaledVector(Tg, 10.5).add(new THREE.Vector3(0, 2.5, 0));
+            camPos.y = Math.max(camPos.y, roadHeightAt(frac, 10.5) + 1.2);
+            cam.position.lerp(camPos, 0.4);
+            cam.lookAt(kartPos.x, kartPos.y + 0.8, kartPos.z);
+            fovTgt = 62;
+        } else {
+            const camBack = -(7.6 + spdN * 2.4), camUp = 3.5 - spdN * 0.8;
+            const camPos = kartPos.clone().addScaledVector(Tg, camBack).add(new THREE.Vector3(0, camUp, 0));
+            camPos.y = Math.max(camPos.y, roadHeightAt(frac, camBack) + 1.3); // no hundirse tras una cresta
+            cam.position.lerp(camPos, Math.min(1, 8 * 0.016 * 60 * 0.016 + 0.35));
+            const look = kartPos.clone().addScaledVector(Tg, 14).add(new THREE.Vector3(0, 1.1, 0));
+            cam.lookAt(look);
+            fovTgt = 70 + spdN * 15 + (st.boost > 0 ? 6 : 0);
+        }
         if (st.boost > 0) cam.position.x += (Math.random() - 0.5) * 0.1; // vibración sutil del turbo
-        const look = kartPos.clone().addScaledVector(Tg, 14).add(new THREE.Vector3(0, 1.1, 0));
-        cam.lookAt(look);
-        const fovTgt = 70 + spdN * 15 + (st.boost > 0 ? 6 : 0);
         if (Math.abs(cam.fov - fovTgt) > 0.05) {
             cam.fov += (fovTgt - cam.fov) * 0.08;
             cam.updateProjectionMatrix();
@@ -2159,6 +2297,7 @@
             g.lineWidth = 1;
             g.strokeRect(bx, by, bw, 7 * k);
         }
+        if (miniPts && st.playing) drawMiniMap();
         // Destello de roce (+25 por pasar rozando una barrera)
         if (st.nearMiss > 0) {
             g.globalAlpha = Math.min(1, st.nearMiss);
@@ -2170,6 +2309,52 @@
         }
         const tint = ZONES_NEON[Math.max(0, st.zone)].tint;
         drawFxOverlays(t, tint);
+        g.restore();
+    }
+
+    // Minimapa (abajo-izquierda): contorno del circuito coloreado por superficie
+    // (asfalto cyan · tierra arena · túnel violeta), meta, rivales y tú (pulso).
+    function drawMiniMap() {
+        const S = Math.min(108 * k, W * 0.24), mx = 12 * k, my = H - S - 12 * k;
+        const n = miniPts.length / 2;
+        const px = (i) => mx + miniPts[(i % n) * 2] * S;
+        const py = (i) => my + miniPts[(i % n) * 2 + 1] * S;
+        g.save();
+        g.fillStyle = 'rgba(10,8,24,0.55)';
+        g.beginPath();
+        if (g.roundRect) g.roundRect(mx - 8 * k, my - 8 * k, S + 16 * k, S + 16 * k, 8 * k);
+        else g.rect(mx - 8 * k, my - 8 * k, S + 16 * k, S + 16 * k);
+        g.fill();
+        g.lineWidth = 2.4 * k;
+        g.lineJoin = 'round';
+        const segCol = (f) => tunnelAt(f) ? 'rgba(150,120,255,0.9)'
+            : (surfaceAt(f) === 'dirt' ? 'rgba(215,165,95,0.9)' : 'rgba(80,210,255,0.7)');
+        let curCol = segCol(0);
+        g.strokeStyle = curCol;
+        g.beginPath();
+        g.moveTo(px(0), py(0));
+        for (let i = 1; i <= n; i++) {
+            g.lineTo(px(i), py(i));
+            const col = segCol((i % n) / n);
+            if (col !== curCol) {
+                g.stroke();
+                g.beginPath();
+                g.moveTo(px(i), py(i));
+                g.strokeStyle = curCol = col;
+            }
+        }
+        g.stroke();
+        g.fillStyle = '#ff355e'; // meta
+        g.fillRect(px(0) - 2 * k, py(0) - 2 * k, 4 * k, 4 * k);
+        g.fillStyle = 'rgba(190,150,255,0.95)'; // rivales fantasma
+        for (const gh of ghosts2) {
+            if (gh.dead > 0) continue;
+            const i = Math.floor((wrapS(gh.s) / LAP_LEN) * n);
+            g.beginPath(); g.arc(px(i), py(i), 2.2 * k, 0, 7); g.fill();
+        }
+        const i = Math.floor((wrapS(st.pos) / LAP_LEN) * n); // tú
+        g.fillStyle = '#5df0ff';
+        g.beginPath(); g.arc(px(i), py(i), (3.2 + Math.sin(performance.now() / 180) * 0.8) * k, 0, 7); g.fill();
         g.restore();
     }
 

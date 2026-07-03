@@ -199,7 +199,17 @@ Motor con paridad casi completa con la versión JS:
   **ambiente teñido por la zona musical** (la niebla vira hacia el color
   del sector — el circuito cuenta por dónde va el sample). Los obstáculos
   vienen en **patrones** (suelto, pareja, muro con hueco, eslálon) que se
-  endurecen por vuelta.
+  endurecen por vuelta. **Minimapa** abajo-izquierda: contorno real del
+  trazado coloreado por superficie (asfalto/tierra/túnel), meta, rivales
+  fantasma y tu posición con pulso. **Estilo ciudad**: calles cruzadas a
+  nivel del suelo que el circuito sobrevuela + ~90 edificios con ventanas
+  (InstancedMesh) flanqueando la pista formando cañones de calle — con un
+  chequeo de distancia a todo el trazado para no plantar un edificio
+  encima de otro tramo (el circuito se cruza sobre sí mismo). **3 cámaras**
+  (botón 📷 o tecla V): persecución, dentro (primera persona desde el
+  manillar, con el horizonte inclinándose al girar) y frontal (mirando a
+  la moto). La moto lleva un **halo billboard** aditivo para leerse sobre
+  cualquier fondo (la tierra clara se la comía).
   **Ranking local** con nick (se pide una vez); la interfaz `lb` está
   aislada para enchufar un backend y compartirlo entre dispositivos. Sin
   capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
