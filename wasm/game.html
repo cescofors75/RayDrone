@@ -509,7 +509,6 @@
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
         st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
         st.camMode = 0;
-        if (T3) T3.kart.visible = true;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
@@ -841,6 +840,7 @@
         st.ghosts = [];
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
         st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
+        st.camMode = 1; // por defecto, cámara "dentro" (primera persona) al entrar al circuito
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.add('mode3d');
         resize3D();
@@ -938,8 +938,7 @@
     const CAM_NAMES = ['PERSECUCIÓN', 'DENTRO', 'FRONTAL'];
     function cycleCamera() {
         st.camMode = (st.camMode + 1) % 3;
-        banner(`CÁMARA · ${CAM_NAMES[st.camMode]}`);
-        if (T3) T3.kart.visible = st.camMode !== 1; // dentro: la moto no tapa la vista
+        banner(`CÁMARA · ${CAM_NAMES[st.camMode]}`); // la visibilidad de la moto la fija render3D cada frame
     }
     $('cam-btn').addEventListener('click', () => { if (st.level === 2) cycleCamera(); });
 
@@ -1488,7 +1487,11 @@
                 const sd = Math.random() < 0.5 ? 1 : -1;
                 const dist = ROAD_HALF + 10 + Math.random() * 16;
                 const x = P.x + side.x * sd * dist, z = P.z + side.z * sd * dist;
-                if (!clearOfTrack(x, z, 14)) continue;
+                // Margen real necesario: medio ancho de calzada (ROAD_HALF) + medio
+                // ancho del edificio (hasta 6) + colchón — antes era 14, insuficiente,
+                // y algún edificio quedaba rozando o clavado en un tramo elevado
+                // de OTRA parte de la pista (el circuito se cruza sobre sí mismo).
+                if (!clearOfTrack(x, z, ROAD_HALF + 10)) continue;
                 const h2 = 8 + Math.random() * 20;
                 S3.set(6 + Math.random() * 6, h2, 6 + Math.random() * 6);
                 P3.set(x, h2 / 2 - 0.4, z);
@@ -2472,6 +2475,11 @@
         //  2 frontal     — por delante mirando a la moto (para lucirla)
         const cam = T3.camera;
         const spdN = clamp((st.speed2 - 1500) / (4800 - 1500), 0, 1);
+        // Fuente única de verdad para la visibilidad de la moto (dentro = oculta):
+        // se fuerza cada frame en vez de en cada sitio que cambia camMode, para no
+        // depender de si la escena 3D ya existía en ese momento (carrera de tiempos
+        // si el jugador llega al nivel 2 antes de que termine de cargar Three.js).
+        T3.kart.visible = st.camMode !== 1;
         let fovTgt;
         if (st.camMode === 1) {
             cam.position.copy(kartPos).addScaledVector(Tg, 0.6).add(new THREE.Vector3(0, 1.28, 0));
