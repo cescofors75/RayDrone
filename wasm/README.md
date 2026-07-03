@@ -204,11 +204,20 @@ Motor con paridad casi completa con la versión JS:
   fantasma y tu posición con pulso. **Estilo ciudad**: calles cruzadas a
   nivel del suelo que el circuito sobrevuela + ~90 edificios con ventanas
   (InstancedMesh) flanqueando la pista formando cañones de calle — con un
-  chequeo de distancia a todo el trazado para no plantar un edificio
-  encima de otro tramo (el circuito se cruza sobre sí mismo). **3 cámaras**
-  (botón 📷 o tecla V): persecución, dentro (primera persona desde el
-  manillar, con el horizonte inclinándose al girar) y frontal (mirando a
-  la moto). La moto lleva un **halo billboard** aditivo para leerse sobre
+  margen real (medio ancho de calzada + medio ancho de edificio + colchón)
+  para que ninguno quede rozando o clavado en otro tramo de la pista (el
+  circuito se cruza sobre sí mismo en el espacio). **12 carteles
+  publicitarios** con coñas internas del propio proyecto ("SSR Motors:
+  reflejamos hasta tu ego", "Convergencia garantizada o le devolvemos sus
+  rayos", "Autoescuela Trompo: gira 360° gratis"…), textura procedural con
+  texto autoajustado al ancho del panel y marco de neón a juego. **3
+  cámaras** (botón 📷 o tecla V, "dentro" por defecto al entrar al
+  circuito): persecución, dentro (primera persona desde el manillar, con
+  el horizonte inclinándose al girar) y frontal (mirando a la moto). La
+  visibilidad de la moto la decide el propio bucle de render cada frame
+  (no un ajuste puntual al cambiar de cámara), así no depende de si la
+  escena 3D ya había terminado de cargar. La moto lleva un **halo
+  billboard** aditivo para leerse sobre
   cualquier fondo (la tierra clara se la comía). **Reflejos SSR en el
   asfalto**: no un cubemap fijo — un barrido real en espacio de pantalla
   (12 pasos, distancia creciente) contra una pasada previa de

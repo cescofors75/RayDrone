@@ -1136,6 +1136,72 @@
             for (let y = 0; y < h; y += 42) c2.fillRect(w / 2 - 2, y, 4, 22);
         }, 1, 5);
     }
+    // Cartel publicitario: fondo + marco + un par de líneas de texto grande.
+    // Los eslóganes son coña interna del propio proyecto (RayDrone/raytracing).
+    function makeBillboardTex(lines, bg, fg, accent) {
+        return canvasTex(512, 256, (c2, w, h) => {
+            const gr = c2.createLinearGradient(0, 0, 0, h);
+            gr.addColorStop(0, bg); gr.addColorStop(1, '#05060b');
+            c2.fillStyle = gr; c2.fillRect(0, 0, w, h);
+            c2.strokeStyle = accent; c2.lineWidth = 10;
+            c2.strokeRect(8, 8, w - 16, h - 16);
+            c2.fillStyle = fg;
+            c2.textAlign = 'center';
+            const sizes = [56, 34]; // titular grande, subtítulo más pequeño
+            const maxW = w - 60;
+            const fitted = lines.map((line, i) => {
+                let size = sizes[Math.min(i, sizes.length - 1)];
+                c2.font = `bold ${size}px 'Segoe UI', sans-serif`;
+                while (size > 16 && c2.measureText(line).width > maxW) {
+                    size -= 2;
+                    c2.font = `bold ${size}px 'Segoe UI', sans-serif`;
+                }
+                return size;
+            });
+            const totalH = fitted.reduce((a, s) => a + s * 1.25, 0);
+            let ly = h / 2 - totalH / 2 + fitted[0] * 0.7;
+            lines.forEach((line, i) => {
+                c2.font = `bold ${fitted[i]}px 'Segoe UI', sans-serif`;
+                c2.fillText(line, w / 2, ly);
+                ly += fitted[i] * 1.25;
+            });
+        }, 1, 1);
+    }
+    const BILLBOARD_ADS = [
+        [['AUTOESCUELA TROMPO', 'gira 360° gratis'], '#3a0a20', '#ffe3ee', '#ff355e'],
+        [['GASOLINERA QMC', 'llena en O(1)'], '#0a2a2a', '#e3fffb', '#28e6dc'],
+        [['SSR MOTORS', 'reflejamos hasta tu ego'], '#1a1030', '#e8e0ff', '#9a6bff'],
+        [['SEGUROS N=∞', 'cero varianza, cero sustos'], '#2a1a05', '#fff0da', '#ffa050'],
+        [['BLÁSTER-COLA', 'refresca tus rayos'], '#0a2a1a', '#e3ffe9', '#5dffc8'],
+        [['FARO 2077', 'la niebla nunca estuvo tan buena'], '#2a0a1a', '#ffe3f0', '#ff7bd8'],
+        [['SE BUSCA PILOTO FANTASMA', 'turno de noche'], '#101a30', '#dff0ff', '#7bdcff'],
+        [['ESCUDOS DE 2ª MANO', '1 golpe de vida útil'], '#0a2a2a', '#e3fffb', '#7bffbe'],
+        [['TALLER TRON', 'chapa y pintura neón'], '#0a1530', '#dfeaff', '#2fd3ff'],
+        [['CONVERGENCIA GARANTIZADA', 'o le devolvemos sus rayos'], '#2a1005', '#ffe9da', '#ff9a5a'],
+        [['APARCA EN EL TÚNEL', '1ª hora gratis, niebla incluida'], '#150a30', '#eee3ff', '#b98cff'],
+        [['AUTOESCUELA CHICANE', 'aprobado a la 3ª'], '#2a0a0a', '#ffe3e3', '#ff5578'],
+    ];
+    function buildBillboard(ad) {
+        const [lines, bg, fg, accent] = ad;
+        const grp = new THREE.Group();
+        const tex = makeBillboardTex(lines, bg, fg, accent);
+        const panel = new THREE.Mesh(
+            new THREE.PlaneGeometry(8, 4),
+            new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+        panel.position.y = 5.4;
+        grp.add(panel);
+        const glowMat = new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+        const glow = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 4.5), glowMat);
+        glow.position.set(0, 5.4, -0.05);
+        grp.add(glow);
+        const postMat = new THREE.MeshLambertMaterial({ color: 0x14161f });
+        for (const px of [-3.1, 3.1]) {
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.6, 0.35), postMat);
+            post.position.set(px, 2.6, 0);
+            grp.add(post);
+        }
+        return grp;
+    }
     function makeWindowsTex() {
         return canvasTex(64, 128, (c2, w, h) => {
             c2.fillStyle = '#0a0616'; c2.fillRect(0, 0, w, h);
@@ -1500,6 +1566,26 @@
             }
             bld.count = nb;
             scene.add(bld);
+
+            // Carteles publicitarios: coñas internas del propio proyecto, uno
+            // por eslogan (cada uno con su propia textura, no compensa
+            // instanciar). Mismo criterio de hueco que los edificios.
+            const shuffledAds = BILLBOARD_ADS.slice().sort(() => Math.random() - 0.5);
+            let nAds = 0;
+            for (let tries = 0; tries < 300 && nAds < shuffledAds.length; tries++) {
+                const f = Math.random();
+                if (tunnelAt(f)) continue;
+                const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
+                const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
+                const sd = Math.random() < 0.5 ? 1 : -1;
+                const dist = ROAD_HALF + 6 + Math.random() * 6;
+                const x = P.x + side.x * sd * dist, z = P.z + side.z * sd * dist;
+                if (!clearOfTrack(x, z, ROAD_HALF + 7)) continue;
+                const board = buildBillboard(shuffledAds[nAds++]);
+                board.position.set(x, P.y, z);
+                board.lookAt(P.x, P.y + 5.4, P.z); // de cara a quien pasa por la pista
+                scene.add(board);
+            }
         }
 
         // Túnel: tubo oscuro sobre su tramo + luces de techo + portales neón
