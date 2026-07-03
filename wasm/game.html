@@ -97,8 +97,9 @@
                 <b style="color:#7bdcff">fantasmas</b> 👻, recoge cristales <b style="color:var(--cyan)">◆</b> y power-ups
                 (🛡 escudo · 🚀 misil con <b>X</b> · 💣 bomba con <b>C</b>). Dispara el <b>bláster</b> —ilimitado— con
                 <b>clic de ratón</b>, <b>Z</b>/<b>espacio</b> o un <b>toque corto</b>.
-                Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito 3D de verdad (WebGL) sobre una moto Tron, con
-                curvas, chicanes, túnel, cambios de rasante, asfalto y tierra, rivales fantasma que rondan la pista — y otra
+                Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito 3D de verdad (WebGL) sobre una moto Tron —
+                ← → giras, <b>↑ aceleras, ↓ frenas</b> (en móvil el dedo hace las dos cosas), pisa las <b style="color:#5dffc8">flechas turbo</b>,
+                pasa <b>rozando</b> las barreras (+25) y esquiva a los rivales fantasma. Ir a fondo multiplica los puntos — y otra
                 música, alegre y luminosa, renderizada por el mismo motor. Cada vuelta recorre el sample entero.
                 Tu <b>combo</b> decide N, la densidad de rayos: juega bien y la música converge; recibe impactos y se rompe.
             </div>
@@ -359,6 +360,8 @@
     const objs2 = [];             // {s, lane, type, mesh}
     const ghosts2 = [];           // rivales fantasma: {s, lane, spd, ph, t, dead, mesh}
     const bolts2 = [];            // disparos de bláster en el circuito: {s, lane, spd, ttl, mesh}
+    const pads2 = [];             // turbo pads fijos de la pista: {s, lane, mesh, cd}
+    const frags2 = [];            // escombros 3D de un golpe: {mesh, vel, rot, ttl}
 
     // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
     let W = 0, H = 0, k = 1, SHIP_X = 0;
@@ -402,12 +405,13 @@
         ghosts: [], spawnGhost: 0, blastCd: 0, // fantasmas nivel 1 + cadencia del bláster
         // Nivel 2 (racer 3D): posición sobre la pista (arco), vuelta, etc.
         pos: 0, lap: 0, speed2: 2300, inTunnel: false, bgShift: 0,
+        boost: 0, spin: 0, nearMiss: 0, // turbo pad · trompo tras golpe · destello de roce
         spawnAst: 0, spawnCry: 0, spawnPick: 0, spawnObj: 0,
-        touchTarget: null, touchTargetX: null,
+        touchTarget: null, touchTargetX: null, touchThrottle: 0,
     };
     resizeCanvas();
     for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
-    const keys = { a: false, b: false }; // a = arriba/izquierda, b = abajo/derecha
+    const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (nivel 2)
 
     const zones = () => st.level === 1 ? ZONES_SPACE : ZONES_NEON;
 
@@ -421,7 +425,8 @@
         st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = []; st.particles = [];
         st.ghosts = []; st.spawnGhost = 7; st.blastCd = 0;
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
-        clearObjs2(); clearGhosts2(); clearBolts2();
+        st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
+        clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
         loadTerrain('space');
@@ -431,7 +436,7 @@
     function updateHud() {
         hudLevel.innerText = st.level;
         hudCombo.innerText = st.combo;
-        hudScore.innerText = st.score;
+        hudScore.innerText = Math.round(st.score);
         hudLives.innerText = '♥'.repeat(Math.max(0, st.lives)) || '—';
         hudN.innerText = Math.round(st.rate);
         hudShield.innerText = st.shield;
@@ -630,7 +635,7 @@
     function endRound() {
         st.playing = false;
         sendAudio();
-        $('end-score').innerText = st.score;
+        $('end-score').innerText = Math.round(st.score);
         $('end-level').innerText = st.level;
         $('end-overlay').style.display = '';
         $('lb-position').textContent = '';
@@ -646,7 +651,7 @@
         }
     }
     function submitScore(nick) {
-        const { pos, total } = lb.submit(nick, st.score, st.level);
+        const { pos, total } = lb.submit(nick, Math.round(st.score), st.level);
         $('lb-position').textContent = `${nick}: puesto #${pos} de ${total}`;
         renderBoard($('lb-list'), nick);
     }
@@ -688,7 +693,8 @@
         st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = [];
         st.ghosts = [];
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
-        clearObjs2(); clearGhosts2(); clearBolts2();
+        st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
+        clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.add('mode3d');
         resize3D();
         st.spawnObj = 1.2; st.spawnCry = 1.2; st.spawnPick = 6;
@@ -720,6 +726,8 @@
         const left = e.key === 'ArrowLeft' || e.key === 'a', right = e.key === 'ArrowRight' || e.key === 'd';
         if ((st.level === 1 && up) || (st.level === 2 && left)) keys.a = true;
         else if ((st.level === 1 && down) || (st.level === 2 && right)) keys.b = true;
+        else if (st.level === 2 && up) keys.u = true;    // acelerador
+        else if (st.level === 2 && down) keys.d = true;  // freno
         else if (e.key === 'x') { if (!e.repeat) fireMissile(); }
         else if (e.key === 'c') { if (!e.repeat) useBomb(); }
         else if (e.key === 'z' || e.key === ' ') { fireBlaster(); } // mantener = autofuego (con cadencia)
@@ -730,6 +738,8 @@
     window.addEventListener('keyup', (e) => {
         if (['ArrowUp', 'w', 'ArrowLeft', 'a'].includes(e.key)) keys.a = false;
         if (['ArrowDown', 's', 'ArrowRight', 'd'].includes(e.key)) keys.b = false;
+        if (['ArrowUp', 'w'].includes(e.key)) keys.u = false;
+        if (['ArrowDown', 's'].includes(e.key)) keys.d = false;
     });
     const capture = (el, e) => { try { el.setPointerCapture(e.pointerId); } catch (_) { /* sin captura, sigue */ } };
     const holdBtn = (id, key) => {
@@ -751,6 +761,8 @@
             st.touchTarget = clamp((e.clientY - rect.top) / rect.height * H, 24 * k, H - 24 * k);
         } else {
             st.touchTargetX = clamp(((e.clientX - rect.left) / rect.width) * 2 - 1, -1, 1);
+            // El eje vertical del dedo es el acelerador: arriba = gas, abajo = freno
+            st.touchThrottle = clamp((0.5 - (e.clientY - rect.top) / rect.height) * 2.6, -1, 1);
         }
     }
     let downT = 0, downX = 0, downY = 0;
@@ -763,7 +775,7 @@
         capture(canvas, e);
     });
     canvas.addEventListener('pointermove', (e) => { if (dragging && e.pointerType !== 'mouse') dragTo(e); });
-    const dragEnd = () => { dragging = false; st.touchTarget = null; st.touchTargetX = null; };
+    const dragEnd = () => { dragging = false; st.touchTarget = null; st.touchTargetX = null; st.touchThrottle = 0; };
     canvas.addEventListener('pointerup', (e) => {
         // Toque corto (sin arrastre) = disparo de bláster también en táctil
         if (e.pointerType !== 'mouse' && performance.now() - downT < 220 &&
@@ -802,7 +814,7 @@
     // La jugabilidad vive en el arco s (posición sobre la vuelta) + carril.
     // Una vuelta = una pasada entera por el sample (sector = zona musical).
     // ════════════════════════════════════════════════════════════════════════
-    const ROAD_HALF = 7;          // semiancho de calzada (unidades de mundo)
+    const ROAD_HALF = 9.5;        // semiancho de calzada (unidades de mundo)
     const S3D = 0.028;            // velocidad del juego → unidades de mundo/s
     const TUN0 = 0.55, TUN1 = 0.71;              // tramo de túnel (fracción de vuelta)
     const DIRT0 = 0.75, DIRT1 = 0.96;            // tramo de tierra
@@ -819,6 +831,27 @@
     function clearBolts2() {
         for (const b of bolts2) if (b.mesh && T3) T3.scene.remove(b.mesh);
         bolts2.length = 0;
+    }
+    function clearFrags2() {
+        for (const f of frags2) if (f.mesh && T3) T3.scene.remove(f.mesh);
+        frags2.length = 0;
+    }
+    // Escombros 3D: esquirlas que salen despedidas desde un punto del mundo
+    function spawnFrags(worldPos, color) {
+        if (!T3) return;
+        for (let i = 0; i < 6; i++) {
+            const mesh = new THREE.Mesh(
+                new THREE.TetrahedronGeometry(0.22 + Math.random() * 0.25),
+                new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 }));
+            mesh.position.copy(worldPos);
+            T3.scene.add(mesh);
+            frags2.push({
+                mesh,
+                vel: new THREE.Vector3((Math.random() - 0.5) * 9, 3 + Math.random() * 6, (Math.random() - 0.5) * 9),
+                rot: (Math.random() - 0.5) * 14,
+                ttl: 0.9,
+            });
+        }
     }
     const wrapS = (d) => ((d % LAP_LEN) + LAP_LEN) % LAP_LEN;
 
@@ -839,6 +872,7 @@
     function killGhost2(gh, respawnSecs) {
         const pxy = screenOf(gh.mesh);
         burst(pxy.x, pxy.y, [180, 150, 255], 22);
+        spawnFrags(gh.mesh.position.clone().add(new THREE.Vector3(0, 0.8, 0)), 0x9a6bff);
         gh.dead = respawnSecs;
         gh.mesh.visible = false;
         st.score += 80;
@@ -863,18 +897,22 @@
             c2.fillRect(x + Math.random() * w, y + Math.random() * h, 2, 2);
         }
     }
-    function makeRoadTex() { // asfalto: grano + pianos magenta/oscuro + línea central
+    function makeRoadTex() { // asfalto legible de noche: grano claro + pianos + 3 carriles
         return canvasTex(256, 256, (c2, w, h) => {
-            c2.fillStyle = '#17171f'; c2.fillRect(0, 0, w, h);
-            noiseRect(c2, 0, 0, w, h, 30, 26, 2600);
-            for (const [x0, x1] of [[0, 18], [w - 18, w]]) { // pianos
+            c2.fillStyle = '#262636'; c2.fillRect(0, 0, w, h);
+            noiseRect(c2, 0, 0, w, h, 48, 30, 2600);
+            for (const [x0, x1] of [[0, 16], [w - 16, w]]) { // pianos
                 for (let y = 0; y < h; y += 32) {
-                    c2.fillStyle = (y / 32) % 2 ? '#ff355e' : '#101018';
+                    c2.fillStyle = (y / 32) % 2 ? '#ff355e' : '#15151f';
                     c2.fillRect(x0, y, x1 - x0, 32);
                 }
             }
-            c2.fillStyle = 'rgba(235,235,255,0.75)'; // discontinua central
+            c2.fillStyle = 'rgba(235,235,255,0.8)'; // discontinua central
             for (let y = 0; y < h; y += 64) c2.fillRect(w / 2 - 3, y, 6, 34);
+            c2.fillStyle = 'rgba(160,170,220,0.4)'; // carriles laterales (pista ancha)
+            for (const lx of [w * 0.25, w * 0.75]) {
+                for (let y = 16; y < h; y += 64) c2.fillRect(lx - 2, y, 4, 30);
+            }
         }, 1, 1);
     }
     function makeDirtTex() { // tierra arenosa con rodadas
@@ -901,6 +939,22 @@
             c2.lineWidth = 2;
             c2.strokeRect(1, 1, w - 2, h - 2);
         }, 90, 90);
+    }
+    function makePadTex() { // turbo pad: cheurones apuntando "hacia arriba" (sentido de marcha)
+        return canvasTex(128, 192, (c2, w, h) => {
+            c2.clearRect(0, 0, w, h);
+            c2.strokeStyle = '#5dffc8';
+            c2.lineWidth = 14;
+            c2.lineJoin = 'round';
+            for (let i = 0; i < 3; i++) {
+                const y = h * 0.28 + i * h * 0.24;
+                c2.beginPath();
+                c2.moveTo(w * 0.18, y + h * 0.1);
+                c2.lineTo(w * 0.5, y - h * 0.08);
+                c2.lineTo(w * 0.82, y + h * 0.1);
+                c2.stroke();
+            }
+        }, 1, 1);
     }
     function makeSandTex() {
         return canvasTex(128, 128, (c2, w, h) => {
@@ -956,7 +1010,7 @@
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         const scene = new THREE.Scene();
-        scene.fog = new THREE.Fog(0x140826, 120, 900);
+        scene.fog = new THREE.Fog(0x140826, 160, 1350);
         const camera = new THREE.PerspectiveCamera(74, 2, 0.1, 3000);
 
         // Trazado: curva cerrada con recta, curvas, chicane, túnel, crestas y tierra
@@ -1017,6 +1071,34 @@
         buildRibbon(0, DIRT0, roadTex);
         buildRibbon(DIRT0, DIRT1, dirtTex);
         buildRibbon(DIRT1, 1.0001, roadTex);
+
+        // Bordes Tron: dos cintas de neón continuas a lo largo de TODA la vuelta
+        // (una por lado). Son la referencia visual de dónde está la pista de
+        // noche y dentro del túnel — y con el bloom, brillan solas.
+        function buildEdgeStrip(offset, color) {
+            const M = 700, pos = [], idx = [];
+            for (let i = 0; i <= M; i++) {
+                const f = (i / M) % 1;
+                const P = curve.getPointAt(f);
+                const Tg = curve.getTangentAt(f);
+                const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
+                const A = P.clone().addScaledVector(side, offset - 0.22);
+                const B = P.clone().addScaledVector(side, offset + 0.22);
+                pos.push(A.x, A.y + 0.09, A.z, B.x, B.y + 0.09, B.z);
+                if (i < M) {
+                    const b2 = i * 2;
+                    idx.push(b2, b2 + 1, b2 + 2, b2 + 1, b2 + 3, b2 + 2);
+                }
+            }
+            const gme = new THREE.BufferGeometry();
+            gme.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            gme.setIndex(idx);
+            const mesh = new THREE.Mesh(gme, new THREE.MeshBasicMaterial({
+                color, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+            scene.add(mesh);
+        }
+        buildEdgeStrip(ROAD_HALF + 0.5, 0x28e6dc);
+        buildEdgeStrip(-(ROAD_HALF + 0.5), 0xff355e);
 
         // Suelo con rejilla neón + dunas de arena junto al sector de tierra
         const ground = new THREE.Mesh(
@@ -1139,6 +1221,52 @@
             }
         }
 
+        // Farolas frecuentes (cada ~20u): postes bajos pasando a tu lado — de aquí
+        // sale la sensación de velocidad. InstancedMesh = 1 draw call por color.
+        {
+            const N_POSTS = Math.floor(LAP_LEN / 20);
+            const postGeo = new THREE.BoxGeometry(0.16, 1.5, 0.16);
+            const mats = [new THREE.MeshBasicMaterial({ color: 0x28e6dc }), new THREE.MeshBasicMaterial({ color: 0xff355e })];
+            const inst = mats.map((m) => new THREE.InstancedMesh(postGeo, m, N_POSTS));
+            const M4 = new THREE.Matrix4();
+            const counts = [0, 0];
+            for (let i = 0; i < N_POSTS; i++) {
+                const f = i / N_POSTS;
+                if (tunnelAt(f)) continue; // dentro del túnel ya hay luces de techo
+                const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
+                const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
+                const sd = i % 2 ? 1 : -1;
+                const which = (i >> 1) % 2;
+                M4.makeTranslation(
+                    P.x + side.x * sd * (ROAD_HALF + 1.1),
+                    P.y + 0.75,
+                    P.z + side.z * sd * (ROAD_HALF + 1.1));
+                inst[which].setMatrixAt(counts[which]++, M4);
+            }
+            for (let w = 0; w < 2; w++) { inst[w].count = counts[w]; scene.add(inst[w]); }
+        }
+
+        // Turbo pads: flechas neón fijas sobre la calzada — pisarlas = subidón
+        {
+            const padTex = makePadTex();
+            for (const [f, lane] of [[0.07, 0], [0.19, -0.55], [0.33, 0.55], [0.47, 0], [0.60, -0.4], [0.72, 0.5], [0.90, 0]]) {
+                const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
+                const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
+                const mesh = new THREE.Mesh(
+                    new THREE.PlaneGeometry(3.2, 5.4),
+                    new THREE.MeshBasicMaterial({ map: padTex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+                // Orden YXZ: primero rumbo sobre el eje vertical, luego tumbarla plana —
+                // así la flecha de la textura apunta en el sentido de marcha.
+                mesh.rotation.order = 'YXZ';
+                mesh.rotation.y = Math.atan2(-Tg.x, -Tg.z);
+                mesh.rotation.x = -Math.PI / 2;
+                mesh.position.copy(P).addScaledVector(side, -lane * ROAD_HALF * 0.86);
+                mesh.position.y += 0.11;
+                scene.add(mesh);
+                pads2.push({ s: f * LAP_LEN, lane, mesh, cd: 0 });
+            }
+        }
+
         // Moto del jugador: lightcycle Tron azul neón + doble muro de luz ∝ N
         const kart = buildBike(0x2fd3ff, 0xbdfbff);
         kart.userData.trails = [];
@@ -1153,7 +1281,8 @@
         }
         scene.add(kart);
 
-        scene.add(new THREE.HemisphereLight(0x8a5cff, 0x140826, 0.95));
+        const hemi = new THREE.HemisphereLight(0x9a6cff, 0x1a0c30, 1.25);
+        scene.add(hemi);
         const sunDir = new THREE.Vector3(0.4, 0.5, -1).normalize();
         const sunLight = new THREE.DirectionalLight(0xff9a5a, 1.1);
         sunLight.position.copy(sunDir).multiplyScalar(30);
@@ -1183,7 +1312,8 @@
         composer.addPass(bloom);
         composer.addPass(new OP.OutputPass());
 
-        T3 = { renderer, scene, camera, curve, kart, up, hemiFog: scene.fog, composer, bloom, sunLight, sunTarget, sunDir };
+        T3 = { renderer, scene, camera, curve, kart, up, hemi, composer, bloom, sunLight, sunTarget, sunDir,
+               fogBase: new THREE.Color(0x140826), zoneCol: new THREE.Color(0x140826) };
         resize3D();
     }
     function resize3D() {
@@ -1489,6 +1619,7 @@
             if (p.life <= 0) st.particles.splice(i, 1);
         }
         st.blastCd = Math.max(0, st.blastCd - dt);
+        st.nearMiss = Math.max(0, st.nearMiss - 2.4 * dt);
         st.shimmer = Math.max(0, st.shimmer - 0.9 * dt);
         st.pitchDip = Math.max(0, st.pitchDip - 1.1 * dt);
         st.shake = Math.max(0, st.shake - 3 * dt);
@@ -1497,7 +1628,7 @@
         st.bannerTtl = Math.max(0, st.bannerTtl - 0.35 * dt);
         sendAudio();
         hudN.innerText = Math.round(st.rate);
-        hudScore.innerText = st.score;
+        hudScore.innerText = Math.round(st.score);
     }
 
     function step(dt) {
@@ -1516,7 +1647,7 @@
             st.shipY = clamp(st.shipY + st.vy * dt, 24 * k, H - 24 * k);
         }
         st.speed = Math.min(320, st.speed + 2.5 * dt);
-        st.score += Math.round(10 * dt);
+        st.score += 10 * dt; // float — se redondea al mostrar (Math.round(10*dt) por frame era siempre 0)
         if (st.worldT >= LEVEL1_WORLD_SECS) { switchToLevel2(); return; }
         // Spawns
         st.spawnAst -= dt;
@@ -1616,7 +1747,22 @@
         st.inTunnel = tunnelAt(frac);
         const onDirt = surfaceAt(frac) === 'dirt';
         const offRoad = Math.abs(st.laneX) > 1.12;
-        st.speed2 = 2300 + st.lap * 170;
+        // Acelerador/freno de verdad: ↑ acelera, ↓ frena, nada = crucero.
+        // En táctil, arrastrar el dedo hacia arriba/abajo hace lo mismo.
+        // La velocidad alta multiplica los puntos — arriesgar paga.
+        const SPD_MIN = 1500, SPD_CRUISE = 2300 + st.lap * 140, SPD_MAX = 3500 + st.lap * 170;
+        st.boost = Math.max(0, st.boost - dt);
+        st.spin = Math.max(0, st.spin - dt / 0.85);
+        const throttle = st.touchTargetX !== null
+            ? st.touchThrottle
+            : (keys.u ? 1 : 0) - (keys.d ? 1 : 0);
+        let spdTarget = throttle > 0
+            ? SPD_CRUISE + (SPD_MAX - SPD_CRUISE) * throttle
+            : SPD_CRUISE + (SPD_CRUISE - SPD_MIN) * throttle; // throttle<0 = freno
+        if (st.boost > 0) spdTarget = SPD_MAX + 1300;         // turbo pad manda
+        if (st.spin > 0) spdTarget = Math.min(spdTarget, SPD_MIN); // el trompo te clava
+        const spdRate = throttle < 0 || st.spin > 0 ? 5.5 : (st.boost > 0 ? 7 : 2.2);
+        st.speed2 += (spdTarget - st.speed2) * Math.min(1, spdRate * dt);
         const speedF = (offRoad ? 0.55 : 1) * (onDirt ? 0.88 : 1);
         const sSpeed = st.speed2 * S3D * speedF;
         const prevPos = st.pos;
@@ -1655,12 +1801,34 @@
                       onDirt ? [210, 170, 110] : [150, 150, 190], 2);
             }
         }
-        st.score += Math.round(12 * dt);
-        // Spawns por delante (unidades de arco)
+        // Puntos ∝ velocidad: ir a fondo paga (float; se redondea al mostrar)
+        const spdNorm = clamp((st.speed2 - SPD_MIN) / (SPD_MAX + 1300 - SPD_MIN), 0, 1);
+        st.score += (8 + 26 * spdNorm) * dt;
+        // Spawns por delante (unidades de arco) — en PATRONES: con la pista ancha,
+        // un obstáculo suelto no exige nada; los muros con hueco y eslálons sí.
         st.spawnObj -= dt;
         if (st.spawnObj <= 0) {
-            st.spawnObj = Math.max(0.55, 1.15 - st.lap * 0.12);
-            spawnObj2('rock', 260 + Math.random() * 60, Math.random() * 1.5 - 0.75);
+            st.spawnObj = Math.max(0.9, 1.6 - st.lap * 0.15);
+            const base = 300 + Math.random() * 60;
+            const r = Math.random(), hard = Math.min(1, st.lap * 0.34);
+            if (r < 0.42 - hard * 0.2) {
+                spawnObj2('rock', base, Math.random() * 1.7 - 0.85); // suelto
+            } else if (r < 0.72 - hard * 0.1) {
+                const c = Math.random() * 0.8 - 0.4;                 // pareja con hueco central
+                spawnObj2('rock', base, c - 0.62);
+                spawnObj2('rock', base, c + 0.62);
+            } else if (r < 0.72 + hard * 0.18) {
+                const gap = Math.floor(Math.random() * 5);           // muro con hueco
+                for (let q = 0; q < 5; q++) {
+                    if (q === gap || q === gap + 1) continue;
+                    spawnObj2('rock', base, -1.1 + q * 0.55);
+                }
+            } else {
+                const sgn = Math.random() < 0.5 ? 1 : -1;            // eslálon
+                spawnObj2('rock', base, 0.75 * sgn);
+                spawnObj2('rock', base + 60, -0.75 * sgn);
+                spawnObj2('rock', base + 120, 0.75 * sgn);
+            }
         }
         st.spawnCry -= dt;
         if (st.spawnCry <= 0) {
@@ -1682,16 +1850,54 @@
             const rel = wrapS(o.s - prevPos);
             if (rel <= ds + 2.2) {
                 const hitW = o.type === 'rock' ? 0.24 : 0.4;
-                if (Math.abs(o.lane - st.laneX) < hitW) {
+                const dLane = Math.abs(o.lane - st.laneX);
+                if (dLane < hitW) {
                     const type = o.type;
+                    const wp = o.mesh.getWorldPosition(new THREE.Vector3());
                     removeObj2(i);
-                    if (type === 'rock') hitShip();
-                    else if (type === 'crystal') collectCrystal();
+                    if (type === 'rock') {
+                        const hadShield = st.shield > 0;
+                        spawnFrags(wp, 0xff5578);
+                        hitShip();
+                        if (!hadShield) st.spin = 1; // trompo: giras y pierdes velocidad
+                    } else if (type === 'crystal') collectCrystal();
                     else give(type);
                 } else if (rel <= ds) {
-                    removeObj2(i); // pasado de largo: fuera (no reaparece en la vuelta)
+                    // Pasado de largo. Rozar una barrera sin tocarla = bonus de roce:
+                    // premia conducir fino, que es donde está la gracia.
+                    if (o.type === 'rock' && dLane < hitW + 0.3) {
+                        st.score += 25;
+                        st.nearMiss = 1;
+                        st.shimmer = Math.max(st.shimmer, 0.4);
+                        burst(W / 2 + (o.lane < st.laneX ? -1 : 1) * 52 * k, H * 0.82, [120, 255, 220], 6);
+                    }
+                    removeObj2(i); // fuera (no reaparece en la vuelta)
                 }
             }
+        }
+        // Turbo pads: pisar la flecha = subidón (velocidad + FOV + shimmer)
+        for (const pd of pads2) {
+            pd.cd = Math.max(0, pd.cd - dt);
+            const rel = wrapS(pd.s - prevPos);
+            if (rel <= ds + 2.6 && Math.abs(pd.lane - st.laneX) < 0.5 && pd.cd <= 0) {
+                pd.cd = 1.6;
+                st.boost = 1.5;
+                st.shimmer = 1;
+                st.shake = Math.max(st.shake, 0.14);
+                burst(W / 2, H * 0.86, [93, 255, 200], 16);
+                vibrate(18);
+            }
+        }
+        // Escombros 3D de los golpes: vuelan, caen y se apagan
+        for (let i = frags2.length - 1; i >= 0; i--) {
+            const fr = frags2[i];
+            fr.ttl -= dt;
+            fr.vel.y -= 22 * dt;
+            fr.mesh.position.addScaledVector(fr.vel, dt);
+            fr.mesh.rotation.x += fr.rot * dt;
+            fr.mesh.rotation.z += fr.rot * 0.7 * dt;
+            fr.mesh.material.opacity = Math.max(0, fr.ttl / 0.9);
+            if (fr.ttl <= 0) { T3.scene.remove(fr.mesh); frags2.splice(i, 1); }
         }
         // Rivales fantasma: nacen con la escena y dan vueltas solos
         while (ghosts2.length < 3) spawnGhost2(ghosts2.length);
@@ -1711,7 +1917,9 @@
             // arco no cae dentro de lo que TÚ recorriste este frame → te atraviesa.
             const rel = wrapS(gh.s - prevPos);
             if (rel <= ds + 2.4 && Math.abs(gh.lane - st.laneX) < 0.44) {
+                const hadShield = st.shield > 0;
                 hitShip();
+                if (!hadShield) st.spin = 1;
                 gh.dead = 2.2; // se desvanece un instante tras el golpe
                 gh.mesh.visible = false;
             }
@@ -1847,16 +2055,22 @@
         kart.lookAt(ahead.x, kartPos.y, ahead.z);
         const kIdx = Math.floor(frac * curvK.length) % curvK.length;
         kart.rotation.z = clamp(-st.laneV * 0.17 - curvK[kIdx] * 15, -0.55, 0.55);
+        if (st.spin > 0) kart.rotateY((1 - st.spin) * Math.PI * 2); // trompo: una vuelta completa
         if (surfaceAt(frac) === 'dirt') kart.position.y += Math.abs(Math.sin(t * 34)) * 0.12;
         // Ruedas girando ∝ velocidad
         const spin = st.speed2 * S3D * t;
         for (const wh of kart.userData.wheels) wh.rotation.x = spin;
-        // Doble muro de luz Tron ∝ N (la música convergiendo se VE en la moto) — detrás
+        // Doble muro de luz Tron ∝ N (la música convergiendo se VE en la moto) — detrás.
+        // Con turbo, el muro se alarga y aviva; en pleno trompo casi se apaga.
         for (const tr of kart.userData.trails) {
-            const L = 2.5 + (st.rate / 400) * 8;
+            const L = (2.5 + (st.rate / 400) * 8) * (st.boost > 0 ? 1.6 : 1);
             tr.scale.x = L / 6;
             tr.position.z = -(1.3 + L / 2);
-            tr.material.opacity = 0.4 + (st.rate / 400) * 0.5;
+            tr.material.opacity = (0.4 + (st.rate / 400) * 0.5 + (st.boost > 0 ? 0.25 : 0)) * (st.spin > 0 ? 0.15 : 1);
+        }
+        // Turbo pads: laten; el recién pisado brilla a tope
+        for (const pd of pads2) {
+            pd.mesh.material.opacity = pd.cd > 0 ? 1 : 0.55 + 0.3 * Math.sin(t * 6 + pd.s);
         }
         // Rivales fantasma: sobre la pista, parpadeando; miran a su propio rumbo
         for (const gh of ghosts2) {
@@ -1883,18 +2097,32 @@
             b.mesh.position.y += 0.62;
             b.mesh.lookAt(bP.clone().add(bT));
         }
-        // Cámara: detrás y por encima, mirando por delante del kart
+        // Cámara viva: a más velocidad baja, se aleja un poco y abre el FOV —
+        // el truco más barato para que la velocidad SE SIENTA. Con turbo, extra.
         const cam = T3.camera;
-        const camPos = kartPos.clone().addScaledVector(Tg, -8.4).add(new THREE.Vector3(0, 3.4, 0));
-        camPos.y = Math.max(camPos.y, roadHeightAt(frac, -8.4) + 1.4); // no hundirse tras una cresta
+        const spdN = clamp((st.speed2 - 1500) / (4800 - 1500), 0, 1);
+        const camBack = -(7.6 + spdN * 2.4), camUp = 3.5 - spdN * 0.8;
+        const camPos = kartPos.clone().addScaledVector(Tg, camBack).add(new THREE.Vector3(0, camUp, 0));
+        camPos.y = Math.max(camPos.y, roadHeightAt(frac, camBack) + 1.3); // no hundirse tras una cresta
         cam.position.lerp(camPos, Math.min(1, 8 * 0.016 * 60 * 0.016 + 0.35));
+        if (st.boost > 0) cam.position.x += (Math.random() - 0.5) * 0.1; // vibración sutil del turbo
         const look = kartPos.clone().addScaledVector(Tg, 14).add(new THREE.Vector3(0, 1.1, 0));
         cam.lookAt(look);
+        const fovTgt = 70 + spdN * 15 + (st.boost > 0 ? 6 : 0);
+        if (Math.abs(cam.fov - fovTgt) > 0.05) {
+            cam.fov += (fovTgt - cam.fov) * 0.08;
+            cam.updateProjectionMatrix();
+        }
         // Túnel: niebla cerrada y luz baja dentro; fuera, la noche synthwave
         const fog = T3.scene.fog;
-        const tgtNear = st.inTunnel ? 14 : 120, tgtFar = st.inTunnel ? 130 : 900;
+        const tgtNear = st.inTunnel ? 14 : 160, tgtFar = st.inTunnel ? 130 : 1350;
         fog.near += (tgtNear - fog.near) * 0.08;
         fog.far += (tgtFar - fog.far) * 0.08;
+        // El ambiente respira con la zona musical: la niebla se tiñe hacia el color
+        // del sector (el circuito "cuenta" por dónde va el sample)
+        const zt = ZONES_NEON[Math.max(0, st.zone)].tint;
+        T3.zoneCol.setRGB(zt[0] / 255, zt[1] / 255, zt[2] / 255);
+        fog.color.copy(T3.fogBase).lerp(T3.zoneCol, 0.16);
         // Objetos: flotan/rotan; los pasados de largo se limpian en step
         for (const o of objs2) {
             if (o.type === 'crystal') o.mesh.rotation.y = t * 2 + o.s;
@@ -1919,6 +2147,27 @@
         if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
         g.clearRect(-20, -20, W + 40, H + 40);
         drawShield(W / 2, H * 0.80, 34 * k);
+        // Velocímetro neón (verde = turbo activo)
+        if (st.playing) {
+            const spdN = clamp((st.speed2 - 1500) / (4800 - 1500), 0, 1);
+            const bw = 170 * k, bx = W / 2 - bw / 2, by = H - 16 * k;
+            g.fillStyle = 'rgba(18,14,38,0.6)';
+            g.fillRect(bx, by, bw, 7 * k);
+            g.fillStyle = st.boost > 0 ? '#5dffc8' : '#2fd3ff';
+            g.fillRect(bx, by, bw * spdN, 7 * k);
+            g.strokeStyle = 'rgba(190,250,255,0.45)';
+            g.lineWidth = 1;
+            g.strokeRect(bx, by, bw, 7 * k);
+        }
+        // Destello de roce (+25 por pasar rozando una barrera)
+        if (st.nearMiss > 0) {
+            g.globalAlpha = Math.min(1, st.nearMiss);
+            g.fillStyle = '#7bffd0';
+            g.font = `bold ${Math.round(13 * k)}px monospace`;
+            g.textAlign = 'center';
+            g.fillText('ROCE +25', W / 2, H * 0.68);
+            g.globalAlpha = 1;
+        }
         const tint = ZONES_NEON[Math.max(0, st.zone)].tint;
         drawFxOverlays(t, tint);
         g.restore();
@@ -1997,7 +2246,7 @@
             g.textAlign = 'left';
             g.fillStyle = 'rgba(240,226,230,0.75)';
             const lapTag = st.level === 2 ? ` · V${st.lap + 1}` : '';
-            g.fillText(`${'♥'.repeat(Math.max(0, st.lives))}  ${st.score} pts${lapTag}  🛡${st.shield} 🚀${st.missiles} 💣${st.bombs}`, 10 * k, 18 * k);
+            g.fillText(`${'♥'.repeat(Math.max(0, st.lives))}  ${Math.round(st.score)} pts${lapTag}  🛡${st.shield} 🚀${st.missiles} 💣${st.bombs}`, 10 * k, 18 * k);
             g.fillStyle = 'rgba(40,230,220,0.75)';
             g.textAlign = 'right';
             g.fillText(`N=${Math.round(st.rate)}`, W - 52 * k, 18 * k);

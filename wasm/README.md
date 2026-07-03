@@ -183,6 +183,23 @@ Motor con paridad casi completa con la versión JS:
   tope duro; la física corre en un **paso fijo con acumulador** (hasta 8
   subpasos por frame) para que un renderizado lento (móvil flojo) nunca
   meta el juego en cámara lenta — solo se pintan menos fotogramas.
+  **Acelerador y freno de verdad** (↑/↓; en táctil el eje vertical del
+  dedo), con crucero si no tocas nada: la velocidad alta multiplica los
+  puntos y la centrífuga — arriesgar paga. **Turbo pads** (flechas neón
+  fijas en la calzada): pisarlas dispara un subidón con FOV extra,
+  vibración de cámara, muro de luz alargado y destello shimmer. La cámara
+  es **viva**: baja, se aleja y abre el FOV con la velocidad. Un golpe sin
+  escudo = **trompo** (giro de 360°, velocidad clavada, muro de luz
+  apagado) + escombros 3D; pasar **rozando** una barrera da +25. Pista
+  ancha (semiancho 9.5u) con **bordes Tron continuos** (cintas de neón
+  cyan/magenta con bloom a lo largo de toda la vuelta — la referencia
+  visual de noche y dentro del túnel), farolas cada ~20u (InstancedMesh,
+  1 draw call por color) para que la velocidad se vea pasar, asfalto más
+  claro con 3 carriles marcados, niebla más lejana en abierto y el
+  **ambiente teñido por la zona musical** (la niebla vira hacia el color
+  del sector — el circuito cuenta por dónde va el sample). Los obstáculos
+  vienen en **patrones** (suelto, pareja, muro con hueco, eslálon) que se
+  endurecen por vuelta.
   **Ranking local** con nick (se pide una vez); la interfaz `lb` está
   aislada para enchufar un backend y compartirlo entre dispositivos. Sin
   capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
