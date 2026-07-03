@@ -42,6 +42,22 @@
                    border-radius:8px; border:1px solid rgba(47,211,255,0.35); background:rgba(15,19,32,0.7);
                    color:var(--text); cursor:pointer; display:none; }
         #stage.mode3d #cam-btn { display:block; }
+        #keys-btn { position:absolute; right:96px; top:8px; z-index:6; padding:4px 10px; font-size:15px;
+                    border-radius:8px; border:1px solid rgba(93,255,200,0.35); background:rgba(15,19,32,0.7);
+                    color:var(--text); cursor:pointer; }
+        /* Sidebar de teclas (H): overlay semi-transparente sobre el propio juego,
+           no le quita sitio al lienzo — sin pointer-events, para no tapar clics. */
+        #keys-sidebar { position:absolute; right:0; top:0; bottom:0; width:min(240px,62%); z-index:7;
+                        background:rgba(10,8,20,0.5); border-left:1px solid rgba(255,53,94,0.25);
+                        padding:44px 14px 14px 16px; overflow-y:auto; pointer-events:none;
+                        font-size:0.76rem; line-height:1.65; color:#e8e0e6; display:none; border-radius:0 10px 10px 0; }
+        #stage.show-keys #keys-sidebar { display:block; }
+        #keys-sidebar h3 { margin:0 0 8px; font-size:0.8rem; letter-spacing:1px; color:var(--cyan); text-transform:uppercase; }
+        #keys-sidebar .grp { margin-top:12px; }
+        #keys-sidebar .grp:first-of-type { margin-top:0; }
+        #keys-sidebar .grp b { color:var(--accent); display:block; margin-bottom:4px; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.5px; }
+        #keys-sidebar kbd { background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2);
+                             border-radius:4px; padding:0 5px; font-family:monospace; color:#fff; }
         #stage:fullscreen, #stage:-webkit-full-screen { background:#05060b; width:100vw; height:100vh; }
         #stage:fullscreen canvas, #stage:-webkit-full-screen canvas { height:100vh; border-radius:0; border:none; }
         .keys { display:flex; gap:8px; justify-content:center; margin-top:10px; }
@@ -110,6 +126,29 @@
         <canvas id="game" width="1000" height="340"></canvas>
         <button id="fs-btn" title="Pantalla completa">⛶</button>
         <button id="cam-btn" title="Cámara (V): persecución / dentro / frontal">📷</button>
+        <button id="keys-btn" title="Teclas (H)">⌨</button>
+        <div id="keys-sidebar">
+            <h3>⌨ Teclas</h3>
+            <div class="grp">
+                <b>General</b>
+                <div><kbd>H</kbd> este panel</div>
+                <div><kbd>P</kbd> pausa</div>
+            </div>
+            <div class="grp">
+                <b>Nivel 1 · Espacio</b>
+                <div><kbd>↑</kbd> <kbd>↓</kbd> pilotar (o arrastrar)</div>
+                <div><kbd>X</kbd> misil · <kbd>C</kbd> bomba</div>
+                <div><kbd>Z</kbd> <kbd>espacio</kbd> clic — bláster</div>
+            </div>
+            <div class="grp">
+                <b>Nivel 2 · Circuito</b>
+                <div><kbd>←</kbd> <kbd>→</kbd> girar</div>
+                <div><kbd>↑</kbd> acelerar · <kbd>↓</kbd> frenar</div>
+                <div><kbd>X</kbd> misil · <kbd>C</kbd> bomba</div>
+                <div><kbd>Z</kbd> <kbd>espacio</kbd> clic — bláster</div>
+                <div><kbd>V</kbd> 📷 cámara (persec./dentro/frontal)</div>
+            </div>
+        </div>
         <div class="overlay" id="start-overlay">
             <div style="font-size:1.15rem; font-weight:bold; letter-spacing:1px;">🏍 RAYRUNNER</div>
             <div style="max-width:480px; color:#b7c2d4;">
@@ -182,6 +221,8 @@
             <br><br>
             Cada nivel tiene su propia música de 24s, generada en vivo: tu <b>combo</b> controla N (la densidad
             de rayos) — juega bien y la textura converge limpia; recibe un golpe y se rompe en polvo granular.
+            <br><br>
+            <b>Tecla H</b> (o el botón ⌨) abre/cierra un panel con todas las teclas, por si se te olvidan a mitad de partida.
         </div>
         <button class="btn" id="howto-ok" style="margin-top:16px;">Entendido</button>
     </div>
@@ -517,11 +558,30 @@
     // Primera visita: se abre solo una vez (luego siempre accesible con el botón)
     try { if (!localStorage.getItem(HOWTO_SEEN_KEY)) showHowto(); } catch (_) { showHowto(); }
 
+    // Ranking global (Vercel + Upstash, ver api/leaderboard.js) con fallback
+    // automático al local si no hay backend desplegado o la red falla — así
+    // el juego funciona igual sirviendo con `python3 -m http.server` en local
+    // como en producción. `lb.global` dice cuál se usó la última vez.
     const LB_KEY = 'raydrone_scores', NICK_KEY = 'raydrone_nick';
+    const LB_API = '/api/leaderboard'; // absoluta: resuelve al origen, sirva game.html desde donde sirva
+    async function fetchJSON(url, opts, ms = 3500) {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), ms);
+        try {
+            const res = await fetch(url, { ...opts, signal: ac.signal });
+            if (!res.ok) return null;
+            return await res.json();
+        } catch (_) {
+            return null; // sin red, sin backend, o timeout: el llamador cae al local
+        } finally {
+            clearTimeout(timer);
+        }
+    }
     const lb = {
+        global: false,
         all() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || []; } catch (_) { return []; } },
         save(a) { try { localStorage.setItem(LB_KEY, JSON.stringify(a.slice(0, 100))); } catch (_) {} },
-        submit(nick, score, level) {
+        submitLocal(nick, score, level) {
             const a = this.all();
             const entry = { n: nick, s: score, l: level, d: Date.now() };
             a.push(entry);
@@ -529,18 +589,43 @@
             this.save(a);
             return { pos: a.findIndex((e) => e.d === entry.d && e.s === score) + 1, total: a.length };
         },
-        top(n) { return this.all().slice(0, n); },
+        async submit(nick, score, level) {
+            const localRes = this.submitLocal(nick, score, level); // siempre, es la copia offline
+            const remote = await fetchJSON(LB_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nick, score, level }),
+            });
+            if (remote && typeof remote.pos === 'number') { this.global = true; return remote; }
+            this.global = false;
+            return localRes;
+        },
+        topLocal(n) { return this.all().slice(0, n); },
+        async top(n) {
+            const remote = await fetchJSON(LB_API);
+            if (remote && Array.isArray(remote.top)) { this.global = true; return remote.top.slice(0, n); }
+            this.global = false;
+            return this.topLocal(n);
+        },
         reset() { try { localStorage.removeItem(LB_KEY); } catch (_) {} },
     };
     const getNick = () => { try { return localStorage.getItem(NICK_KEY) || ''; } catch (_) { return ''; } };
     const setNick = (n) => { try { localStorage.setItem(NICK_KEY, n); } catch (_) {} };
 
     // El nick es texto del usuario: SIEMPRE via textContent (nunca innerHTML).
-    function renderBoard(el, highlightNick) {
+    // Async porque lb.top() puede ir a la red (ranking global) antes de caer
+    // al local — se pinta un "cargando…" mientras tanto para no dejar el
+    // hueco en blanco si la red tarda.
+    async function renderBoard(el, highlightNick) {
+        el.textContent = 'Cargando ranking…';
+        const top = await lb.top(10);
         el.textContent = '';
-        const top = lb.top(10);
+        const note = document.createElement('div');
+        note.style.cssText = 'font-size:0.7rem; color:#5d6b80; margin-bottom:4px;';
+        note.textContent = lb.global ? '🌐 ranking global' : '📴 ranking en este dispositivo (sin conexión al global)';
+        el.appendChild(note);
         if (!top.length) {
-            el.textContent = 'Aún no hay puntuaciones — ¡estrena el ranking!';
+            el.appendChild(document.createTextNode('Aún no hay puntuaciones — ¡estrena el ranking!'));
             return;
         }
         top.forEach((e, i) => {
@@ -711,8 +796,9 @@
             else renderBoard($('lb-list'), nick);
         }
     }
-    function submitScore(nick) {
-        const { pos, total } = lb.submit(nick, Math.round(st.score), st.level);
+    async function submitScore(nick) {
+        $('lb-position').textContent = 'Enviando puntuación…';
+        const { pos, total } = await lb.submit(nick, Math.round(st.score), st.level);
         $('lb-position').textContent = `${nick}: puesto #${pos} de ${total}`;
         renderBoard($('lb-list'), nick);
     }
@@ -792,6 +878,7 @@
         else if (e.key === 'x') { if (!e.repeat) fireMissile(); }
         else if (e.key === 'c') { if (!e.repeat) useBomb(); }
         else if (e.key === 'v') { if (!e.repeat && st.level === 2) cycleCamera(); }
+        else if (e.key === 'h') { if (!e.repeat) toggleKeysSidebar(); }
         else if (e.key === 'z' || e.key === ' ') { fireBlaster(); } // mantener = autofuego (con cadencia)
         else if (e.key === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
         else return;
@@ -856,6 +943,10 @@
     }
     $('cam-btn').addEventListener('click', () => { if (st.level === 2) cycleCamera(); });
 
+    // ── Sidebar de teclas (H): overlay al 50% de opacidad sobre el juego ─────
+    function toggleKeysSidebar() { $('stage').classList.toggle('show-keys'); }
+    $('keys-btn').addEventListener('click', toggleKeysSidebar);
+
     // ── Pantalla completa ────────────────────────────────────────────────────
     const stage = $('stage'), fsBtn = $('fs-btn');
     const fsSupported = stage.requestFullscreen || stage.webkitRequestFullscreen;
@@ -887,8 +978,9 @@
     // ════════════════════════════════════════════════════════════════════════
     const ROAD_HALF = 9.5;        // semiancho de calzada (unidades de mundo)
     const S3D = 0.028;            // velocidad del juego → unidades de mundo/s
-    const TUN0 = 0.55, TUN1 = 0.71;              // tramo de túnel (fracción de vuelta)
-    const DIRT0 = 0.75, DIRT1 = 0.96;            // tramo de tierra
+    const TUN0 = 0.57, TUN1 = 0.65;              // tramo de túnel (fracción de vuelta)
+    const DIRT0 = 0.67, DIRT1 = 0.84;            // tramo de tierra
+    const WARMUP_END = 0.17;      // primer tramo (recta+curva suave): sin obstáculos en la 1ª vuelta
     const surfaceAt = (f) => (f >= DIRT0 && f < DIRT1) ? 'dirt' : 'asphalt';
     const tunnelAt = (f) => f >= TUN0 && f < TUN1;
     function clearObjs2() {
@@ -1092,18 +1184,22 @@
         scene.fog = new THREE.Fog(0x140826, 160, 1350);
         const camera = new THREE.PerspectiveCamera(74, 2, 0.1, 3000);
 
-        // Trazado: curva cerrada con recta, curvas, chicane, túnel, crestas y tierra
+        // Trazado: curva cerrada, mucho más larga que antes (~2.5×) y con un
+        // primer tramo deliberadamente fácil (recta larga y llana + curva
+        // amplia) para que te acostumbres al manejo de la moto antes de
+        // afrontar la cresta grande, el chicane, el túnel y la tierra.
         const CP = [
-            [0, 0, 0], [0, 0, 180],
-            [40, 6, 300], [140, 14, 360], [240, 6, 330],   // curva dcha + cresta
-            [300, 0, 220],
-            [258, 4, 130], [330, 11, 60], [430, 4, 40],    // chicane con lomo
-            [520, 0, 120], [560, 2, 260],                   // enlaza al túnel
-            [480, 10, 400],                                 // interior del túnel (curvado)
-            [340, 24, 460],                                 // tierra: subidón
-            [180, 3, 470],                                  // rasante fuerte (bajada)
-            [60, 17, 400],                                  // segunda cresta
-            [-60, 2, 240],                                  // retorno a meta
+            [0, 0, 0], [0, 0, 260], [0, 0, 560], [0, 0, 860],   // recta larga y llana (calentamiento)
+            [60, 2, 1040], [200, 4, 1180],                      // curva amplia y suave (sigue siendo fácil)
+            [420, 9, 1220], [640, 15, 1140],                    // transición: empieza a subir/curvar más
+            [780, 22, 960], [900, 25, 760],                     // curva dcha + cresta grande
+            [810, 12, 520], [910, 18, 340], [1080, 9, 270],     // chicane con lomo
+            [1220, 3, 420], [1260, 5, 700],                     // enlaza al túnel
+            [1100, 20, 940],                                   // interior del túnel (curvado)
+            [800, 42, 1080],                                   // tierra: subidón grande
+            [460, 6, 1120],                                    // rasante fuerte (bajada)
+            [170, 30, 1000],                                   // segunda cresta
+            [-70, 10, 680], [-120, 4, 340],                     // retorno amplio a meta
         ].map(([x, y, z]) => new THREE.Vector3(x, y, z));
         const curve = new THREE.CatmullRomCurve3(CP, true, 'catmullrom', 0.5);
         LAP_LEN = curve.getLength();
@@ -1302,8 +1398,9 @@
         const trackCentroid = new THREE.Vector3();
         for (let i = 0; i < 64; i++) trackCentroid.add(curve.getPointAt(i / 64));
         trackCentroid.multiplyScalar(1 / 64);
-        for (let i = 0; i < 9; i++) {
-            const f = DIRT0 + (DIRT1 - DIRT0) * (i / 9);
+        const N_DUNES = Math.max(9, Math.round((DIRT1 - DIRT0) * LAP_LEN / 90));
+        for (let i = 0; i < N_DUNES; i++) {
+            const f = DIRT0 + (DIRT1 - DIRT0) * (i / N_DUNES);
             const P = curve.getPointAt(f);
             const outward = P.clone().sub(trackCentroid).setY(0).normalize();
             const dune = new THREE.Mesh(
@@ -1367,7 +1464,8 @@
             // Muestreo del trazado para NO plantar un edificio encima de otro
             // tramo (el circuito se cruza sobre sí mismo en el espacio).
             const samples = [];
-            for (let i = 0; i < 256; i++) samples.push(curve.getPointAt(i / 256));
+            const N_SAMPLES = Math.max(256, Math.ceil(LAP_LEN / 9)); // denso: no dejar huecos entre muestras
+            for (let i = 0; i < N_SAMPLES; i++) samples.push(curve.getPointAt(i / N_SAMPLES));
             const clearOfTrack = (x, z, margin) => {
                 for (const s of samples) {
                     const dx = s.x - x, dz = s.z - z;
@@ -1375,14 +1473,14 @@
                 }
                 return true;
             };
-            const N_BLD = 90;
+            const N_BLD = Math.max(90, Math.round(LAP_LEN / 26)); // escala con la vuelta (antes: 90 fijo)
             const bldGeo = new THREE.BoxGeometry(1, 1, 1);
             const bldMat = new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x223038, emissiveMap: winTex });
             const bld = new THREE.InstancedMesh(bldGeo, bldMat, N_BLD);
             const M4 = new THREE.Matrix4(), Q0 = new THREE.Quaternion();
             const S3 = new THREE.Vector3(), P3 = new THREE.Vector3();
             let nb = 0;
-            for (let tries = 0; tries < 600 && nb < N_BLD; tries++) {
+            for (let tries = 0; tries < N_BLD * 15 && nb < N_BLD; tries++) {
                 const f = Math.random();
                 if (tunnelAt(f) || surfaceAt(f) === 'dirt') continue;
                 const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
@@ -1447,8 +1545,9 @@
             arch.add(bar);
             scene.add(arch);
         }
-        for (let i = 0; i < 44; i++) {
-            const f = i / 44;
+        const N_PYLONS = Math.max(30, Math.floor(LAP_LEN / 55)); // escala con la vuelta (antes: 44 fijo)
+        for (let i = 0; i < N_PYLONS; i++) {
+            const f = i / N_PYLONS;
             if (tunnelAt(f) || surfaceAt(f) === 'dirt') continue;
             const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
             const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
@@ -1487,9 +1586,14 @@
         }
 
         // Turbo pads: flechas neón fijas sobre la calzada — pisarlas = subidón
+        // (más pads que antes: la pista ahora es ~2.5× más larga)
         {
             const padTex = makePadTex();
-            for (const [f, lane] of [[0.07, 0], [0.19, -0.55], [0.33, 0.55], [0.47, 0], [0.60, -0.4], [0.72, 0.5], [0.90, 0]]) {
+            const padList = [
+                [0.05, 0], [0.13, 0.4], [0.24, -0.5], [0.32, 0.5], [0.40, -0.4],
+                [0.50, 0.3], [0.60, -0.35], [0.70, 0.4], [0.78, 0], [0.86, -0.4], [0.94, 0.3],
+            ];
+            for (const [f, lane] of padList) {
                 const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
                 const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
                 const mesh = new THREE.Mesh(
@@ -2070,8 +2174,13 @@
         if (st.spawnObj <= 0) {
             st.spawnObj = Math.max(0.9, 1.6 - st.lap * 0.15);
             const base = 300 + Math.random() * 60;
+            // Calentamiento: en la primera vuelta, sin barreras en el primer tramo
+            // (recta larga + curva suave) — tiempo de acostumbrarse a la moto.
+            const warmup = st.lap === 0 && wrapS(st.pos + base) / LAP_LEN < WARMUP_END;
             const r = Math.random(), hard = Math.min(1, st.lap * 0.34);
-            if (r < 0.42 - hard * 0.2) {
+            if (warmup) {
+                // nada — solo se reinicia el temporizador, sin obstáculos aquí
+            } else if (r < 0.42 - hard * 0.2) {
                 spawnObj2('rock', base, Math.random() * 1.7 - 0.85); // suelto
             } else if (r < 0.72 - hard * 0.1) {
                 const c = Math.random() * 0.8 - 0.4;                 // pareja con hueco central

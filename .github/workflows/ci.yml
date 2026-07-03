@@ -21,6 +21,7 @@ jobs:
       - name: Check JS syntax
         run: |
           node --check wasm/processor.js
+          node --check api/leaderboard.js
           node -e "
             const fs = require('fs'), vm = require('vm');
             for (const f of ['wasm/index.html', 'wasm/game.html', 'rta.html']) {

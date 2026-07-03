@@ -219,11 +219,23 @@ Motor con paridad casi completa con la versión JS:
   render por software (SwiftShader headless; en una GPU real, mucho
   menos). Sacrifica recibir la sombra del jugador en esos tramos (el
   reflejo del propio kart compensa visualmente).
-  **Ranking local** con nick (se pide una vez); la interfaz `lb` está
-  aislada para enchufar un backend y compartirlo entre dispositivos. Sin
-  capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
-  táctil (vertical en N1, horizontal en N2), canvas retina ~56vh, pantalla
-  completa, mini-HUD en el lienzo, vibración y pausa automática.
+  **Ranking global** (`api/leaderboard.js`, Vercel Serverless Function sin
+  dependencias + Upstash Redis como sorted set) con **fallback automático
+  al ranking local** si no hay backend desplegado o falla la red — el
+  mismo objeto `lb` decide en tiempo real y lo indica en la UI (🌐 global /
+  📴 este dispositivo). Sin capas pregrabadas: un solo motor, parámetros
+  vivos. En móvil: arrastre táctil (vertical en N1, horizontal en N2),
+  canvas retina ~56vh, pantalla completa, mini-HUD en el lienzo, vibración
+  y pausa automática.
+  **Circuito mucho más largo** (~5750u, 2.5× la versión anterior) con un
+  **primer tramo de calentamiento** (recta larga y llana + curva amplia,
+  ~17% de la vuelta) sin obstáculos en la primera vuelta — tiempo de
+  acostumbrarse a la moto antes del chicane, la cresta grande, el túnel y
+  la tierra; el resto de elementos (pilones, farolas, edificios, dunas,
+  turbo pads) escalan su densidad con la longitud real de la vuelta en
+  vez de usar recuentos fijos. **Sidebar de teclas** (tecla H o botón ⌨):
+  panel semi-transparente (50% de opacidad, no tapa el juego) con todos
+  los controles de ambos niveles.
   **Modal "Cómo jugar"**: la portada queda limpia (título, tagline y
   botones); las instrucciones completas viven en un modal aparte que se
   abre solo, una vez, en la primera visita (recordado en localStorage) y
