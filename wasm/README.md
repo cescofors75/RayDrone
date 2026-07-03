@@ -209,7 +209,16 @@ Motor con paridad casi completa con la versión JS:
   (botón 📷 o tecla V): persecución, dentro (primera persona desde el
   manillar, con el horizonte inclinándose al girar) y frontal (mirando a
   la moto). La moto lleva un **halo billboard** aditivo para leerse sobre
-  cualquier fondo (la tierra clara se la comía).
+  cualquier fondo (la tierra clara se la comía). **Reflejos SSR en el
+  asfalto**: no un cubemap fijo — un barrido real en espacio de pantalla
+  (12 pasos, distancia creciente) contra una pasada previa de
+  color+profundidad de la propia escena (256×144, a fotogramas alternos
+  para abaratarla), con Fresnel (más reflejo a rasante, como el asfalto
+  mojado) y el mismo tinte de niebla por zona. Solo el asfalto —la tierra
+  no debe verse pulida—, con un coste medido de ~15-20% de fps bajo
+  render por software (SwiftShader headless; en una GPU real, mucho
+  menos). Sacrifica recibir la sombra del jugador en esos tramos (el
+  reflejo del propio kart compensa visualmente).
   **Ranking local** con nick (se pide una vez); la interfaz `lb` está
   aislada para enchufar un backend y compartirlo entre dispositivos. Sin
   capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
