@@ -60,6 +60,20 @@
         #nick-form input { background:#0f1320; border:1px solid rgba(255,53,94,0.4); border-radius:8px;
                            color:var(--text); font-size:1rem; padding:10px 12px; text-align:center; width:200px; }
         #nick-form input:focus { outline:none; border-color:var(--accent); }
+        /* Modal de instrucciones (portada) */
+        #howto-backdrop { position:fixed; inset:0; background:rgba(5,6,11,0.78); z-index:20;
+                           display:none; align-items:center; justify-content:center; padding:16px; }
+        #howto-backdrop.show { display:flex; }
+        #howto-modal { position:relative; background:var(--panel); border:1px solid rgba(255,53,94,0.25);
+                       border-radius:14px; padding:22px 22px 18px; max-width:600px; width:100%;
+                       max-height:85vh; overflow-y:auto; box-shadow:0 24px 70px rgba(0,0,0,0.5); }
+        #howto-modal h2 { margin:0 0 12px; font-size:1.05rem; letter-spacing:1px; color:var(--accent);
+                           text-transform:uppercase; padding-right:30px; }
+        #howto-modal .how { margin-top:0; }
+        #howto-close { position:absolute; top:12px; right:12px; width:32px; height:32px; border-radius:8px;
+                       border:1px solid rgba(255,53,94,0.3); background:#0f1320; color:var(--text);
+                       font-size:1rem; cursor:pointer; line-height:1; }
+        #howto-close:hover { background:rgba(255,53,94,0.2); }
 
         @media (max-width: 700px) {
             body { padding:8px 6px; }
@@ -97,20 +111,16 @@
         <button id="fs-btn" title="Pantalla completa">⛶</button>
         <button id="cam-btn" title="Cámara (V): persecución / dentro / frontal">📷</button>
         <div class="overlay" id="start-overlay">
-            <div style="max-width:560px; line-height:1.6;">
-                <b>Nivel 1 · Espacio</b>: pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides y
-                <b style="color:#7bdcff">fantasmas</b> 👻, recoge cristales <b style="color:var(--cyan)">◆</b> y power-ups
-                (🛡 escudo · 🚀 misil con <b>X</b> · 💣 bomba con <b>C</b>). Dispara el <b>bláster</b> —ilimitado— con
-                <b>clic de ratón</b>, <b>Z</b>/<b>espacio</b> o un <b>toque corto</b>.
-                Aguanta y llegarás al <b>Nivel 2 · Circuito Neón</b>: un circuito 3D de verdad (WebGL) sobre una moto Tron —
-                ← → giras, <b>↑ aceleras, ↓ frenas</b> (en móvil el dedo hace las dos cosas), pisa las <b style="color:#5dffc8">flechas turbo</b>,
-                pasa <b>rozando</b> las barreras (+25) y esquiva a los rivales fantasma (síguelos en el <b>minimapa</b>).
-                Cambia de cámara con <b>V</b> o el botón 📷 (persecución / dentro / frontal). Ir a fondo multiplica los puntos — y otra
-                música, alegre y luminosa, renderizada por el mismo motor. Cada vuelta recorre el sample entero.
-                Tu <b>combo</b> decide N, la densidad de rayos: juega bien y la música converge; recibe impactos y se rompe.
+            <div style="font-size:1.15rem; font-weight:bold; letter-spacing:1px;">🏍 RAYRUNNER</div>
+            <div style="max-width:480px; color:#b7c2d4;">
+                Esquiva, dispara y conduce — la banda sonora la genera RayDrone en vivo,
+                según cómo juegues.
             </div>
             <button class="btn" id="start-btn">▶ Despegar</button>
-            <button class="btn sec" id="lb-show-btn">🏆 Ranking</button>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+                <button class="btn sec" id="howto-btn">❓ Cómo jugar</button>
+                <button class="btn sec" id="lb-show-btn">🏆 Ranking</button>
+            </div>
             <div id="lb-list-start" style="display:none;"></div>
         </div>
         <div class="overlay" id="pause-overlay" style="display:none;">
@@ -152,6 +162,29 @@
     </div>
     <div class="status" id="status"></div>
     <a class="back" href="index.html">← volver al demo completo de RayDrone</a>
+</div>
+
+<div id="howto-backdrop">
+    <div id="howto-modal">
+        <button id="howto-close" title="Cerrar (Esc)">✕</button>
+        <h2>Cómo jugar</h2>
+        <div class="how" style="font-size:0.85rem;">
+            <b>Nivel 1 · Espacio</b> — pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides y
+            <b style="color:#7bdcff">fantasmas</b> 👻, recoge cristales <b style="color:var(--cyan)">◆</b> y power-ups
+            (🛡 escudo · 🚀 misil con <b>X</b> · 💣 bomba con <b>C</b>). Dispara el <b>bláster</b> —ilimitado— con
+            <b>clic de ratón</b>, <b>Z</b>/<b>espacio</b> o un <b>toque corto</b>.
+            <br><br>
+            <b>Nivel 2 · Circuito Neón</b> — un circuito 3D de verdad (WebGL) sobre una moto Tron:
+            ← → giras, <b>↑ aceleras, ↓ frenas</b> (en móvil el dedo hace las dos cosas), pisa las
+            <b style="color:#5dffc8">flechas turbo</b>, pasa <b>rozando</b> las barreras (+25) y esquiva a los rivales
+            fantasma (síguelos en el <b>minimapa</b>). Cambia de cámara con <b>V</b> o el botón 📷
+            (persecución / dentro / frontal). Ir a fondo multiplica los puntos.
+            <br><br>
+            Cada nivel tiene su propia música de 24s, generada en vivo: tu <b>combo</b> controla N (la densidad
+            de rayos) — juega bien y la textura converge limpia; recibe un golpe y se rompe en polvo granular.
+        </div>
+        <button class="btn" id="howto-ok" style="margin-top:16px;">Entendido</button>
+    </div>
 </div>
 
 <script>
@@ -466,6 +499,24 @@
     // llamadas fetch() a un backend (Supabase/Worker) con la misma forma
     // {n: nick, s: puntos, l: nivel, d: fecha} — la UI no cambia.
     // ════════════════════════════════════════════════════════════════════════
+    // ── Modal "Cómo jugar" ────────────────────────────────────────────────────
+    const HOWTO_SEEN_KEY = 'raydrone_howto_seen';
+    const howtoBackdrop = $('howto-backdrop');
+    function showHowto() { howtoBackdrop.classList.add('show'); }
+    function hideHowto() {
+        howtoBackdrop.classList.remove('show');
+        try { localStorage.setItem(HOWTO_SEEN_KEY, '1'); } catch (_) { /* sin storage, sin memoria de "ya lo vi" */ }
+    }
+    $('howto-btn').addEventListener('click', showHowto);
+    $('howto-close').addEventListener('click', hideHowto);
+    $('howto-ok').addEventListener('click', hideHowto);
+    howtoBackdrop.addEventListener('click', (e) => { if (e.target === howtoBackdrop) hideHowto(); });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && howtoBackdrop.classList.contains('show')) hideHowto();
+    });
+    // Primera visita: se abre solo una vez (luego siempre accesible con el botón)
+    try { if (!localStorage.getItem(HOWTO_SEEN_KEY)) showHowto(); } catch (_) { showHowto(); }
+
     const LB_KEY = 'raydrone_scores', NICK_KEY = 'raydrone_nick';
     const lb = {
         all() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || []; } catch (_) { return []; } },

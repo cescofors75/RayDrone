@@ -215,6 +215,11 @@ Motor con paridad casi completa con la versión JS:
   capas pregrabadas: un solo motor, parámetros vivos. En móvil: arrastre
   táctil (vertical en N1, horizontal en N2), canvas retina ~56vh, pantalla
   completa, mini-HUD en el lienzo, vibración y pausa automática.
+  **Modal "Cómo jugar"**: la portada queda limpia (título, tagline y
+  botones); las instrucciones completas viven en un modal aparte que se
+  abre solo, una vez, en la primera visita (recordado en localStorage) y
+  siempre accesible después con el botón ❓ — se cierra con el botón ✕, con
+  Escape o clicando fuera.
 
 Paridad completa con la versión JS.
 
