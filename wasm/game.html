@@ -231,9 +231,12 @@
             (persecución / dentro / frontal). Ir a fondo multiplica los puntos. Completa 2 vueltas para
             pasar al nivel 3.
             <br><br>
-            <b>Nivel 3 · Pinball</b> — una mesa clásica: <b>←</b> mueve el flipper izquierdo, <b>→</b> el
+            <b>Nivel 3 · Pinball</b> — una mesa moderna: <b>←</b> mueve el flipper izquierdo, <b>→</b> el
             derecho (o los botones L / R en pantalla). Golpea los <b>bumpers</b> para sumar combo y
-            puntos — no dejes que la bola caiga por el hueco central o pierdes una vida.
+            puntos, lanza la bola por las <b>rampas</b> (izquierda/derecha) para un bonus mayor —
+            completar 3 rampas sube el <b>multiplicador BONUS</b> (x2, x3) — y tumba las <b>3 dianas</b>
+            de arriba: el banco completo da un bonus grande y, la primera vez, una <b>bola extra</b>.
+            No dejes que la bola caiga por el hueco central o pierdes una vida.
             <br><br>
             Cada nivel tiene su propia música de 24s, generada en vivo: tu <b>combo</b> controla N (la densidad
             de rayos) — juega bien y la textura converge limpia; recibe un golpe y se rompe en polvo granular.
@@ -541,10 +544,18 @@
     // sobreviven a un resize sin desincronizarse. `flash` es visual (destello
     // al golpear), no afecta a la física.
     const pinBumpers = [
-        { fx: 0.30, fy: 0.30, flash: 0 },
-        { fx: 0.50, fy: 0.20, flash: 0 },
-        { fx: 0.70, fy: 0.30, flash: 0 },
-        { fx: 0.50, fy: 0.46, flash: 0 },
+        { fx: 0.30, fy: 0.36, flash: 0 },
+        { fx: 0.50, fy: 0.26, flash: 0 },
+        { fx: 0.70, fy: 0.36, flash: 0 },
+        { fx: 0.50, fy: 0.50, flash: 0 },
+    ];
+    // Banco de dianas (drop targets): tumbarlas todas da un bonus grande y,
+    // la primera vez en la partida, una bola extra — se reinician solas tras
+    // un rato (pinTargetResetTtl en stepLevel3).
+    const pinTargets = [
+        { fx: 0.40, fy: 0.09, alive: true, flash: 0 },
+        { fx: 0.50, fy: 0.09, alive: true, flash: 0 },
+        { fx: 0.60, fy: 0.09, alive: true, flash: 0 },
     ];
 
     // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
@@ -595,8 +606,13 @@
         spawnAst: 0, spawnCry: 0, spawnPick: 0, spawnObj: 0,
         touchTarget: null, touchTargetX: null, touchThrottle: 0,
         // Nivel 3 (pinball): bola en juego + ángulo actual de cada flipper (para
-        // el impulso por velocidad angular al golpear).
+        // el impulso por velocidad angular al golpear). pinMult/pinRampCount son
+        // el multiplicador de bonus (sube cada 3 rampas, se resetea al perder la
+        // bola); extraBallUsed asegura que la bola extra solo se da una vez por
+        // partida (si no, completar el banco de dianas repetidas veces la daría
+        // gratis cada vez).
         ball: null, flipLAng: 0, flipRAng: 0, ballLive: false, serveTtl: 0,
+        pinMult: 1, pinRampCount: 0, extraBallUsed: false, pinTargetResetTtl: 0,
     };
     resizeCanvas();
     for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
@@ -617,6 +633,8 @@
         st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
         st.camMode = 0;
         st.ball = null; st.flipLAng = 0; st.flipRAng = 0; st.ballLive = false; st.serveTtl = 0;
+        st.pinMult = 1; st.pinRampCount = 0; st.extraBallUsed = false; st.pinTargetResetTtl = 0;
+        for (const t of pinTargets) t.alive = true;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
@@ -964,21 +982,43 @@
     // (girar el móvil) no desincroniza nada salvo la bola, que si se reescala
     // en resizeCanvas() como el resto de entidades del juego.
     const BALL_R = () => 9 * k;
+    // Rampas: trayectoria de puntos (en fracciones del tapete, boca a salida).
+    // Al capturar la bola, viaja por el path a velocidad constante — sin
+    // gravedad ni colisiones — y sale disparada en la dirección del último
+    // tramo. Ambas mesas se calculan aquí para que sobrevivan a un resize.
     function pinLayout() {
         const margin = 22 * k, top = 30 * k;
         const gapHalf = W * 0.11, flipLen = 62 * k;
         const pivotY = H - 34 * k;
+        const left = margin, right = W - margin;
+        const fx = (f) => left + f * (right - left);
+        const fy = (f) => top + f * (pivotY - top);
         return {
-            margin, top, gapHalf, flipLen, pivotY,
-            left: margin, right: W - margin,
+            margin, top, gapHalf, flipLen, pivotY, left, right, fx, fy,
             pivotL: { x: W * 0.5 - gapHalf - flipLen * 0.15, y: pivotY },
             pivotR: { x: W * 0.5 + gapHalf + flipLen * 0.15, y: pivotY },
             restL: 0.45, activeL: -1.0,
             restR: Math.PI - 0.45, activeR: Math.PI + 1.0,
+            rampL: {
+                entryR: 20 * k,
+                path: [
+                    { x: fx(0.06), y: fy(0.94) }, { x: fx(0.04), y: fy(0.65) },
+                    { x: fx(0.05), y: fy(0.35) }, { x: fx(0.12), y: fy(0.15) },
+                    { x: fx(0.26), y: fy(0.11) },
+                ],
+            },
+            rampR: {
+                entryR: 20 * k,
+                path: [
+                    { x: fx(0.94), y: fy(0.94) }, { x: fx(0.96), y: fy(0.65) },
+                    { x: fx(0.95), y: fy(0.35) }, { x: fx(0.88), y: fy(0.15) },
+                    { x: fx(0.74), y: fy(0.11) },
+                ],
+            },
         };
     }
     function serveBall() {
-        st.ball = { x: W * 0.5 + (Math.random() - 0.5) * 40 * k, y: 46 * k, vx: (Math.random() - 0.5) * 60 * k, vy: 40 * k };
+        st.ball = { x: W * 0.5 + (Math.random() - 0.5) * 40 * k, y: 46 * k, vx: (Math.random() - 0.5) * 60 * k, vy: 40 * k, onRamp: null };
         st.ballLive = true;
     }
     function switchToLevel3() {
@@ -2598,16 +2638,97 @@
     }
     function bumperHit(bx, by, bp) {
         st.combo = Math.min(10, st.combo + 1);
-        st.score += 30 + st.combo * 8;
+        st.score += (30 + st.combo * 8) * st.pinMult;
         st.shimmer = Math.max(st.shimmer, 0.35);
         bp.flash = 0.15;
         burst(bx, by, [255, 120, 150], 10);
         vibrate(12);
         updateHud();
     }
+    // ── Rampas: la bola viaja por un path a velocidad constante (sin gravedad
+    // ni colisiones) y sale disparada en la dirección del último tramo.
+    const RAMP_SPEED = 900, RAMP_EXIT_SPEED = 620;
+    function pathLength(path) {
+        let s = 0;
+        for (let i = 0; i < path.length - 1; i++) s += Math.hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y);
+        return s;
+    }
+    function pointAtDistance(path, dist) {
+        let acc = 0;
+        for (let i = 0; i < path.length - 1; i++) {
+            const a = path[i], b2 = path[i + 1];
+            const segLen = Math.hypot(b2.x - a.x, b2.y - a.y);
+            if (dist <= acc + segLen || i === path.length - 2) {
+                const t = segLen > 0 ? clamp((dist - acc) / segLen, 0, 1) : 0;
+                return { x: a.x + (b2.x - a.x) * t, y: a.y + (b2.y - a.y) * t };
+            }
+            acc += segLen;
+        }
+        return path[path.length - 1];
+    }
+    function tryEnterRamp(b, ramp, which) {
+        if (b.onRamp) return;
+        const entry = ramp.path[0];
+        const dist = Math.hypot(b.x - entry.x, b.y - entry.y);
+        if (dist < ramp.entryR && b.vy < -80 * k) {
+            b.onRamp = { which, dist: 0, total: pathLength(ramp.path), path: ramp.path };
+        }
+    }
+    function rampComplete(which) {
+        st.pinRampCount++;
+        if (st.pinRampCount % 3 === 0) st.pinMult = Math.min(3, st.pinMult + 1);
+        st.combo = Math.min(10, st.combo + 1);
+        st.score += 150 * st.pinMult;
+        st.shimmer = Math.max(st.shimmer, 0.5);
+        banner(which === 'L' ? '¡RAMPA IZQUIERDA! +150' : '¡RAMPA DERECHA! +150');
+        vibrate(20);
+        updateHud();
+    }
+    // ── Banco de dianas: tumbarlas todas da un bonus grande y, la primera vez
+    // en la partida, una bola extra. Se reinician solas tras un rato.
+    function targetPos(t, Lay) {
+        return { x: Lay.left + t.fx * (Lay.right - Lay.left), y: Lay.top + t.fy * (Lay.pivotY - Lay.top) };
+    }
+    function collideTarget(b, R, t, Lay) {
+        if (!t.alive) return;
+        const p = targetPos(t, Lay), halfW = 16 * k, halfH = 9 * k;
+        const cx = clamp(b.x, p.x - halfW, p.x + halfW), cy = clamp(b.y, p.y - halfH, p.y + halfH);
+        const dx = b.x - cx, dy = b.y - cy, dist = Math.hypot(dx, dy);
+        if (dist >= R) return;
+        const nx = dist > 1e-6 ? dx / dist : 0, ny = dist > 1e-6 ? dy / dist : -1;
+        b.x += nx * (R - dist); b.y += ny * (R - dist);
+        const vn = b.vx * nx + b.vy * ny;
+        b.vx -= 1.6 * vn * nx; b.vy -= 1.6 * vn * ny;
+        t.alive = false; t.flash = 0.2;
+        st.combo = Math.min(10, st.combo + 1);
+        st.score += 80 * st.pinMult;
+        burst(p.x, p.y, [140, 220, 255], 8);
+        vibrate(10);
+        updateHud();
+        if (pinTargets.every((x) => !x.alive)) bankCleared();
+    }
+    function bankCleared() {
+        st.score += 500 * st.pinMult;
+        if (!st.extraBallUsed) {
+            st.extraBallUsed = true;
+            st.lives += 1;
+            banner('¡BANCO COMPLETO! +500 · ¡BOLA EXTRA!');
+            vibrate([30, 20, 30, 20, 60]);
+        } else {
+            banner('¡BANCO COMPLETO! +500');
+            vibrate(30);
+        }
+        st.pinTargetResetTtl = 2.5;
+        updateHud();
+    }
     function stepLevel3(dt) {
         const Lay = pinLayout();
         for (const bp of pinBumpers) bp.flash = Math.max(0, bp.flash - dt);
+        for (const t of pinTargets) t.flash = Math.max(0, t.flash - dt);
+        if (st.pinTargetResetTtl > 0) {
+            st.pinTargetResetTtl -= dt;
+            if (st.pinTargetResetTtl <= 0) for (const t of pinTargets) t.alive = true;
+        }
         const flipRate = 20; // rad/s tope de giro (subida rápida, bajada por gravedad simulada igual)
         const prevFlipL = st.flipLAng, prevFlipR = st.flipRAng;
         st.flipLAng = moveToward(st.flipLAng, keys.a ? Lay.activeL : Lay.restL, flipRate * dt);
@@ -2621,10 +2742,29 @@
             return;
         }
         const b = st.ball, R = BALL_R();
+        if (b.onRamp) {
+            b.onRamp.dist += RAMP_SPEED * k * dt;
+            if (b.onRamp.dist >= b.onRamp.total) {
+                const path = b.onRamp.path, last = path[path.length - 1], prev = path[path.length - 2];
+                const dx = last.x - prev.x, dy = last.y - prev.y, dl = Math.hypot(dx, dy) || 1;
+                b.x = last.x; b.y = last.y;
+                b.vx = (dx / dl) * RAMP_EXIT_SPEED * k; b.vy = (dy / dl) * RAMP_EXIT_SPEED * k;
+                rampComplete(b.onRamp.which);
+                b.onRamp = null;
+            } else {
+                const p = pointAtDistance(b.onRamp.path, b.onRamp.dist);
+                b.x = p.x; b.y = p.y;
+            }
+            st.score += 4 * dt;
+            return;
+        }
         const GRAV = 1500 * k;
         b.vy += GRAV * dt;
         b.x += b.vx * dt;
         b.y += b.vy * dt;
+        tryEnterRamp(b, Lay.rampL, 'L');
+        tryEnterRamp(b, Lay.rampR, 'R');
+        if (b.onRamp) { st.score += 4 * dt; return; } // capturada este frame: nada más que hacer
         // Muros: izquierda/derecha/arriba rebotan; abajo no hay muro salvo los
         // flippers — ahí está el desagüe (drain), como en una mesa real.
         if (b.x - R < Lay.left) { b.x = Lay.left + R; b.vx = Math.abs(b.vx) * 0.7; }
@@ -2642,6 +2782,7 @@
             b.vx += nx * kick; b.vy += ny * kick;
             if (bp.flash <= 0) bumperHit(p.x, p.y, bp);
         }
+        for (const t of pinTargets) collideTarget(b, R, t, Lay);
         collideFlipper(b, R, Lay.pivotL, st.flipLAng, angVelL, Lay.flipLen);
         collideFlipper(b, R, Lay.pivotR, st.flipRAng, angVelR, Lay.flipLen);
         st.score += 4 * dt; // puntos por tiempo en juego (float, se redondea al mostrar)
@@ -2649,6 +2790,7 @@
             st.ballLive = false;
             st.combo = Math.max(0, st.combo - 3);
             st.lives -= 1;
+            st.pinMult = 1; st.pinRampCount = 0; // el multiplicador es por bola, no acumulado toda la partida
             burst(b.x, Lay.pivotY, [255, 80, 80], 18);
             vibrate([50, 30, 80]);
             updateHud();
@@ -2918,27 +3060,67 @@
     }
 
     // ── Dibujo · nivel 3 (pinball) ────────────────────────────────────────────
+    // Estela de la bola (últimas posiciones, se desvanecen) — solo cosmético.
+    const ballTrail = [];
+    function drawRampTube(path, tint) {
+        g.save();
+        g.lineJoin = 'round'; g.lineCap = 'round';
+        g.strokeStyle = 'rgba(190,210,230,0.35)';
+        g.lineWidth = 15 * k;
+        g.beginPath(); g.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) g.lineTo(path[i].x, path[i].y);
+        g.stroke();
+        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.85)`;
+        g.lineWidth = 5 * k;
+        g.shadowColor = `rgb(${tint[0]},${tint[1]},${tint[2]})`; g.shadowBlur = 10 * k;
+        g.stroke();
+        g.shadowBlur = 0;
+        g.restore();
+    }
     function drawPinball(t) {
         const Lay = pinLayout();
         g.save();
         if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
         g.clearRect(-20, -20, W + 40, H + 40);
         const tint = ZONES_PINBALL[Math.max(0, st.zone)].tint;
+        // Tapete moderno: gradiente vertical con viñeta radial encima (look de
+        // plástico iluminado, no solo un degradado plano).
         const bg = g.createLinearGradient(0, 0, 0, H);
-        bg.addColorStop(0, `rgba(${tint[0]},${tint[1]},${tint[2]},0.12)`);
-        bg.addColorStop(0.6, '#05060b');
-        bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.08)`);
+        bg.addColorStop(0, `rgba(${tint[0]},${tint[1]},${tint[2]},0.16)`);
+        bg.addColorStop(0.55, '#0a0b14');
+        bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.10)`);
         g.fillStyle = bg;
         g.fillRect(-20, -20, W + 40, H + 40);
-        // Muros de la mesa
-        g.strokeStyle = 'rgba(120,200,255,0.55)';
-        g.lineWidth = 3 * k;
+        const vig = g.createRadialGradient(W / 2, H * 0.45, H * 0.15, W / 2, H * 0.45, W * 0.62);
+        vig.addColorStop(0, 'rgba(0,0,0,0)');
+        vig.addColorStop(1, 'rgba(0,0,0,0.45)');
+        g.fillStyle = vig;
+        g.fillRect(-20, -20, W + 40, H + 40);
+        // Rampas (tubos de luz, dibujadas antes que el resto para que quede debajo)
+        drawRampTube(Lay.rampL.path, tint);
+        drawRampTube(Lay.rampR.path, [90, 200, 255]);
+        // Muros de la mesa: base metálica + brillo de neón a juego con la zona
+        g.lineJoin = 'round';
         g.beginPath();
-        g.moveTo(Lay.left, H + 20);
-        g.lineTo(Lay.left, Lay.top);
-        g.lineTo(Lay.right, Lay.top);
-        g.lineTo(Lay.right, H + 20);
+        g.moveTo(Lay.left, H + 20); g.lineTo(Lay.left, Lay.top); g.lineTo(Lay.right, Lay.top); g.lineTo(Lay.right, H + 20);
+        g.strokeStyle = 'rgba(210,220,235,0.5)';
+        g.lineWidth = 5 * k;
         g.stroke();
+        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.55)`;
+        g.lineWidth = 2 * k;
+        g.stroke();
+        // Dianas (drop targets): iluminadas si están en pie, apagadas si caídas
+        for (const tg of pinTargets) {
+            const p = targetPos(tg, Lay), hw = 16 * k, hh = 9 * k;
+            const glow = tg.flash > 0 ? tg.flash / 0.2 : 0;
+            g.fillStyle = tg.alive ? `rgba(${tint[0]},${tint[1]},${tint[2]},${0.85 + glow * 0.15})` : 'rgba(70,70,80,0.55)';
+            g.strokeStyle = tg.alive ? 'rgba(255,255,255,0.8)' : 'rgba(140,140,150,0.5)';
+            g.lineWidth = 1.6 * k;
+            g.beginPath();
+            if (g.roundRect) g.roundRect(p.x - hw, p.y - hh, hw * 2, hh * 2, 3 * k);
+            else g.rect(p.x - hw, p.y - hh, hw * 2, hh * 2);
+            g.fill(); g.stroke();
+        }
         // Bumpers: esfera brillante con destello de color al golpear (si no, se
         // funden con el fondo teñido de la zona y no se distinguen de la mesa).
         for (const bp of pinBumpers) {
@@ -2961,29 +3143,56 @@
             g.lineWidth = 2 * k;
             g.stroke();
         }
-        // Flippers (paletas)
-        const drawFlipper = (pivot, angle, color) => {
+        // Flippers: caucho rojo con brillo especular + tapa de pivote cromada
+        const drawFlipper = (pivot, angle) => {
             const tipX = pivot.x + Math.cos(angle) * Lay.flipLen, tipY = pivot.y + Math.sin(angle) * Lay.flipLen;
-            g.strokeStyle = color;
+            const grad = g.createLinearGradient(pivot.x, pivot.y, tipX, tipY);
+            grad.addColorStop(0, 'rgba(255,140,160,0.95)');
+            grad.addColorStop(1, 'rgba(200,20,60,0.95)');
+            g.strokeStyle = grad;
             g.lineWidth = 13 * k;
             g.lineCap = 'round';
             g.beginPath(); g.moveTo(pivot.x, pivot.y); g.lineTo(tipX, tipY); g.stroke();
+            g.fillStyle = 'rgba(220,225,235,0.9)';
+            g.beginPath(); g.arc(pivot.x, pivot.y, 5 * k, 0, 6.283); g.fill();
         };
-        drawFlipper(Lay.pivotL, st.flipLAng, 'rgba(255,53,94,0.9)');
-        drawFlipper(Lay.pivotR, st.flipRAng, 'rgba(255,53,94,0.9)');
-        // Bola
+        drawFlipper(Lay.pivotL, st.flipLAng);
+        drawFlipper(Lay.pivotR, st.flipRAng);
+        // Bola: gradiente metálico + estela de movimiento
         if (st.ball) {
             const b = st.ball, R = BALL_R();
+            ballTrail.push({ x: b.x, y: b.y });
+            if (ballTrail.length > 7) ballTrail.shift();
+            for (let i = 0; i < ballTrail.length - 1; i++) {
+                const p = ballTrail[i], a = (i + 1) / ballTrail.length * 0.4;
+                g.beginPath(); g.arc(p.x, p.y, R * 0.7, 0, 6.283);
+                g.fillStyle = `rgba(157,246,255,${a})`;
+                g.fill();
+            }
+            const grad = g.createRadialGradient(b.x - R * 0.35, b.y - R * 0.35, R * 0.1, b.x, b.y, R);
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(0.5, '#cdd9e6');
+            grad.addColorStop(1, '#5b6472');
             g.beginPath(); g.arc(b.x, b.y, R, 0, 6.283);
-            g.fillStyle = '#e8eef5';
-            g.shadowColor = '#9df6ff'; g.shadowBlur = 8 * k;
+            g.fillStyle = grad;
+            g.shadowColor = '#9df6ff'; g.shadowBlur = 6 * k;
             g.fill();
             g.shadowBlur = 0;
-        } else if (st.serveTtl > 0) {
-            g.fillStyle = 'rgba(255,255,255,0.6)';
-            g.font = `bold ${Math.round(16 * k)}px monospace`;
+        } else {
+            ballTrail.length = 0;
+            if (st.serveTtl > 0) {
+                g.fillStyle = 'rgba(255,255,255,0.6)';
+                g.font = `bold ${Math.round(16 * k)}px monospace`;
+                g.textAlign = 'center';
+                g.fillText('¡BOLA!', W / 2, H * 0.45);
+            }
+        }
+        // HUD propio del pinball: multiplicador de bonus
+        if (st.playing) {
+            g.fillStyle = st.pinMult > 1 ? '#ffd75d' : 'rgba(255,255,255,0.55)';
+            g.font = `bold ${Math.round(13 * k)}px monospace`;
             g.textAlign = 'center';
-            g.fillText('¡BOLA!', W / 2, H * 0.45);
+            g.fillText(`BONUS x${st.pinMult}`, W / 2, 24 * k);
         }
         drawFxOverlays(t, tint);
         g.restore();
@@ -3129,6 +3338,7 @@
         goLevel3: switchToLevel3,
         pinLayout,
         pinBumpers,
+        pinTargets,
         spawnAhead(type) {
             if (st.level === 1) {
                 if (type === 'rock') st.asteroids.push({ x: SHIP_X + 200 * k, y: st.shipY, r: 16 * k, rot: 0, vr: 0 });

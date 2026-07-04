@@ -271,6 +271,24 @@ Motor con paridad casi completa con la versión JS:
   `endRound()`, mismo ranking). Su propio sample de 24s/4 zonas (arranque
   arcade → bumper blitz → tilt eléctrico → jackpot neón, chiptune con ondas
   cuadradas) avanza más rápido cuanto más alto esté el combo.
+  **2 rampas** (izquierda/derecha): la trayectoria es un *path* de puntos en
+  fracciones del tapete (sobrevive a un resize); al capturar la bola con
+  velocidad ascendente suficiente cerca de la boca, viaja por el path a
+  velocidad constante — sin gravedad ni colisiones, como dentro de un tubo —
+  y sale disparada en la dirección del último tramo. Cada rampa completada
+  suma puntos y combo; cada 3 rampas sube el **multiplicador de bonus**
+  (x1→x2→x3, con HUD propio "BONUS xN") que se aplica a bumpers, dianas y
+  rampas, y se resetea a x1 al perder la bola (es por bola, no acumulado
+  toda la partida). **Banco de 3 dianas** (drop targets) arriba de la mesa:
+  cada una se "tumba" al golpearla (dejan de colisionar, se apagan
+  visualmente) y suman combo/puntos; tumbar las 3 da un bonus grande y, la
+  **primera vez en la partida**, una **bola extra** (vida +1) — repetir el
+  banco después ya no la vuelve a dar, solo el bonus; las dianas se
+  reinician solas tras un par de segundos. **Tapete moderno**: gradiente de
+  fondo con viñeta radial, muros con acabado metálico + brillo de neón a
+  juego con la zona, rampas como tubos de luz (glow + núcleo brillante),
+  flippers con gradiente de caucho rojo y tapa de pivote cromada, bola con
+  degradado metálico y estela de movimiento que se desvanece.
   **Modal "Cómo jugar"**: la portada queda limpia (título, tagline y
   botones); las instrucciones completas viven en un modal aparte que se
   abre solo, una vez, en la primera visita (recordado en localStorage) y
