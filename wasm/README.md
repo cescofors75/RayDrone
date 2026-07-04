@@ -297,13 +297,22 @@ Motor con paridad casi completa con la versión JS:
   reflejo/impulso cuando la bola realmente se acerca (`vn<0`) — aplicarlo
   siempre que hay solape (p.ej. la bola apoyada encima) inyectaba energía sin
   límite y podía disparar la velocidad lo bastante como para atravesar un
-  muro en un solo paso de física. **Tapete moderno estilo neón**: gradiente
-  de fondo con viñeta radial, suelo de rejilla tipo Tron, muros con acabado
-  metálico + brillo de neón a juego con la zona, rampas como tubos de luz
-  (glow + núcleo brillante), **bumpers tipo "seta"** cada uno con su propio
-  color de neón (verde/amarillo/azul/magenta) en vez de compartir el tinte
-  de zona, flippers con gradiente de caucho rojo y tapa de pivote cromada,
-  bola con degradado metálico y estela de movimiento que se desvanece.
+  muro en un solo paso de física — además, a alta velocidad la bola avanza
+  en **subpasos** de como mucho un radio, así ninguna colisión se "salta".
+  **Render en perspectiva** (el cambio que la hace parecer una mesa de
+  verdad y no un dibujo plano visto desde arriba): la física corre en un
+  **espacio de mesa** propio, vertical y de resolución fija (PW×PH
+  unidades), y el dibujo la **proyecta** en un trapecio que se estrecha
+  arriba (lejos) y se ensancha abajo (cerca) — con rejilla que converge en
+  el fondo, arco superior redondeado, y tamaños (bola, bumpers, grosores)
+  que escalan con la profundidad. Separar física de render también hace la
+  jugabilidad idéntica en cualquier tamaño de lienzo. **Estilo neón** (a
+  juego con el póster de referencia): cabinet oscuro a los lados, rayos
+  láser de ambiente aditivos, suelo de rejilla tipo Tron, muros y rieles con
+  brillo de neón, rampas como tubos de luz, **bumpers tipo "seta"** cada uno
+  con su propio color (verde/amarillo/azul/magenta), flippers de caucho rojo
+  con brillo y tapa de pivote cromada, y bola cromada con estela que se
+  desvanece.
   **Modal "Cómo jugar"**: la portada queda limpia (título, tagline y
   botones); las instrucciones completas viven en un modal aparte que se
   abre solo, una vez, en la primera visita (recordado en localStorage) y

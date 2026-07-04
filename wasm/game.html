@@ -539,10 +539,16 @@
     const pads2 = [];             // turbo pads fijos de la pista: {s, lane, mesh, cd}
     const frags2 = [];            // escombros 3D de un golpe: {mesh, vel, rot, ttl}
     let miniPts = null;           // contorno del circuito normalizado (minimapa)
-    // Nivel 3 (pinball): bumpers en posición fraccional de la mesa (fx,fy en
-    // [0,1]) — se convierten a píxeles en cada frame vía pinLayout(), así que
-    // sobreviven a un resize sin desincronizarse. `flash` es visual (destello
-    // al golpear), no afecta a la física.
+    // ── Nivel 3 (pinball) ──────────────────────────────────────────────────
+    // La física corre en un ESPACIO DE MESA propio, vertical y de resolución
+    // fija (PW×PH unidades), NO en píxeles de pantalla. El render la proyecta
+    // en perspectiva (trapecio que se estrecha arriba, como una mesa real
+    // vista desde el jugador). Así la jugabilidad es idéntica en cualquier
+    // tamaño de lienzo y el look deja de ser "plano visto desde arriba".
+    const PW = 560, PH = 1000; // ancho/alto de la mesa en unidades de mesa
+    const BALL_R = 15;         // radio de la bola en unidades de mesa
+    // Bumpers en posición fraccional de la mesa (fx,fy en [0,1]). `flash` es
+    // visual (destello al golpear), no afecta a la física.
     const pinBumpers = [
         { fx: 0.30, fy: 0.42, flash: 0, color: [80, 230, 120] },
         { fx: 0.50, fy: 0.34, flash: 0, color: [255, 210, 60] },
@@ -588,7 +594,8 @@
         for (const m of st.shots) { m.x *= sx; m.y *= sy; }
         for (const p of st.particles) { p.x *= sx; p.y *= sy; }
         for (const s of st.stars) { s.x *= sx; s.y *= sy; }
-        if (st.ball) { st.ball.x *= sx; st.ball.y *= sy; }
+        // La bola de pinball vive en espacio de mesa (independiente de la
+        // resolución, ver PW/PH): no se reescala aquí, solo la proyección.
         resize3D();
     }
 
@@ -988,63 +995,86 @@
     // Geometría en fracciones de W/H, recalculada cada frame — así un resize
     // (girar el móvil) no desincroniza nada salvo la bola, que si se reescala
     // en resizeCanvas() como el resto de entidades del juego.
-    const BALL_R = () => 9 * k;
-    // Rampas: trayectoria de puntos (en fracciones del tapete, boca a salida).
-    // Al capturar la bola, viaja por el path a velocidad constante — sin
-    // gravedad ni colisiones — y sale disparada en la dirección del último
-    // tramo. Ambas mesas se calculan aquí para que sobrevivan a un resize.
+    // Geometría de la mesa en unidades de mesa (0..PW, 0..PH). No depende del
+    // tamaño del lienzo — la perspectiva la aplica el render.
     function pinLayout() {
-        const margin = 22 * k, top = 30 * k;
-        const left = margin, right = W - margin;
-        const tableW = right - left;
-        // Barrido simétrico de ±20° (en vez de un giro dramático de ~90°): así
-        // el flipper puede ser mucho más largo — llega cerca del centro, como
-        // una mesa real — sin salirse del lienzo por arriba al levantarse. El
-        // presupuesto vertical disponible (altura de la mesa) limita cuánto,
-        // así que se usa lo que pida el ancho SIN pasarse de ese límite.
-        const restA = 0.35, activeA = -0.35;
-        const bottomPad = 20 * k, topPad = 20 * k;
-        const vBudget = H - top - bottomPad - topPad;
-        const swingV = Math.sin(restA) + Math.abs(Math.sin(activeA));
-        const flipLen = clamp(tableW * 0.30, 60 * k, vBudget / swingV);
-        const pivotY = H - bottomPad - flipLen * Math.sin(restA);
-        const outlane = tableW * 0.13;
+        const left = 0, right = PW, top = 0;
+        // Flippers largos (30% del ancho) con barrido de ±22°; se juntan cerca
+        // del centro dejando solo el hueco de desagüe, como una mesa real.
+        const restA = 0.38, activeA = -0.38;
+        const flipLen = PW * 0.30;
+        const pivotY = PH - 118;
+        const outlane = PW * 0.135;
         const fx = (f) => left + f * (right - left);
         const fy = (f) => top + f * (pivotY - top);
         const pivotL = { x: left + outlane, y: pivotY };
         const pivotR = { x: right - outlane, y: pivotY };
         return {
-            margin, top, flipLen, pivotY, left, right, fx, fy,
+            top, flipLen, pivotY, left, right, fx, fy,
             pivotL, pivotR,
             restL: restA, activeL: activeA,
             restR: Math.PI - restA, activeR: Math.PI - activeA,
             // Rieles guía: cierran el hueco entre cada muro lateral y el pivote de
-            // su flipper — sin esto, cualquier bola que caiga fuera del arco del
-            // flipper se cuela sin tocar nada (el hueco era casi todo el ancho de
-            // la mesa). Corren del muro directamente al pivote: sin costura.
-            guideL: { p1: { x: left, y: pivotY + 14 * k }, p2: pivotL },
-            guideR: { p1: { x: right, y: pivotY + 14 * k }, p2: pivotR },
+            // su flipper — sin esto, la bola que cae fuera del arco del flipper se
+            // cuela sin tocar nada. Corren del muro directamente al pivote.
+            guideL: { p1: { x: left, y: pivotY + 22 }, p2: pivotL },
+            guideR: { p1: { x: right, y: pivotY + 22 }, p2: pivotR },
+            // Rampas: trayectoria de puntos (boca abajo → salida arriba). Al
+            // capturar la bola viaja por el path a velocidad constante (sin
+            // gravedad ni colisiones) y sale en la dirección del último tramo.
             rampL: {
-                entryR: 20 * k,
+                entryR: 34,
                 path: [
-                    { x: fx(0.06), y: fy(0.94) }, { x: fx(0.04), y: fy(0.65) },
-                    { x: fx(0.05), y: fy(0.35) }, { x: fx(0.12), y: fy(0.15) },
-                    { x: fx(0.26), y: fy(0.11) },
+                    { x: fx(0.07), y: fy(0.93) }, { x: fx(0.045), y: fy(0.62) },
+                    { x: fx(0.06), y: fy(0.33) }, { x: fx(0.14), y: fy(0.13) },
+                    { x: fx(0.28), y: fy(0.09) },
                 ],
             },
             rampR: {
-                entryR: 20 * k,
+                entryR: 34,
                 path: [
-                    { x: fx(0.94), y: fy(0.94) }, { x: fx(0.96), y: fy(0.65) },
-                    { x: fx(0.95), y: fy(0.35) }, { x: fx(0.88), y: fy(0.15) },
-                    { x: fx(0.74), y: fy(0.11) },
+                    { x: fx(0.93), y: fy(0.93) }, { x: fx(0.955), y: fy(0.62) },
+                    { x: fx(0.94), y: fy(0.33) }, { x: fx(0.86), y: fy(0.13) },
+                    { x: fx(0.72), y: fy(0.09) },
                 ],
             },
         };
     }
     function serveBall() {
-        st.ball = { x: W * 0.5 + (Math.random() - 0.5) * 40 * k, y: 46 * k, vx: (Math.random() - 0.5) * 60 * k, vy: 40 * k, onRamp: null };
+        // Se sirve arriba, cayendo hacia la mesa (en unidades de mesa).
+        st.ball = { x: PW * 0.5 + (Math.random() - 0.5) * 60, y: 70, vx: (Math.random() - 0.5) * 40, vy: 60, onRamp: null };
         st.ballLive = true;
+    }
+    // ── Proyección en perspectiva (espacio de mesa → píxeles de pantalla) ────
+    // La mesa se dibuja como un trapecio centrado y vertical: más estrecho
+    // arriba (lejos) que abajo (cerca). Se recalcula cada frame por si cambia
+    // el tamaño del lienzo. Los tamaños (radios, grosores) escalan con el
+    // ancho local del trapecio, así lo cercano se ve mayor.
+    let pinProj = null;
+    function computePinProj() {
+        const screenTop = H * 0.045, screenBot = H * 0.985;
+        const hh = screenBot - screenTop;
+        const botHalf = Math.min(W * 0.30, hh * 0.285);
+        const topHalf = botHalf * 0.58;
+        pinProj = { screenTop, screenBot, hh, botHalf, topHalf, cx: W * 0.5 };
+        return pinProj;
+    }
+    function pinHalfW(ny) { return pinProj.topHalf + clamp(ny, 0, 1) * (pinProj.botHalf - pinProj.topHalf); }
+    function pinPPU(ny) { return pinHalfW(ny) / (PW / 2); } // píxeles por unidad de mesa a esa profundidad
+    function PP(x, y) {
+        const ny = y / PH;
+        const halfW = pinHalfW(ny);
+        return {
+            x: pinProj.cx + (x / PW * 2 - 1) * halfW,
+            y: pinProj.screenTop + clamp(ny, -0.02, 1.06) * (pinProj.screenBot - pinProj.screenTop),
+        };
+    }
+    // Las partículas (burst) viven en píxeles de pantalla, pero la física del
+    // pinball está en unidades de mesa: hay que proyectar antes de crearlas.
+    function pinBurst(tx, ty, col, n) {
+        if (!pinProj) computePinProj();
+        const p = PP(tx, ty);
+        burst(p.x, p.y, col, n);
     }
     function switchToLevel3() {
         st.level = 3;
@@ -2655,14 +2685,14 @@
         const cx = pivot.x + dx * tp, cy = pivot.y + dy * tp;
         const ddx = b.x - cx, ddy = b.y - cy;
         const dist = Math.hypot(ddx, ddy);
-        const thick = 9 * k, minDist = R + thick;
+        const thick = 14, minDist = R + thick;
         if (dist >= minDist || dist < 1e-6) return;
         const nx = ddx / dist, ny = ddy / dist;
         b.x += nx * (minDist - dist); b.y += ny * (minDist - dist);
         const rx = cx - pivot.x, ry = cy - pivot.y;
         const pvx = -angVel * ry, pvy = angVel * rx; // v = ω × r, r = (rx,ry)
         const vn = (b.vx - pvx) * nx + (b.vy - pvy) * ny;
-        if (vn < 0) { const e = 0.35; b.vx -= (1 + e) * vn * nx; b.vy -= (1 + e) * vn * ny; }
+        if (vn < 0) { const e = 0.4; b.vx -= (1 + e) * vn * nx; b.vy -= (1 + e) * vn * ny; }
     }
     // Riel estático (guías de las bandas laterales): mismo cierre por punto más
     // cercano que el flipper, pero sin rotación — solo rebota si la bola se
@@ -2674,7 +2704,7 @@
         tp = clamp(tp, 0, 1);
         const cx = p1.x + dx * tp, cy = p1.y + dy * tp;
         const ddx = b.x - cx, ddy = b.y - cy, dist = Math.hypot(ddx, ddy);
-        const minDist = R + 3 * k;
+        const minDist = R + 5;
         if (dist >= minDist || dist < 1e-6) return;
         const nx = ddx / dist, ny = ddy / dist;
         b.x += nx * (minDist - dist); b.y += ny * (minDist - dist);
@@ -2699,20 +2729,20 @@
         tp = clamp(tp, 0, 1);
         const cx = p1.x + dx * tp, cy = p1.y + dy * tp;
         const ddx = b.x - cx, ddy = b.y - cy, dist = Math.hypot(ddx, ddy);
-        const minDist = R + 4 * k;
+        const minDist = R + 7;
         if (dist >= minDist || dist < 1e-6) return;
         const nx = ddx / dist, ny = ddy / dist;
         b.x += nx * (minDist - dist); b.y += ny * (minDist - dist);
         const vn = b.vx * nx + b.vy * ny;
         if (vn < 0) {
             b.vx -= (1 + 0.6) * vn * nx; b.vy -= (1 + 0.6) * vn * ny;
-            const kick = 320 * k;
+            const kick = 300;
             b.vx += nx * kick; b.vy += ny * kick;
             if (s.flash <= 0) {
                 st.combo = Math.min(10, st.combo + 1);
                 st.score += 25 * st.pinMult;
                 s.flash = 0.15;
-                burst(cx, cy, [255, 200, 80], 8);
+                pinBurst(cx, cy, [255, 200, 80], 8);
                 vibrate(10);
                 updateHud();
             }
@@ -2723,13 +2753,13 @@
         st.score += (30 + st.combo * 8) * st.pinMult;
         st.shimmer = Math.max(st.shimmer, 0.35);
         bp.flash = 0.15;
-        burst(bx, by, bp.color, 10);
+        pinBurst(bx, by, bp.color, 10);
         vibrate(12);
         updateHud();
     }
     // ── Rampas: la bola viaja por un path a velocidad constante (sin gravedad
     // ni colisiones) y sale disparada en la dirección del último tramo.
-    const RAMP_SPEED = 900, RAMP_EXIT_SPEED = 620;
+    const RAMP_SPEED = 1500, RAMP_EXIT_SPEED = 950; // unidades de mesa / s
     function pathLength(path) {
         let s = 0;
         for (let i = 0; i < path.length - 1; i++) s += Math.hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y);
@@ -2752,7 +2782,7 @@
         if (b.onRamp) return;
         const entry = ramp.path[0];
         const dist = Math.hypot(b.x - entry.x, b.y - entry.y);
-        if (dist < ramp.entryR && b.vy < -80 * k) {
+        if (dist < ramp.entryR && b.vy < -120) { // moviéndose hacia arriba con brío
             b.onRamp = { which, dist: 0, total: pathLength(ramp.path), path: ramp.path };
         }
     }
@@ -2769,11 +2799,11 @@
     // ── Banco de dianas: tumbarlas todas da un bonus grande y, la primera vez
     // en la partida, una bola extra. Se reinician solas tras un rato.
     function targetPos(t, Lay) {
-        return { x: Lay.left + t.fx * (Lay.right - Lay.left), y: Lay.top + t.fy * (Lay.pivotY - Lay.top) };
+        return { x: Lay.fx(t.fx), y: Lay.fy(t.fy) };
     }
     function collideTarget(b, R, t, Lay) {
         if (!t.alive) return;
-        const p = targetPos(t, Lay), halfW = 16 * k, halfH = 9 * k;
+        const p = targetPos(t, Lay), halfW = 26, halfH = 15;
         const cx = clamp(b.x, p.x - halfW, p.x + halfW), cy = clamp(b.y, p.y - halfH, p.y + halfH);
         const dx = b.x - cx, dy = b.y - cy, dist = Math.hypot(dx, dy);
         if (dist >= R) return;
@@ -2784,7 +2814,7 @@
         t.alive = false; t.flash = 0.2;
         st.combo = Math.min(10, st.combo + 1);
         st.score += 80 * st.pinMult;
-        burst(p.x, p.y, [140, 220, 255], 8);
+        pinBurst(p.x, p.y, [140, 220, 255], 8);
         vibrate(10);
         updateHud();
         if (pinTargets.every((x) => !x.alive)) bankCleared();
@@ -2824,14 +2854,14 @@
             if (st.serveTtl <= 0) serveBall();
             return;
         }
-        const b = st.ball, R = BALL_R();
+        const b = st.ball, R = BALL_R;
         if (b.onRamp) {
-            b.onRamp.dist += RAMP_SPEED * k * dt;
+            b.onRamp.dist += RAMP_SPEED * dt;
             if (b.onRamp.dist >= b.onRamp.total) {
                 const path = b.onRamp.path, last = path[path.length - 1], prev = path[path.length - 2];
                 const dx = last.x - prev.x, dy = last.y - prev.y, dl = Math.hypot(dx, dy) || 1;
                 b.x = last.x; b.y = last.y;
-                b.vx = (dx / dl) * RAMP_EXIT_SPEED * k; b.vy = (dy / dl) * RAMP_EXIT_SPEED * k;
+                b.vx = (dx / dl) * RAMP_EXIT_SPEED; b.vy = (dy / dl) * RAMP_EXIT_SPEED;
                 rampComplete(b.onRamp.which);
                 b.onRamp = null;
             } else {
@@ -2841,49 +2871,58 @@
             st.score += 4 * dt;
             return;
         }
-        const GRAV = 1500 * k;
+        const GRAV = 2400; // unidades de mesa / s²
         b.vy += GRAV * dt;
-        b.x += b.vx * dt;
-        b.y += b.vy * dt;
-        tryEnterRamp(b, Lay.rampL, 'L');
-        tryEnterRamp(b, Lay.rampR, 'R');
-        if (b.onRamp) { st.score += 4 * dt; return; } // capturada este frame: nada más que hacer
-        // Muros: izquierda/derecha/arriba rebotan; abajo no hay muro salvo los
-        // flippers — ahí está el desagüe (drain), como en una mesa real.
-        if (b.x - R < Lay.left) { b.x = Lay.left + R; b.vx = Math.abs(b.vx) * 0.7; }
-        if (b.x + R > Lay.right) { b.x = Lay.right - R; b.vx = -Math.abs(b.vx) * 0.7; }
-        if (b.y - R < Lay.top) { b.y = Lay.top + R; b.vy = Math.abs(b.vy) * 0.7; }
-        for (const bp of pinBumpers) {
-            const p = bumperPos(bp, Lay), rad = 22 * k;
-            const dx = b.x - p.x, dy = b.y - p.y, dist = Math.hypot(dx, dy);
-            if (dist >= R + rad) continue;
-            const nx = dist > 1e-6 ? dx / dist : 0, ny = dist > 1e-6 ? dy / dist : 1;
-            b.x += nx * (R + rad - dist); b.y += ny * (R + rad - dist);
-            // Solo se refleja/empuja si la bola se ACERCA (vn<0) — si no, aplicar
-            // esto cada frame que se solapa (p.ej. reposando encima) inyecta
-            // energía sin límite y la bola puede salir disparada a velocidades
-            // absurdas, atravesando muros/flippers en un solo paso.
-            const vn = b.vx * nx + b.vy * ny;
-            if (vn < 0) {
-                b.vx -= (1 + 0.9) * vn * nx; b.vy -= (1 + 0.9) * vn * ny;
-                const kick = 260 * k;
-                b.vx += nx * kick; b.vy += ny * kick;
-                if (bp.flash <= 0) bumperHit(p.x, p.y, bp);
+        // Subpaso interno: a alta velocidad, un solo salto de posición podría
+        // atravesar un muro o bumper fino. Se limita el avance por subpaso a un
+        // radio de bola, garantizando que ninguna colisión se "salta".
+        const speed = Math.hypot(b.vx, b.vy);
+        const sub = Math.max(1, Math.ceil(speed * dt / R));
+        const sdt = dt / sub;
+        let drained = false;
+        for (let i = 0; i < sub && !drained && !b.onRamp; i++) {
+            b.x += b.vx * sdt;
+            b.y += b.vy * sdt;
+            tryEnterRamp(b, Lay.rampL, 'L');
+            tryEnterRamp(b, Lay.rampR, 'R');
+            if (b.onRamp) break;
+            // Muros: izquierda/derecha/arriba rebotan; abajo no hay muro salvo
+            // los flippers — ahí está el desagüe (drain), como una mesa real.
+            if (b.x - R < Lay.left) { b.x = Lay.left + R; b.vx = Math.abs(b.vx) * 0.7; }
+            if (b.x + R > Lay.right) { b.x = Lay.right - R; b.vx = -Math.abs(b.vx) * 0.7; }
+            if (b.y - R < Lay.top) { b.y = Lay.top + R; b.vy = Math.abs(b.vy) * 0.7; }
+            for (const bp of pinBumpers) {
+                const p = bumperPos(bp, Lay), rad = 34;
+                const dx = b.x - p.x, dy = b.y - p.y, dist = Math.hypot(dx, dy);
+                if (dist >= R + rad) continue;
+                const nx = dist > 1e-6 ? dx / dist : 0, ny = dist > 1e-6 ? dy / dist : 1;
+                b.x += nx * (R + rad - dist); b.y += ny * (R + rad - dist);
+                // Solo se refleja/empuja si la bola se ACERCA (vn<0): aplicarlo
+                // cada frame que se solapa (bola apoyada) inyectaría energía sin
+                // límite y la dispararía a velocidades absurdas.
+                const vn = b.vx * nx + b.vy * ny;
+                if (vn < 0) {
+                    b.vx -= (1 + 0.9) * vn * nx; b.vy -= (1 + 0.9) * vn * ny;
+                    const kick = 300;
+                    b.vx += nx * kick; b.vy += ny * kick;
+                    if (bp.flash <= 0) bumperHit(p.x, p.y, bp);
+                }
             }
+            for (const t of pinTargets) collideTarget(b, R, t, Lay);
+            collideFlipper(b, R, Lay.pivotL, st.flipLAng, angVelL, Lay.flipLen);
+            collideFlipper(b, R, Lay.pivotR, st.flipRAng, angVelR, Lay.flipLen);
+            collideSegment(b, R, Lay.guideL.p1, Lay.guideL.p2, 0.55);
+            collideSegment(b, R, Lay.guideR.p1, Lay.guideR.p2, 0.55);
+            for (const s of pinSlings) collideSlingshot(b, R, s, Lay);
+            if (b.y - R > PH) drained = true;
         }
-        for (const t of pinTargets) collideTarget(b, R, t, Lay);
-        collideFlipper(b, R, Lay.pivotL, st.flipLAng, angVelL, Lay.flipLen);
-        collideFlipper(b, R, Lay.pivotR, st.flipRAng, angVelR, Lay.flipLen);
-        collideSegment(b, R, Lay.guideL.p1, Lay.guideL.p2, 0.55);
-        collideSegment(b, R, Lay.guideR.p1, Lay.guideR.p2, 0.55);
-        for (const s of pinSlings) collideSlingshot(b, R, s, Lay);
         st.score += 4 * dt; // puntos por tiempo en juego (float, se redondea al mostrar)
-        if (b.y - R > H + 8 * k) {
+        if (drained) {
             st.ballLive = false;
             st.combo = Math.max(0, st.combo - 3);
             st.lives -= 1;
             st.pinMult = 1; st.pinRampCount = 0; // el multiplicador es por bola, no acumulado toda la partida
-            burst(b.x, Lay.pivotY, [255, 80, 80], 18);
+            pinBurst(b.x, Lay.pivotY, [255, 80, 80], 18);
             vibrate([50, 30, 80]);
             updateHud();
             if (st.lives <= 0) { endRound(); return; }
@@ -3151,171 +3190,180 @@
         g.restore();
     }
 
-    // ── Dibujo · nivel 3 (pinball) ────────────────────────────────────────────
+    // ── Dibujo · nivel 3 (pinball, proyectado en perspectiva) ─────────────────
     // Estela de la bola (últimas posiciones, se desvanecen) — solo cosmético.
     const ballTrail = [];
-    function drawRampTube(path, tint) {
+    // Contorno de la mesa en unidades de mesa (esquinas superiores redondeadas).
+    function pinOutline() {
+        const r = 120, pts = [];
+        pts.push({ x: 0, y: PH });
+        pts.push({ x: 0, y: r });
+        for (let i = 0; i <= 6; i++) { const a = Math.PI + i / 6 * (Math.PI / 2); pts.push({ x: r + Math.cos(a) * r, y: r + Math.sin(a) * r }); }
+        pts.push({ x: PW - r, y: 0 });
+        for (let i = 0; i <= 6; i++) { const a = -Math.PI / 2 + i / 6 * (Math.PI / 2); pts.push({ x: PW - r + Math.cos(a) * r, y: r + Math.sin(a) * r }); }
+        pts.push({ x: PW, y: PH });
+        return pts;
+    }
+    function pinTrace(pts) { // traza un path de puntos-mesa ya proyectados
+        const a = PP(pts[0].x, pts[0].y);
+        g.beginPath(); g.moveTo(a.x, a.y);
+        for (let i = 1; i < pts.length; i++) { const p = PP(pts[i].x, pts[i].y); g.lineTo(p.x, p.y); }
+    }
+    function drawRampTube(path, col) {
+        const midY = path[Math.floor(path.length / 2)].y, ppu = pinPPU(midY / PH);
         g.save();
         g.lineJoin = 'round'; g.lineCap = 'round';
-        g.strokeStyle = 'rgba(190,210,230,0.35)';
-        g.lineWidth = 15 * k;
-        g.beginPath(); g.moveTo(path[0].x, path[0].y);
-        for (let i = 1; i < path.length; i++) g.lineTo(path[i].x, path[i].y);
-        g.stroke();
-        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.85)`;
-        g.lineWidth = 5 * k;
-        g.shadowColor = `rgb(${tint[0]},${tint[1]},${tint[2]})`; g.shadowBlur = 10 * k;
-        g.stroke();
-        g.shadowBlur = 0;
+        pinTrace(path);
+        g.strokeStyle = 'rgba(200,215,235,0.28)'; g.lineWidth = 26 * ppu; g.stroke();
+        g.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.9)`; g.lineWidth = 9 * ppu;
+        g.shadowColor = `rgb(${col[0]},${col[1]},${col[2]})`; g.shadowBlur = 16 * k; g.stroke();
+        g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 2.5 * ppu; g.shadowBlur = 0; g.stroke();
         g.restore();
     }
     function drawPinball(t) {
         const Lay = pinLayout();
+        computePinProj();
         g.save();
         if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
         g.clearRect(-20, -20, W + 40, H + 40);
         const tint = ZONES_PINBALL[Math.max(0, st.zone)].tint;
-        // Tapete moderno: gradiente vertical con viñeta radial encima (look de
-        // plástico iluminado, no solo un degradado plano).
-        const bg = g.createLinearGradient(0, 0, 0, H);
-        bg.addColorStop(0, `rgba(${tint[0]},${tint[1]},${tint[2]},0.16)`);
-        bg.addColorStop(0.55, '#0a0b14');
-        bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.10)`);
-        g.fillStyle = bg;
-        g.fillRect(-20, -20, W + 40, H + 40);
-        const vig = g.createRadialGradient(W / 2, H * 0.45, H * 0.15, W / 2, H * 0.45, W * 0.62);
-        vig.addColorStop(0, 'rgba(0,0,0,0)');
-        vig.addColorStop(1, 'rgba(0,0,0,0.45)');
-        g.fillStyle = vig;
-        g.fillRect(-20, -20, W + 40, H + 40);
-        // Suelo de rejilla (Tron), a juego con el resto del juego: más tenue
-        // hacia arriba para dar sensación de profundidad sin competir con la
-        // mesa en sí.
-        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.14)`;
+        // Cabinet oscuro (a los lados del trapecio de la mesa).
+        const cab = g.createLinearGradient(0, 0, 0, H);
+        cab.addColorStop(0, '#0a0713'); cab.addColorStop(1, '#04030a');
+        g.fillStyle = cab; g.fillRect(-20, -20, W + 40, H + 40);
+        // Rayos láser de ambiente, como el póster (aditivos, muy sutiles).
+        g.save();
+        g.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 3; i++) {
+            const a = (t * 0.12 + i * 2.1) % 6.283, lcx = W / 2, lcy = H * 0.4;
+            g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.05)`;
+            g.lineWidth = 2 * k;
+            g.beginPath(); g.moveTo(lcx, lcy); g.lineTo(lcx + Math.cos(a) * W, lcy + Math.sin(a) * W); g.stroke();
+        }
+        g.restore();
+        // Playfield (trapecio con esquinas redondeadas), recortado para el tapete.
+        const outline = pinOutline();
+        g.save();
+        pinTrace(outline); g.closePath(); g.clip();
+        const topS = PP(PW / 2, 0), botS = PP(PW / 2, PH);
+        const bg = g.createLinearGradient(0, topS.y, 0, botS.y);
+        bg.addColorStop(0, `rgba(${tint[0]},${tint[1]},${tint[2]},0.22)`);
+        bg.addColorStop(0.5, '#0b0c16');
+        bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.13)`);
+        g.fillStyle = bg; g.fillRect(-20, -20, W + 40, H + 40);
+        // Rejilla en perspectiva (líneas de mesa proyectadas → convergen arriba).
+        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.16)`;
         g.lineWidth = 1 * k;
         g.beginPath();
-        for (let x = Lay.left; x <= Lay.right; x += 34 * k) { g.moveTo(x, Lay.top); g.lineTo(x, H); }
-        for (let y = Lay.top; y <= H; y += 26 * k) { g.moveTo(Lay.left, y); g.lineTo(Lay.right, y); }
+        for (let gx = 0; gx <= PW + 1; gx += PW / 10) { const a = PP(gx, 0), b2 = PP(gx, PH); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); }
+        for (let gy = 0; gy <= PH + 1; gy += PH / 16) { const a = PP(0, gy), b2 = PP(PW, gy); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); }
         g.stroke();
-        // Rampas (tubos de luz, dibujadas antes que el resto para que quede debajo)
+        g.restore(); // fin del clip
+        // Rampas (tubos de luz, debajo del resto).
         drawRampTube(Lay.rampL.path, tint);
         drawRampTube(Lay.rampR.path, [90, 200, 255]);
-        // Muros de la mesa: base metálica + brillo de neón a juego con la zona
-        g.lineJoin = 'round';
-        g.beginPath();
-        g.moveTo(Lay.left, H + 20); g.lineTo(Lay.left, Lay.top); g.lineTo(Lay.right, Lay.top); g.lineTo(Lay.right, H + 20);
-        g.strokeStyle = 'rgba(210,220,235,0.5)';
-        g.lineWidth = 5 * k;
-        g.stroke();
-        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.55)`;
-        g.lineWidth = 2 * k;
-        g.stroke();
-        // Rieles guía: cierran el hueco entre el muro y cada flipper (mismo
-        // acabado metálico que los muros, algo más finos).
-        g.lineCap = 'round';
+        // Muro/contorno con brillo neón.
+        g.lineJoin = 'round'; g.lineCap = 'round';
+        pinTrace(outline); g.closePath();
+        g.strokeStyle = 'rgba(225,232,245,0.6)'; g.lineWidth = 6 * pinPPU(0.5); g.stroke();
+        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.9)`; g.lineWidth = 3 * pinPPU(0.5);
+        g.shadowColor = `rgb(${tint[0]},${tint[1]},${tint[2]})`; g.shadowBlur = 14 * k; g.stroke();
+        g.shadowBlur = 0;
+        // Rieles guía (cierran el hueco muro↔flipper).
         for (const guide of [Lay.guideL, Lay.guideR]) {
-            g.beginPath(); g.moveTo(guide.p1.x, guide.p1.y); g.lineTo(guide.p2.x, guide.p2.y);
-            g.strokeStyle = 'rgba(210,220,235,0.4)';
-            g.lineWidth = 4 * k;
-            g.stroke();
-            g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.4)`;
-            g.lineWidth = 1.6 * k;
-            g.stroke();
-        }
-        // Slingshots: cuña naranja/blanca con destello al golpear.
-        for (const s of pinSlings) {
-            const seg = slingPos(s, Lay);
-            const glow = s.flash > 0 ? s.flash / 0.15 : 0;
-            g.strokeStyle = glow > 0 ? '#fff4d6' : 'rgba(255,180,60,0.85)';
-            g.lineWidth = (9 + glow * 4) * k;
-            g.lineCap = 'round';
-            g.beginPath(); g.moveTo(seg.p1.x, seg.p1.y); g.lineTo(seg.p2.x, seg.p2.y); g.stroke();
-        }
-        // Dianas (drop targets): iluminadas si están en pie, apagadas si caídas
-        for (const tg of pinTargets) {
-            const p = targetPos(tg, Lay), hw = 16 * k, hh = 9 * k;
-            const glow = tg.flash > 0 ? tg.flash / 0.2 : 0;
-            g.fillStyle = tg.alive ? `rgba(${tint[0]},${tint[1]},${tint[2]},${0.85 + glow * 0.15})` : 'rgba(70,70,80,0.55)';
-            g.strokeStyle = tg.alive ? 'rgba(255,255,255,0.8)' : 'rgba(140,140,150,0.5)';
-            g.lineWidth = 1.6 * k;
-            g.beginPath();
-            if (g.roundRect) g.roundRect(p.x - hw, p.y - hh, hw * 2, hh * 2, 3 * k);
-            else g.rect(p.x - hw, p.y - hh, hw * 2, hh * 2);
-            g.fill(); g.stroke();
-        }
-        // Bumpers tipo "seta" de neón: cada uno con su propio color (no solo el
-        // tinte de zona) para que se lean como luces distintas sobre la mesa,
-        // con halo + destello al golpear.
-        for (const bp of pinBumpers) {
-            const p = bumperPos(bp, Lay), rad = 22 * k, c = bp.color;
-            const glow = bp.flash > 0 ? bp.flash / 0.15 : 0;
-            g.beginPath(); g.arc(p.x, p.y, rad + (5 + glow * 6) * k, 0, 6.283);
-            g.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.35 + glow * 0.5})`;
-            g.lineWidth = (3 + glow * 2) * k;
-            g.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`; g.shadowBlur = (6 + glow * 8) * k;
-            g.stroke();
+            const ppu = pinPPU((guide.p1.y + guide.p2.y) / 2 / PH);
+            const a = PP(guide.p1.x, guide.p1.y), b2 = PP(guide.p2.x, guide.p2.y);
+            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y);
+            g.strokeStyle = 'rgba(225,232,245,0.55)'; g.lineWidth = 8 * ppu; g.stroke();
+            g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.75)`; g.lineWidth = 3 * ppu;
+            g.shadowColor = `rgb(${tint[0]},${tint[1]},${tint[2]})`; g.shadowBlur = 8 * k; g.stroke();
             g.shadowBlur = 0;
-            const grad = g.createRadialGradient(p.x - rad * 0.3, p.y - rad * 0.3, rad * 0.1, p.x, p.y, rad);
-            grad.addColorStop(0, 'rgba(255,255,255,0.95)');
-            grad.addColorStop(0.4, `rgba(${c[0]},${c[1]},${c[2]},0.95)`);
-            grad.addColorStop(1, 'rgba(15,12,24,0.95)');
-            g.beginPath(); g.arc(p.x, p.y, rad, 0, 6.283);
-            g.fillStyle = grad;
-            g.fill();
-            g.strokeStyle = `rgba(255,255,255,${0.5 + glow * 0.5})`;
-            g.lineWidth = 2 * k;
-            g.stroke();
         }
-        // Flippers: caucho rojo con brillo especular + tapa de pivote cromada
-        const drawFlipper = (pivot, angle) => {
-            const tipX = pivot.x + Math.cos(angle) * Lay.flipLen, tipY = pivot.y + Math.sin(angle) * Lay.flipLen;
-            const grad = g.createLinearGradient(pivot.x, pivot.y, tipX, tipY);
-            grad.addColorStop(0, 'rgba(255,140,160,0.95)');
-            grad.addColorStop(1, 'rgba(200,20,60,0.95)');
-            g.strokeStyle = grad;
-            g.lineWidth = 13 * k;
+        // Slingshots (cuña naranja con destello + glow).
+        for (const s of pinSlings) {
+            const seg = slingPos(s, Lay), glow = s.flash > 0 ? s.flash / 0.15 : 0;
+            const ppu = pinPPU((seg.p1.y + seg.p2.y) / 2 / PH);
+            const a = PP(seg.p1.x, seg.p1.y), b2 = PP(seg.p2.x, seg.p2.y);
+            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y);
             g.lineCap = 'round';
-            g.beginPath(); g.moveTo(pivot.x, pivot.y); g.lineTo(tipX, tipY); g.stroke();
-            g.fillStyle = 'rgba(220,225,235,0.9)';
-            g.beginPath(); g.arc(pivot.x, pivot.y, 5 * k, 0, 6.283); g.fill();
+            g.strokeStyle = glow > 0 ? '#fff4d6' : 'rgba(255,180,60,0.92)';
+            g.lineWidth = (16 + glow * 8) * ppu;
+            g.shadowColor = 'rgba(255,180,60,1)'; g.shadowBlur = (7 + glow * 12) * k; g.stroke();
+            g.shadowBlur = 0;
+        }
+        // Dianas (drop targets): iluminadas si están en pie, apagadas si caídas.
+        for (const tg of pinTargets) {
+            const p0 = targetPos(tg, Lay), sp = PP(p0.x, p0.y), ppu = pinPPU(p0.y / PH);
+            const hw = 26 * ppu, hh = 15 * ppu, glow = tg.flash > 0 ? tg.flash / 0.2 : 0;
+            g.fillStyle = tg.alive ? `rgba(${tint[0]},${tint[1]},${tint[2]},${0.85 + glow * 0.15})` : 'rgba(60,60,72,0.5)';
+            g.strokeStyle = tg.alive ? 'rgba(255,255,255,0.85)' : 'rgba(120,120,130,0.5)';
+            g.lineWidth = Math.max(1, 2 * ppu);
+            if (tg.alive) { g.shadowColor = `rgb(${tint[0]},${tint[1]},${tint[2]})`; g.shadowBlur = (4 + glow * 8) * k; }
+            g.beginPath();
+            if (g.roundRect) g.roundRect(sp.x - hw, sp.y - hh, hw * 2, hh * 2, 4 * ppu);
+            else g.rect(sp.x - hw, sp.y - hh, hw * 2, hh * 2);
+            g.fill(); g.stroke(); g.shadowBlur = 0;
+        }
+        // Bumpers tipo "seta" de neón: cada uno con su color propio + halo.
+        for (const bp of pinBumpers) {
+            const p0 = bumperPos(bp, Lay), sp = PP(p0.x, p0.y), ppu = pinPPU(p0.y / PH);
+            const rad = 34 * ppu, c = bp.color, glow = bp.flash > 0 ? bp.flash / 0.15 : 0;
+            g.beginPath(); g.arc(sp.x, sp.y, rad + (6 + glow * 8) * ppu, 0, 6.283);
+            g.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.4 + glow * 0.5})`;
+            g.lineWidth = (4 + glow * 3) * ppu;
+            g.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`; g.shadowBlur = (10 + glow * 14) * k;
+            g.stroke(); g.shadowBlur = 0;
+            const grad = g.createRadialGradient(sp.x - rad * 0.3, sp.y - rad * 0.3, rad * 0.1, sp.x, sp.y, rad);
+            grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+            grad.addColorStop(0.45, `rgba(${c[0]},${c[1]},${c[2]},0.95)`);
+            grad.addColorStop(1, 'rgba(12,10,20,0.95)');
+            g.beginPath(); g.arc(sp.x, sp.y, rad, 0, 6.283); g.fillStyle = grad; g.fill();
+            g.strokeStyle = `rgba(255,255,255,${0.5 + glow * 0.5})`; g.lineWidth = 2 * ppu; g.stroke();
+        }
+        // Flippers: caucho rojo con brillo + tapa de pivote cromada.
+        const drawFlipper = (pivot, angle) => {
+            const tipT = { x: pivot.x + Math.cos(angle) * Lay.flipLen, y: pivot.y + Math.sin(angle) * Lay.flipLen };
+            const a = PP(pivot.x, pivot.y), b2 = PP(tipT.x, tipT.y), ppu = pinPPU(pivot.y / PH);
+            const grad = g.createLinearGradient(a.x, a.y, b2.x, b2.y);
+            grad.addColorStop(0, 'rgba(255,150,170,0.98)'); grad.addColorStop(1, 'rgba(210,20,70,0.98)');
+            g.strokeStyle = grad; g.lineWidth = 22 * ppu; g.lineCap = 'round';
+            g.shadowColor = 'rgba(255,60,110,0.8)'; g.shadowBlur = 8 * k;
+            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke(); g.shadowBlur = 0;
+            g.fillStyle = 'rgba(228,232,242,0.95)'; g.beginPath(); g.arc(a.x, a.y, 7 * ppu, 0, 6.283); g.fill();
         };
         drawFlipper(Lay.pivotL, st.flipLAng);
         drawFlipper(Lay.pivotR, st.flipRAng);
-        // Bola: gradiente metálico + estela de movimiento
+        // Bola: cromada, con estela que se desvanece.
         if (st.ball) {
-            const b = st.ball, R = BALL_R();
+            const b = st.ball;
             ballTrail.push({ x: b.x, y: b.y });
-            if (ballTrail.length > 7) ballTrail.shift();
+            if (ballTrail.length > 8) ballTrail.shift();
             for (let i = 0; i < ballTrail.length - 1; i++) {
-                const p = ballTrail[i], a = (i + 1) / ballTrail.length * 0.4;
-                g.beginPath(); g.arc(p.x, p.y, R * 0.7, 0, 6.283);
-                g.fillStyle = `rgba(157,246,255,${a})`;
-                g.fill();
+                const tp = ballTrail[i], sp = PP(tp.x, tp.y), ppu = pinPPU(tp.y / PH);
+                const al = (i + 1) / ballTrail.length * 0.35;
+                g.beginPath(); g.arc(sp.x, sp.y, BALL_R * 0.7 * ppu, 0, 6.283);
+                g.fillStyle = `rgba(157,246,255,${al})`; g.fill();
             }
-            const grad = g.createRadialGradient(b.x - R * 0.35, b.y - R * 0.35, R * 0.1, b.x, b.y, R);
-            grad.addColorStop(0, '#ffffff');
-            grad.addColorStop(0.5, '#cdd9e6');
-            grad.addColorStop(1, '#5b6472');
-            g.beginPath(); g.arc(b.x, b.y, R, 0, 6.283);
-            g.fillStyle = grad;
-            g.shadowColor = '#9df6ff'; g.shadowBlur = 6 * k;
-            g.fill();
-            g.shadowBlur = 0;
+            const sp = PP(b.x, b.y), ppu = pinPPU(b.y / PH), R = BALL_R * ppu;
+            const grad = g.createRadialGradient(sp.x - R * 0.35, sp.y - R * 0.35, R * 0.1, sp.x, sp.y, R);
+            grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.5, '#cdd9e6'); grad.addColorStop(1, '#5b6472');
+            g.beginPath(); g.arc(sp.x, sp.y, R, 0, 6.283); g.fillStyle = grad;
+            g.shadowColor = '#9df6ff'; g.shadowBlur = 8 * k; g.fill(); g.shadowBlur = 0;
         } else {
             ballTrail.length = 0;
             if (st.serveTtl > 0) {
-                g.fillStyle = 'rgba(255,255,255,0.6)';
+                g.fillStyle = 'rgba(255,255,255,0.7)';
                 g.font = `bold ${Math.round(16 * k)}px monospace`;
                 g.textAlign = 'center';
-                g.fillText('¡BOLA!', W / 2, H * 0.45);
+                g.fillText('¡BOLA!', W / 2, H * 0.4);
             }
         }
-        // HUD propio del pinball: multiplicador de bonus
+        // HUD propio del pinball: multiplicador de bonus.
         if (st.playing) {
             g.fillStyle = st.pinMult > 1 ? '#ffd75d' : 'rgba(255,255,255,0.55)';
             g.font = `bold ${Math.round(13 * k)}px monospace`;
             g.textAlign = 'center';
-            g.fillText(`BONUS x${st.pinMult}`, W / 2, 24 * k);
+            g.fillText(`BONUS x${st.pinMult}`, W / 2, 22 * k);
         }
         drawFxOverlays(t, tint);
         g.restore();
