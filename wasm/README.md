@@ -140,7 +140,7 @@ Motor con paridad casi completa con la versión JS:
   reproducible bit a bit. N = 1…8192, 12 tiradas, 5 estrategias; acumuladores f64.
   Pendientes medidas: random −0.50 (teoría −0.5), stratified/QMC ≈ −0.58.
   El estimador JS se conserva solo para el A/B audible.
-- ✅ **RayRunner (`game.html`)**: arcade de **3 niveles** cuya banda sonora la
+- ✅ **RayRunner (`game.html`)**: arcade de **4 niveles** cuya banda sonora la
   renderiza RayDrone en vivo — la demo de "audio adaptativo para videojuegos".
   Nivel 1 (nave espacial, lateral), Nivel 2 (**Circuito Neón**: un circuito
   cerrado **3D de verdad** — WebGL con **Three.js vendorizado** en
@@ -271,6 +271,24 @@ Motor con paridad casi completa con la versión JS:
   `endRound()`, mismo ranking). Su propio sample de 24s/4 zonas (arranque
   arcade → bumper blitz → tilt eléctrico → jackpot neón, chiptune con ondas
   cuadradas) avanza más rápido cuanto más alto esté el combo.
+  **Nivel 4 (Pinball 3D)**: al completar el banco de dianas en el nivel 3 se
+  **desbloquea la misma mesa pero en 3D de verdad** (WebGL/Three.js). La
+  jugada clave: **reutiliza exactamente la física 2D del nivel 3** (la bola
+  se mueve en un plano → ya es 2D) y solo cambia el *render* a 3D —
+  `stepLevel3` sirve para N3 y N4, así la jugabilidad es idéntica y probada.
+  La escena (`ensurePinball3D`/`T4`) **reutiliza el mismo renderer WebGL** que
+  el nivel 2 (un único contexto): tapete con rejilla, muros y rampas como
+  tubos neón (magenta/cian), 4 bumpers con volumen (cilindro + cúpula
+  emisiva que pulsa al golpear), flippers 3D que giran sobre su pivote, y una
+  **bola esférica metálica con reflejos** (envMap PMREM de un canvas neón
+  procedural — reflejos de verdad sin cargar ningún HDR), luces + sombra +
+  bloom. El mapeo es directo: `world.x=(tx-PW/2)·s`, `world.z=(ty-PH/2)·s`,
+  con la cámara en 3/4 clásica de pinball. **Cámara "ojo de la bola"**: de vez
+  en cuando, si la bola está lejos de los flippers, la cámara salta a montarse
+  en la bola 2 s (con cooldown) — un subidón de velocidad divertido. El HUD
+  (banner, combo, BONUS) se dibuja en el canvas 2D transparente por encima.
+  **Botón "🎯 Entrenar"** en la portada: un modal con los 4 niveles para
+  saltar directo a cualquiera y practicarlo.
   **2 rampas** (izquierda/derecha): la trayectoria es un *path* de puntos en
   fracciones del tapete (sobrevive a un resize); al capturar la bola con
   velocidad ascendente suficiente cerca de la boca, viaja por el path a
