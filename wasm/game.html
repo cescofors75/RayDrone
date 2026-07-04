@@ -3227,18 +3227,26 @@
         if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
         g.clearRect(-20, -20, W + 40, H + 40);
         const tint = ZONES_PINBALL[Math.max(0, st.zone)].tint;
-        // Cabinet oscuro (a los lados del trapecio de la mesa).
-        const cab = g.createLinearGradient(0, 0, 0, H);
-        cab.addColorStop(0, '#0a0713'); cab.addColorStop(1, '#04030a');
+        // Cabinet: paneles laterales magenta (izq) y cian (der) como el póster.
+        // El tapete oscuro encima solo deja ver el color a los lados del trapecio.
+        const cab = g.createLinearGradient(0, 0, W, 0);
+        cab.addColorStop(0.00, '#43104a'); cab.addColorStop(0.22, '#13061c');
+        cab.addColorStop(0.5, '#05040e'); cab.addColorStop(0.78, '#08202f');
+        cab.addColorStop(1.00, '#0b3a50');
         g.fillStyle = cab; g.fillRect(-20, -20, W + 40, H + 40);
-        // Rayos láser de ambiente, como el póster (aditivos, muy sutiles).
+        const cabV = g.createLinearGradient(0, 0, 0, H);
+        cabV.addColorStop(0, 'rgba(0,0,0,0.28)'); cabV.addColorStop(0.5, 'rgba(0,0,0,0)'); cabV.addColorStop(1, 'rgba(0,0,0,0.5)');
+        g.fillStyle = cabV; g.fillRect(-20, -20, W + 40, H + 40);
+        // Rayos láser cruzados (cian + magenta + teal), aditivos, como el póster.
         g.save();
         g.globalCompositeOperation = 'lighter';
-        for (let i = 0; i < 3; i++) {
-            const a = (t * 0.12 + i * 2.1) % 6.283, lcx = W / 2, lcy = H * 0.4;
-            g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.05)`;
-            g.lineWidth = 2 * k;
-            g.beginPath(); g.moveTo(lcx, lcy); g.lineTo(lcx + Math.cos(a) * W, lcy + Math.sin(a) * W); g.stroke();
+        const lasers = [[90, 210, 255], [255, 70, 160], [120, 255, 220]];
+        for (let i = 0; i < lasers.length; i++) {
+            const a = (t * 0.1 + i * 2.4) % 6.283, lc = lasers[i];
+            const lcx = W * (0.32 + 0.36 * ((i * 0.41) % 1)), lcy = H * 0.42;
+            g.strokeStyle = `rgba(${lc[0]},${lc[1]},${lc[2]},0.06)`;
+            g.lineWidth = 3 * k;
+            g.beginPath(); g.moveTo(lcx - Math.cos(a) * W, lcy - Math.sin(a) * W); g.lineTo(lcx + Math.cos(a) * W, lcy + Math.sin(a) * W); g.stroke();
         }
         g.restore();
         // Playfield (trapecio con esquinas redondeadas), recortado para el tapete.
@@ -3247,49 +3255,65 @@
         pinTrace(outline); g.closePath(); g.clip();
         const topS = PP(PW / 2, 0), botS = PP(PW / 2, PH);
         const bg = g.createLinearGradient(0, topS.y, 0, botS.y);
-        bg.addColorStop(0, `rgba(${tint[0]},${tint[1]},${tint[2]},0.22)`);
-        bg.addColorStop(0.5, '#0b0c16');
-        bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.13)`);
+        bg.addColorStop(0, '#0c0a1e'); bg.addColorStop(0.5, '#080714'); bg.addColorStop(1, '#0a0918');
         g.fillStyle = bg; g.fillRect(-20, -20, W + 40, H + 40);
-        // Rejilla en perspectiva (líneas de mesa proyectadas → convergen arriba).
-        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.16)`;
+        // Rejilla en perspectiva (teal), que se desvanece hacia abajo → sensación
+        // de plano que se aleja al fondo, como el suelo del póster.
         g.lineWidth = 1 * k;
-        g.beginPath();
-        for (let gx = 0; gx <= PW + 1; gx += PW / 10) { const a = PP(gx, 0), b2 = PP(gx, PH); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); }
-        for (let gy = 0; gy <= PH + 1; gy += PH / 16) { const a = PP(0, gy), b2 = PP(PW, gy); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); }
-        g.stroke();
+        for (let gx = 0; gx <= PW + 1; gx += PW / 12) {
+            const a = PP(gx, 0), b2 = PP(gx, PH);
+            g.strokeStyle = 'rgba(70,205,235,0.14)';
+            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke();
+        }
+        for (let gy = 0; gy <= PH + 1; gy += PH / 18) {
+            const a = PP(0, gy), b2 = PP(PW, gy), fade = 0.17 * (1 - gy / PH * 0.65);
+            g.strokeStyle = `rgba(70,205,235,${fade})`;
+            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke();
+        }
         g.restore(); // fin del clip
-        // Rampas (tubos de luz, debajo del resto).
-        drawRampTube(Lay.rampL.path, tint);
+        // Rieles laterales tipo habitrail (magenta izq · cian der) — las curvas
+        // protagonistas del póster (son las mismas rampas funcionales).
+        drawRampTube(Lay.rampL.path, [255, 60, 150]);
         drawRampTube(Lay.rampR.path, [90, 200, 255]);
-        // Muro/contorno con brillo neón.
+        // Marco/contorno con neón en degradado magenta→cian (a juego con el
+        // cabinet): base blanca + núcleo de color + glow.
+        const frameGrad = g.createLinearGradient(0, 0, W, 0);
+        frameGrad.addColorStop(0, 'rgb(255,60,150)'); frameGrad.addColorStop(1, 'rgb(90,200,255)');
         g.lineJoin = 'round'; g.lineCap = 'round';
         pinTrace(outline); g.closePath();
-        g.strokeStyle = 'rgba(225,232,245,0.6)'; g.lineWidth = 6 * pinPPU(0.5); g.stroke();
-        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.9)`; g.lineWidth = 3 * pinPPU(0.5);
-        g.shadowColor = `rgb(${tint[0]},${tint[1]},${tint[2]})`; g.shadowBlur = 14 * k; g.stroke();
+        g.strokeStyle = 'rgba(235,240,250,0.7)'; g.lineWidth = 6 * pinPPU(0.5); g.stroke();
+        g.strokeStyle = frameGrad; g.lineWidth = 3.2 * pinPPU(0.5);
+        g.shadowColor = 'rgba(200,90,200,0.9)'; g.shadowBlur = 15 * k; g.stroke();
         g.shadowBlur = 0;
-        // Rieles guía (cierran el hueco muro↔flipper).
-        for (const guide of [Lay.guideL, Lay.guideR]) {
+        // Rieles guía (cierran el hueco muro↔flipper): magenta izq · cian der.
+        for (const [guide, gc] of [[Lay.guideL, [255, 60, 150]], [Lay.guideR, [90, 200, 255]]]) {
             const ppu = pinPPU((guide.p1.y + guide.p2.y) / 2 / PH);
             const a = PP(guide.p1.x, guide.p1.y), b2 = PP(guide.p2.x, guide.p2.y);
             g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y);
-            g.strokeStyle = 'rgba(225,232,245,0.55)'; g.lineWidth = 8 * ppu; g.stroke();
-            g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.75)`; g.lineWidth = 3 * ppu;
-            g.shadowColor = `rgb(${tint[0]},${tint[1]},${tint[2]})`; g.shadowBlur = 8 * k; g.stroke();
+            g.strokeStyle = 'rgba(235,240,250,0.6)'; g.lineWidth = 8 * ppu; g.stroke();
+            g.strokeStyle = `rgba(${gc[0]},${gc[1]},${gc[2]},0.8)`; g.lineWidth = 3 * ppu;
+            g.shadowColor = `rgb(${gc[0]},${gc[1]},${gc[2]})`; g.shadowBlur = 8 * k; g.stroke();
             g.shadowBlur = 0;
         }
-        // Slingshots (cuña naranja con destello + glow).
+        // Slingshots: triángulo relleno magenta con banda de rebote brillante en
+        // la cara interior (hacia el centro), como el póster. El vértice se
+        // empuja hacia el muro para que la cara plana mire a la bola.
         for (const s of pinSlings) {
             const seg = slingPos(s, Lay), glow = s.flash > 0 ? s.flash / 0.15 : 0;
             const ppu = pinPPU((seg.p1.y + seg.p2.y) / 2 / PH);
-            const a = PP(seg.p1.x, seg.p1.y), b2 = PP(seg.p2.x, seg.p2.y);
-            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y);
+            const mid = { x: (seg.p1.x + seg.p2.x) / 2, y: (seg.p1.y + seg.p2.y) / 2 };
+            const ox = mid.x < PW / 2 ? -1 : 1; // hacia el muro más cercano
+            const apex = { x: mid.x + ox * 46, y: mid.y - 16 };
+            const A = PP(seg.p1.x, seg.p1.y), B = PP(seg.p2.x, seg.p2.y), C = PP(apex.x, apex.y);
+            g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(B.x, B.y); g.lineTo(C.x, C.y); g.closePath();
+            g.fillStyle = glow > 0 ? 'rgba(255,150,210,0.95)' : 'rgba(225,55,140,0.92)';
+            g.shadowColor = 'rgba(255,70,165,1)'; g.shadowBlur = (8 + glow * 16) * k;
+            g.fill(); g.shadowBlur = 0;
+            g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(B.x, B.y);
             g.lineCap = 'round';
-            g.strokeStyle = glow > 0 ? '#fff4d6' : 'rgba(255,180,60,0.92)';
-            g.lineWidth = (16 + glow * 8) * ppu;
-            g.shadowColor = 'rgba(255,180,60,1)'; g.shadowBlur = (7 + glow * 12) * k; g.stroke();
-            g.shadowBlur = 0;
+            g.strokeStyle = glow > 0 ? '#ffffff' : 'rgba(255,205,240,0.95)';
+            g.lineWidth = (5 + glow * 4) * ppu;
+            g.stroke();
         }
         // Dianas (drop targets): iluminadas si están en pie, apagadas si caídas.
         for (const tg of pinTargets) {
@@ -3304,32 +3328,57 @@
             else g.rect(sp.x - hw, sp.y - hh, hw * 2, hh * 2);
             g.fill(); g.stroke(); g.shadowBlur = 0;
         }
-        // Bumpers tipo "seta" de neón: cada uno con su color propio + halo.
+        // Bumpers "pop bumper" tipo póster: sombra en el tapete, disco-base teal
+        // con aro cian, halo de color que palpita al golpear, cúpula de color y
+        // un glifo de seta que brilla en el centro.
         for (const bp of pinBumpers) {
             const p0 = bumperPos(bp, Lay), sp = PP(p0.x, p0.y), ppu = pinPPU(p0.y / PH);
             const rad = 34 * ppu, c = bp.color, glow = bp.flash > 0 ? bp.flash / 0.15 : 0;
-            g.beginPath(); g.arc(sp.x, sp.y, rad + (6 + glow * 8) * ppu, 0, 6.283);
-            g.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.4 + glow * 0.5})`;
-            g.lineWidth = (4 + glow * 3) * ppu;
-            g.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`; g.shadowBlur = (10 + glow * 14) * k;
+            const dim = (v) => Math.round(v * 0.22);
+            // Sombra proyectada en el tapete.
+            g.beginPath(); g.ellipse(sp.x, sp.y + rad * 0.55, rad * 1.3, rad * 0.5, 0, 0, 6.283);
+            g.fillStyle = 'rgba(0,0,0,0.38)'; g.fill();
+            // Disco-base con aro cian.
+            g.beginPath(); g.arc(sp.x, sp.y, rad * 1.34, 0, 6.283);
+            g.fillStyle = 'rgba(13,32,42,0.96)'; g.fill();
+            g.strokeStyle = 'rgba(80,222,242,0.75)'; g.lineWidth = 2.6 * ppu;
+            g.shadowColor = 'rgba(80,222,242,0.9)'; g.shadowBlur = 6 * k; g.stroke(); g.shadowBlur = 0;
+            // Halo de color (palpita al golpear).
+            g.beginPath(); g.arc(sp.x, sp.y, rad + (7 + glow * 10) * ppu, 0, 6.283);
+            g.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.5 + glow * 0.5})`;
+            g.lineWidth = (4 + glow * 4) * ppu;
+            g.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`; g.shadowBlur = (12 + glow * 16) * k;
             g.stroke(); g.shadowBlur = 0;
-            const grad = g.createRadialGradient(sp.x - rad * 0.3, sp.y - rad * 0.3, rad * 0.1, sp.x, sp.y, rad);
-            grad.addColorStop(0, 'rgba(255,255,255,0.95)');
-            grad.addColorStop(0.45, `rgba(${c[0]},${c[1]},${c[2]},0.95)`);
-            grad.addColorStop(1, 'rgba(12,10,20,0.95)');
+            // Cúpula de color.
+            const grad = g.createRadialGradient(sp.x - rad * 0.32, sp.y - rad * 0.32, rad * 0.1, sp.x, sp.y, rad);
+            grad.addColorStop(0, 'rgba(255,255,255,0.98)');
+            grad.addColorStop(0.5, `rgba(${c[0]},${c[1]},${c[2]},0.98)`);
+            grad.addColorStop(1, `rgba(${dim(c[0])},${dim(c[1])},${dim(c[2])},0.98)`);
             g.beginPath(); g.arc(sp.x, sp.y, rad, 0, 6.283); g.fillStyle = grad; g.fill();
-            g.strokeStyle = `rgba(255,255,255,${0.5 + glow * 0.5})`; g.lineWidth = 2 * ppu; g.stroke();
+            // Glifo de seta (sombrero + tallo) brillante en el centro.
+            g.save();
+            g.translate(sp.x, sp.y);
+            g.fillStyle = 'rgba(255,255,255,0.95)';
+            g.shadowColor = 'rgba(255,255,255,0.9)'; g.shadowBlur = 5 * k;
+            g.beginPath(); g.ellipse(0, -rad * 0.06, rad * 0.44, rad * 0.30, 0, Math.PI, 0); g.fill();
+            g.fillRect(-rad * 0.11, -rad * 0.06, rad * 0.22, rad * 0.44);
+            g.restore(); g.shadowBlur = 0;
+            // Aro superior brillante.
+            g.beginPath(); g.arc(sp.x, sp.y, rad, 0, 6.283);
+            g.strokeStyle = `rgba(255,255,255,${0.55 + glow * 0.45})`; g.lineWidth = 2 * ppu; g.stroke();
         }
-        // Flippers: caucho rojo con brillo + tapa de pivote cromada.
+        // Flippers: blancos con glow cian (como el póster) — capa de glow ancha
+        // + núcleo blanco brillante + buje cromado.
         const drawFlipper = (pivot, angle) => {
             const tipT = { x: pivot.x + Math.cos(angle) * Lay.flipLen, y: pivot.y + Math.sin(angle) * Lay.flipLen };
             const a = PP(pivot.x, pivot.y), b2 = PP(tipT.x, tipT.y), ppu = pinPPU(pivot.y / PH);
-            const grad = g.createLinearGradient(a.x, a.y, b2.x, b2.y);
-            grad.addColorStop(0, 'rgba(255,150,170,0.98)'); grad.addColorStop(1, 'rgba(210,20,70,0.98)');
-            g.strokeStyle = grad; g.lineWidth = 22 * ppu; g.lineCap = 'round';
-            g.shadowColor = 'rgba(255,60,110,0.8)'; g.shadowBlur = 8 * k;
+            g.lineCap = 'round';
+            g.strokeStyle = 'rgba(120,240,255,0.5)'; g.lineWidth = 27 * ppu;
+            g.shadowColor = 'rgba(120,240,255,0.9)'; g.shadowBlur = 13 * k;
+            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke();
+            g.strokeStyle = 'rgba(255,255,255,0.98)'; g.lineWidth = 18 * ppu; g.shadowBlur = 6 * k;
             g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke(); g.shadowBlur = 0;
-            g.fillStyle = 'rgba(228,232,242,0.95)'; g.beginPath(); g.arc(a.x, a.y, 7 * ppu, 0, 6.283); g.fill();
+            g.fillStyle = 'rgba(150,245,255,0.95)'; g.beginPath(); g.arc(a.x, a.y, 8 * ppu, 0, 6.283); g.fill();
         };
         drawFlipper(Lay.pivotL, st.flipLAng);
         drawFlipper(Lay.pivotR, st.flipRAng);
