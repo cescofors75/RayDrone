@@ -544,10 +544,10 @@
     // sobreviven a un resize sin desincronizarse. `flash` es visual (destello
     // al golpear), no afecta a la física.
     const pinBumpers = [
-        { fx: 0.30, fy: 0.36, flash: 0 },
-        { fx: 0.50, fy: 0.26, flash: 0 },
-        { fx: 0.70, fy: 0.36, flash: 0 },
-        { fx: 0.50, fy: 0.50, flash: 0 },
+        { fx: 0.30, fy: 0.42, flash: 0 },
+        { fx: 0.50, fy: 0.34, flash: 0 },
+        { fx: 0.70, fy: 0.42, flash: 0 },
+        { fx: 0.50, fy: 0.58, flash: 0 },
     ];
     // Banco de dianas (drop targets): tumbarlas todas da un bonus grande y,
     // la primera vez en la partida, una bola extra — se reinician solas tras
@@ -993,12 +993,19 @@
         const left = margin, right = W - margin;
         const fx = (f) => left + f * (right - left);
         const fy = (f) => top + f * (pivotY - top);
+        const pivotL = { x: W * 0.5 - gapHalf - flipLen * 0.15, y: pivotY };
+        const pivotR = { x: W * 0.5 + gapHalf + flipLen * 0.15, y: pivotY };
         return {
             margin, top, gapHalf, flipLen, pivotY, left, right, fx, fy,
-            pivotL: { x: W * 0.5 - gapHalf - flipLen * 0.15, y: pivotY },
-            pivotR: { x: W * 0.5 + gapHalf + flipLen * 0.15, y: pivotY },
+            pivotL, pivotR,
             restL: 0.45, activeL: -1.0,
             restR: Math.PI - 0.45, activeR: Math.PI + 1.0,
+            // Rieles guía: cierran el hueco entre cada muro lateral y el pivote de
+            // su flipper — sin esto, cualquier bola que caiga fuera del arco del
+            // flipper se cuela sin tocar nada (el hueco era casi todo el ancho de
+            // la mesa). Corren del muro directamente al pivote: sin costura.
+            guideL: { p1: { x: left, y: pivotY + 14 * k }, p2: pivotL },
+            guideR: { p1: { x: right, y: pivotY + 14 * k }, p2: pivotR },
             rampL: {
                 entryR: 20 * k,
                 path: [
@@ -2615,9 +2622,12 @@
 
     // ── Nivel 3: física de la mesa (bola, flippers, muros, bumpers) ─────────
     const moveToward = (cur, target, maxStep) => cur + clamp(target - cur, -maxStep, maxStep);
+    // Mismo sistema fx/fy (rango completo top→pivotY) que rampas y dianas —
+    // antes usaba su propio rango recortado y eso ocultó que el bumper
+    // superior quedaba a menos de un diámetro de bola del muro de arriba
+    // (la bola se quedaba rebotando en bucle en ese hueco, sin caer nunca).
     function bumperPos(bp, Lay) {
-        const areaTop = Lay.top, areaH = Lay.pivotY - 60 * k - Lay.top;
-        return { x: Lay.left + bp.fx * (Lay.right - Lay.left), y: areaTop + bp.fy * areaH };
+        return { x: Lay.fx(bp.fx), y: Lay.fy(bp.fy) };
     }
     function collideFlipper(b, R, pivot, angle, angVel, flipLen) {
         const dx = Math.cos(angle) * flipLen, dy = Math.sin(angle) * flipLen;
@@ -2635,6 +2645,23 @@
         const pvx = -angVel * ry, pvy = angVel * rx; // v = ω × r, r = (rx,ry)
         const vn = (b.vx - pvx) * nx + (b.vy - pvy) * ny;
         if (vn < 0) { const e = 0.35; b.vx -= (1 + e) * vn * nx; b.vy -= (1 + e) * vn * ny; }
+    }
+    // Riel estático (guías de las bandas laterales): mismo cierre por punto más
+    // cercano que el flipper, pero sin rotación — solo rebota si la bola se
+    // ACERCA (vn<0), nunca si ya se separa, para no inyectar energía de la nada.
+    function collideSegment(b, R, p1, p2, restitution) {
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const segLen2 = dx * dx + dy * dy;
+        let tp = segLen2 > 0 ? ((b.x - p1.x) * dx + (b.y - p1.y) * dy) / segLen2 : 0;
+        tp = clamp(tp, 0, 1);
+        const cx = p1.x + dx * tp, cy = p1.y + dy * tp;
+        const ddx = b.x - cx, ddy = b.y - cy, dist = Math.hypot(ddx, ddy);
+        const minDist = R + 3 * k;
+        if (dist >= minDist || dist < 1e-6) return;
+        const nx = ddx / dist, ny = ddy / dist;
+        b.x += nx * (minDist - dist); b.y += ny * (minDist - dist);
+        const vn = b.vx * nx + b.vy * ny;
+        if (vn < 0) { b.vx -= (1 + restitution) * vn * nx; b.vy -= (1 + restitution) * vn * ny; }
     }
     function bumperHit(bx, by, bp) {
         st.combo = Math.min(10, st.combo + 1);
@@ -2776,15 +2803,23 @@
             if (dist >= R + rad) continue;
             const nx = dist > 1e-6 ? dx / dist : 0, ny = dist > 1e-6 ? dy / dist : 1;
             b.x += nx * (R + rad - dist); b.y += ny * (R + rad - dist);
+            // Solo se refleja/empuja si la bola se ACERCA (vn<0) — si no, aplicar
+            // esto cada frame que se solapa (p.ej. reposando encima) inyecta
+            // energía sin límite y la bola puede salir disparada a velocidades
+            // absurdas, atravesando muros/flippers en un solo paso.
             const vn = b.vx * nx + b.vy * ny;
-            b.vx -= (1 + 0.9) * vn * nx; b.vy -= (1 + 0.9) * vn * ny;
-            const kick = 260 * k;
-            b.vx += nx * kick; b.vy += ny * kick;
-            if (bp.flash <= 0) bumperHit(p.x, p.y, bp);
+            if (vn < 0) {
+                b.vx -= (1 + 0.9) * vn * nx; b.vy -= (1 + 0.9) * vn * ny;
+                const kick = 260 * k;
+                b.vx += nx * kick; b.vy += ny * kick;
+                if (bp.flash <= 0) bumperHit(p.x, p.y, bp);
+            }
         }
         for (const t of pinTargets) collideTarget(b, R, t, Lay);
         collideFlipper(b, R, Lay.pivotL, st.flipLAng, angVelL, Lay.flipLen);
         collideFlipper(b, R, Lay.pivotR, st.flipRAng, angVelR, Lay.flipLen);
+        collideSegment(b, R, Lay.guideL.p1, Lay.guideL.p2, 0.55);
+        collideSegment(b, R, Lay.guideR.p1, Lay.guideR.p2, 0.55);
         st.score += 4 * dt; // puntos por tiempo en juego (float, se redondea al mostrar)
         if (b.y - R > H + 8 * k) {
             st.ballLive = false;
@@ -3109,6 +3144,18 @@
         g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.55)`;
         g.lineWidth = 2 * k;
         g.stroke();
+        // Rieles guía: cierran el hueco entre el muro y cada flipper (mismo
+        // acabado metálico que los muros, algo más finos).
+        g.lineCap = 'round';
+        for (const guide of [Lay.guideL, Lay.guideR]) {
+            g.beginPath(); g.moveTo(guide.p1.x, guide.p1.y); g.lineTo(guide.p2.x, guide.p2.y);
+            g.strokeStyle = 'rgba(210,220,235,0.4)';
+            g.lineWidth = 4 * k;
+            g.stroke();
+            g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.4)`;
+            g.lineWidth = 1.6 * k;
+            g.stroke();
+        }
         // Dianas (drop targets): iluminadas si están en pie, apagadas si caídas
         for (const tg of pinTargets) {
             const p = targetPos(tg, Lay), hw = 16 * k, hh = 9 * k;
