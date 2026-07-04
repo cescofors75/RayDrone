@@ -152,6 +152,11 @@
                 <div><kbd>Z</kbd> <kbd>espacio</kbd> clic — bláster</div>
                 <div><kbd>V</kbd> 📷 cámara (persec./dentro/frontal)</div>
             </div>
+            <div class="grp">
+                <b>Nivel 3 · Pinball</b>
+                <div><kbd>←</kbd> flipper izquierdo</div>
+                <div><kbd>→</kbd> flipper derecho</div>
+            </div>
         </div>
         <div class="overlay" id="start-overlay">
             <div style="font-size:1.15rem; font-weight:bold; letter-spacing:1px;">🏍 RAYRUNNER</div>
@@ -194,14 +199,16 @@
 
     <div class="how">
         <b>Qué está pasando por debajo</b> — el motor granular real (el mismo Rust→wasm del demo) suena todo el
-        rato y cada nivel es un sample distinto de 24 s con 4 zonas: el espacio (pad → campanas → tormenta → coro)
-        y el circuito neón (amanecer → calipso → niebla → faro 2077), en tono mayor y luminoso —
+        rato y cada nivel es un sample distinto de 24 s con 4 zonas: el espacio (pad → campanas → tormenta → coro),
+        el circuito neón (amanecer → calipso → niebla → faro 2077) y el pinball (arranque arcade → bumper blitz →
+        tilt eléctrico → jackpot neón), todos en tono mayor y luminoso —
         cada <b>sector de la pista</b> es una zona musical: la recta de salida suena a amanecer, el túnel a
-        niebla estática, el tramo de tierra a faro 2077; una vuelta = una pasada entera por el sample. El scroll mueve el <i>foco</i>
+        niebla estática, el tramo de tierra a faro 2077; una vuelta = una pasada entera por el sample (en el
+        pinball, el combo acelera el paso por las zonas). El scroll mueve el <i>foco</i>
         — por donde pasas, eso suena — y tu combo controla <b>N</b> (rayos/s) y la <i>apertura</i>: combo alto =
         la textura converge limpia (error ∝ 1/√N); un impacto la rompe en polvo granular y hunde el tono
-        (con 🛡 el escudo absorbe el golpe… y la música ni se entera). El ranking se guarda en este dispositivo;
-        la interfaz está preparada para enchufar un servidor y compartirlo entre móvil y portátil.
+        (con 🛡 el escudo absorbe el golpe… y la música ni se entera). El ranking es global (Vercel + Upstash),
+        con reserva automática al ranking de este dispositivo si no hay conexión al servidor.
     </div>
     <div class="status" id="status"></div>
     <a class="back" href="index.html">← volver al demo completo de RayDrone</a>
@@ -221,7 +228,12 @@
             ← → giras, <b>↑ aceleras, ↓ frenas</b> (en móvil el dedo hace las dos cosas), pisa las
             <b style="color:#5dffc8">flechas turbo</b>, pasa <b>rozando</b> las barreras (+25) y esquiva a los rivales
             fantasma (síguelos en el <b>minimapa</b>). Cambia de cámara con <b>V</b> o el botón 📷
-            (persecución / dentro / frontal). Ir a fondo multiplica los puntos.
+            (persecución / dentro / frontal). Ir a fondo multiplica los puntos. Completa 2 vueltas para
+            pasar al nivel 3.
+            <br><br>
+            <b>Nivel 3 · Pinball</b> — una mesa clásica: <b>←</b> mueve el flipper izquierdo, <b>→</b> el
+            derecho (o los botones L / R en pantalla). Golpea los <b>bumpers</b> para sumar combo y
+            puntos — no dejes que la bola caiga por el hueco central o pierdes una vida.
             <br><br>
             Cada nivel tiene su propia música de 24s, generada en vivo: tu <b>combo</b> controla N (la densidad
             de rayos) — juega bien y la textura converge limpia; recibe un golpe y se rompe en polvo granular.
@@ -259,6 +271,12 @@
         { name: 'BARRIO CALIPSO', tint: [255, 200, 60] },
         { name: 'NIEBLA ESTÁTICA', tint: [170, 220, 255] },
         { name: 'FARO 2077',      tint: [255, 140, 90] },
+    ];
+    const ZONES_PINBALL = [
+        { name: 'ARRANQUE ARCADE', tint: [255, 210, 60] },
+        { name: 'BUMPER BLITZ',    tint: [255, 53, 94] },
+        { name: 'TILT ELÉCTRICO',  tint: [120, 200, 255] },
+        { name: 'JACKPOT NEÓN',    tint: [255, 240, 140] },
     ];
     // Peso de crossfade equal-power de la zona s en la muestra i (compartido).
     function zoneWeight(i, s, seg, fade) {
@@ -393,9 +411,78 @@
         return normalize(buf);
     }
 
+    function makeTerrainPinball() {
+        const n = SR * TERRAIN_SECS, buf = new Float32Array(n);
+        const seg = n / 4, fade = SR * 0.5, tau = 2 * Math.PI;
+        const square = (f, t, duty) => (((f * t) % 1) < duty ? 1 : -1);
+        // Zona 0 · ARRANQUE ARCADE: acorde de pulso 8-bit (chiptune) a ritmo alegre.
+        {
+            const chord = [220.0, 277.18, 329.63]; // A3-C#4-E4
+            for (let i = 0; i < n; i++) {
+                const gn = zoneWeight(i, 0, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR;
+                const beat = 0.75 + 0.25 * square(2, t, 0.5); // pulso al ritmo
+                let s = 0;
+                for (const f of chord) s += 0.22 * square(f, t, 0.5);
+                buf[i] += gn * s * beat;
+            }
+        }
+        // Zona 1 · BUMPER BLITZ: staccato rápido de corcheas, como golpes de bumper.
+        {
+            const notes = [392.0, 466.16, 523.25, 587.33, 659.25]; // pentatónica brillante
+            const stepDur = 60 / 190 / 2;
+            let prng = 0xb00b1e5 >>> 0;
+            const nextNote = () => { prng ^= prng << 13; prng >>>= 0; prng ^= prng >>> 17; prng ^= prng << 5; prng >>>= 0; return notes[prng % notes.length]; };
+            const i0 = Math.max(0, Math.floor(seg - fade)), i1 = Math.min(n, Math.floor(2 * seg + fade));
+            let noteF = nextNote(), noteStart = i0 / SR;
+            for (let i = i0; i < i1; i++) {
+                const t = i / SR;
+                if (t - noteStart >= stepDur) { noteF = nextNote(); noteStart += stepDur; }
+                const gn = zoneWeight(i, 1, seg, fade);
+                if (gn <= 0) continue;
+                const tl = t - noteStart;
+                const hit = Math.exp(-tl / 0.06) * (0.75 * square(noteF, t, 0.35) + 0.2 * Math.sin(tau * noteF * 2 * t));
+                buf[i] += gn * hit;
+            }
+        }
+        // Zona 2 · TILT ELÉCTRICO: zumbido/chispazo, tensión de "vas a perder la bola".
+        {
+            let rng = 0x7ee1ec7c >>> 0, lp = 0;
+            const i0 = Math.max(0, Math.floor(2 * seg - fade)), i1 = Math.min(n, Math.floor(3 * seg + fade));
+            for (let i = i0; i < i1; i++) {
+                rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0;
+                const white = rng / 2147483648 - 1;
+                lp += 0.09 * (white - lp);
+                const t = i / SR;
+                const gn = zoneWeight(i, 2, seg, fade);
+                if (gn <= 0) continue;
+                const buzz = 0.5 * square(90, t, 0.5) * (0.5 + 0.5 * Math.sin(tau * 6 * t));
+                buf[i] += gn * (lp * 2.1 + buzz);
+            }
+        }
+        // Zona 3 · JACKPOT NEÓN: arpegio triunfal Cmaj9 campanado, como el bonus del jackpot.
+        {
+            const arp = [523.25, 659.25, 783.99, 987.77, 1046.5, 987.77, 783.99, 659.25];
+            const stepDur = 60 / 132 / 2;
+            const i0 = Math.max(0, Math.floor(3 * seg - fade));
+            for (let i = i0; i < n; i++) {
+                const t = i / SR;
+                const idx = Math.floor(t / stepDur) % arp.length;
+                const tl = t % stepDur;
+                const gn = zoneWeight(i, 3, seg, fade);
+                if (gn <= 0) continue;
+                const f = arp[idx];
+                const bell = Math.exp(-tl / 0.3) * (0.7 * Math.sin(tau * f * t) + 0.25 * Math.sin(tau * f * 2.01 * t));
+                buf[i] += gn * bell;
+            }
+        }
+        return normalize(buf);
+    }
+
     // ── Motor (mismo patrón que index.html: worklet + wasm cache-busted) ─────
     let actx = null, node = null, gainNode = null;
-    let terrainSpace = null, terrainNeon = null;
+    let terrainSpace = null, terrainNeon = null, terrainPinball = null;
     async function ensureEngine() {
         if (node) return;
         actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -427,13 +514,15 @@
         node.port.postMessage({ type: 'pitch', mult: 1 });
         terrainSpace = makeTerrainSpace();
         terrainNeon = makeTerrainNeon();
+        terrainPinball = makeTerrainPinball();
         loadTerrain('space');
     }
     let terrainLoaded = '';
     function loadTerrain(which) {
         if (!node || terrainLoaded === which) return;
         terrainLoaded = which;
-        node.port.postMessage({ type: 'sample', data: which === 'neon' ? terrainNeon : terrainSpace, sampleRate: SR });
+        const data = which === 'neon' ? terrainNeon : which === 'pinball' ? terrainPinball : terrainSpace;
+        node.port.postMessage({ type: 'sample', data, sampleRate: SR });
     }
 
     // Estado 3D (declarado aquí arriba: resizeCanvas() corre al cargar la página
@@ -447,6 +536,16 @@
     const pads2 = [];             // turbo pads fijos de la pista: {s, lane, mesh, cd}
     const frags2 = [];            // escombros 3D de un golpe: {mesh, vel, rot, ttl}
     let miniPts = null;           // contorno del circuito normalizado (minimapa)
+    // Nivel 3 (pinball): bumpers en posición fraccional de la mesa (fx,fy en
+    // [0,1]) — se convierten a píxeles en cada frame vía pinLayout(), así que
+    // sobreviven a un resize sin desincronizarse. `flash` es visual (destello
+    // al golpear), no afecta a la física.
+    const pinBumpers = [
+        { fx: 0.30, fy: 0.30, flash: 0 },
+        { fx: 0.50, fy: 0.20, flash: 0 },
+        { fx: 0.70, fy: 0.30, flash: 0 },
+        { fx: 0.50, fy: 0.46, flash: 0 },
+    ];
 
     // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
     let W = 0, H = 0, k = 1, SHIP_X = 0;
@@ -471,6 +570,7 @@
         for (const m of st.shots) { m.x *= sx; m.y *= sy; }
         for (const p of st.particles) { p.x *= sx; p.y *= sy; }
         for (const s of st.stars) { s.x *= sx; s.y *= sy; }
+        if (st.ball) { st.ball.x *= sx; st.ball.y *= sy; }
         resize3D();
     }
 
@@ -494,12 +594,15 @@
         camMode: 0, // 0 = persecución · 1 = dentro de la moto · 2 = frontal
         spawnAst: 0, spawnCry: 0, spawnPick: 0, spawnObj: 0,
         touchTarget: null, touchTargetX: null, touchThrottle: 0,
+        // Nivel 3 (pinball): bola en juego + ángulo actual de cada flipper (para
+        // el impulso por velocidad angular al golpear).
+        ball: null, flipLAng: 0, flipRAng: 0, ballLive: false, serveTtl: 0,
     };
     resizeCanvas();
     for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
-    const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (nivel 2)
+    const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (nivel 2); a/b = flippers en nivel 3
 
-    const zones = () => st.level === 1 ? ZONES_SPACE : ZONES_NEON;
+    const zones = () => st.level === 1 ? ZONES_SPACE : st.level === 2 ? ZONES_NEON : ZONES_PINBALL;
 
     function resetRound() {
         st.level = 1;
@@ -513,6 +616,7 @@
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
         st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
         st.camMode = 0;
+        st.ball = null; st.flipLAng = 0; st.flipRAng = 0; st.ballLive = false; st.serveTtl = 0;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
@@ -531,8 +635,8 @@
         hudBombs.innerText = st.bombs;
     }
     function relabelButtons() {
-        $('btn-a').innerText = st.level === 1 ? '▲' : '◀';
-        $('btn-b').innerText = st.level === 1 ? '▼' : '▶';
+        $('btn-a').innerText = st.level === 1 ? '▲' : st.level === 2 ? '◀' : 'L';
+        $('btn-b').innerText = st.level === 1 ? '▼' : st.level === 2 ? '▶' : 'R';
     }
     const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
     function banner(text) { st.banner = text; st.bannerTtl = 1; }
@@ -561,7 +665,7 @@
     // Primera visita: se abre solo una vez (luego siempre accesible con el botón)
     try { if (!localStorage.getItem(HOWTO_SEEN_KEY)) showHowto(); } catch (_) { showHowto(); }
 
-    // Ranking global (Vercel + Upstash, ver api/leaderboard.js) con fallback
+    // Ranking global (Vercel + Upstash, ver wasm/api/leaderboard.js) con fallback
     // automático al local si no hay backend desplegado o la red falla — así
     // el juego funciona igual sirviendo con `python3 -m http.server` en local
     // como en producción. `lb.global` dice cuál se usó la última vez.
@@ -685,7 +789,7 @@
     }
     // Bláster: arma básica ilimitada con cadencia — clic de ratón, toque corto o Z
     function fireBlaster() {
-        if (!st.playing || st.paused || st.blastCd > 0) return;
+        if (!st.playing || st.paused || st.blastCd > 0 || st.level === 3) return; // sin armas en el pinball
         st.blastCd = 0.22;
         st.shimmer = Math.max(st.shimmer, 0.25); // cada disparo, un chispazo shimmer
         if (st.level === 1) {
@@ -854,6 +958,41 @@
         relabelButtons();
         updateHud();
     }
+
+    // ── Nivel 3 (pinball): mesa en el mismo canvas 2D que el nivel 1 ─────────
+    // Geometría en fracciones de W/H, recalculada cada frame — así un resize
+    // (girar el móvil) no desincroniza nada salvo la bola, que si se reescala
+    // en resizeCanvas() como el resto de entidades del juego.
+    const BALL_R = () => 9 * k;
+    function pinLayout() {
+        const margin = 22 * k, top = 30 * k;
+        const gapHalf = W * 0.11, flipLen = 62 * k;
+        const pivotY = H - 34 * k;
+        return {
+            margin, top, gapHalf, flipLen, pivotY,
+            left: margin, right: W - margin,
+            pivotL: { x: W * 0.5 - gapHalf - flipLen * 0.15, y: pivotY },
+            pivotR: { x: W * 0.5 + gapHalf + flipLen * 0.15, y: pivotY },
+            restL: 0.45, activeL: -1.0,
+            restR: Math.PI - 0.45, activeR: Math.PI + 1.0,
+        };
+    }
+    function serveBall() {
+        st.ball = { x: W * 0.5 + (Math.random() - 0.5) * 40 * k, y: 46 * k, vx: (Math.random() - 0.5) * 60 * k, vy: 40 * k };
+        st.ballLive = true;
+    }
+    function switchToLevel3() {
+        st.level = 3;
+        st.zone = -1;
+        st.worldT = 0;
+        st.flipLAng = pinLayout().restL; st.flipRAng = pinLayout().restR;
+        st.ballLive = false; st.serveTtl = 0.6;
+        $('stage').classList.remove('mode3d');
+        loadTerrain('pinball');
+        banner('NIVEL 3 · PINBALL');
+        relabelButtons();
+        updateHud();
+    }
     function pauseGame() {
         if (!st.playing || st.paused) return;
         st.paused = true;
@@ -875,8 +1014,8 @@
         if (e.target.tagName === 'INPUT') return;
         const up = e.key === 'ArrowUp' || e.key === 'w', down = e.key === 'ArrowDown' || e.key === 's';
         const left = e.key === 'ArrowLeft' || e.key === 'a', right = e.key === 'ArrowRight' || e.key === 'd';
-        if ((st.level === 1 && up) || (st.level === 2 && left)) keys.a = true;
-        else if ((st.level === 1 && down) || (st.level === 2 && right)) keys.b = true;
+        if ((st.level === 1 && up) || ((st.level === 2 || st.level === 3) && left)) keys.a = true; // flipper izq. en N3
+        else if ((st.level === 1 && down) || ((st.level === 2 || st.level === 3) && right)) keys.b = true; // flipper der. en N3
         else if (st.level === 2 && up) keys.u = true;    // acelerador
         else if (st.level === 2 && down) keys.d = true;  // freno
         else if (e.key === 'x') { if (!e.repeat) fireMissile(); }
@@ -2065,9 +2204,11 @@
         }
         if (st.level === 1) {
             drawSpace(t / 1000);
-        } else {
+        } else if (st.level === 2) {
             render3D(t / 1000);
             drawOverlay2D(t / 1000);
+        } else {
+            drawPinball(t / 1000);
         }
         requestAnimationFrame(frame);
     }
@@ -2100,7 +2241,9 @@
     }
 
     function step(dt) {
-        if (st.level === 1) stepLevel1(dt); else stepLevel2(dt);
+        if (st.level === 1) stepLevel1(dt);
+        else if (st.level === 2) stepLevel2(dt);
+        else stepLevel3(dt);
         stepCommon(dt);
     }
 
@@ -2239,6 +2382,7 @@
             st.pos -= LAP_LEN;
             st.lap += 1;
             st.score += 250;
+            if (st.lap >= 2) { switchToLevel3(); return; }
             banner(`VUELTA ${st.lap + 1}`);
         }
         st.worldT = (wrapS(st.pos) / LAP_LEN) * TERRAIN_SECS; // sector = zona musical
@@ -2426,6 +2570,91 @@
                 }
             }
             if (hit || b.ttl <= 0) { T3.scene.remove(b.mesh); bolts2.splice(i, 1); }
+        }
+    }
+
+    // ── Nivel 3: física de la mesa (bola, flippers, muros, bumpers) ─────────
+    const moveToward = (cur, target, maxStep) => cur + clamp(target - cur, -maxStep, maxStep);
+    function bumperPos(bp, Lay) {
+        const areaTop = Lay.top, areaH = Lay.pivotY - 60 * k - Lay.top;
+        return { x: Lay.left + bp.fx * (Lay.right - Lay.left), y: areaTop + bp.fy * areaH };
+    }
+    function collideFlipper(b, R, pivot, angle, angVel, flipLen) {
+        const dx = Math.cos(angle) * flipLen, dy = Math.sin(angle) * flipLen;
+        const segLen2 = dx * dx + dy * dy;
+        let tp = ((b.x - pivot.x) * dx + (b.y - pivot.y) * dy) / segLen2;
+        tp = clamp(tp, 0, 1);
+        const cx = pivot.x + dx * tp, cy = pivot.y + dy * tp;
+        const ddx = b.x - cx, ddy = b.y - cy;
+        const dist = Math.hypot(ddx, ddy);
+        const thick = 9 * k, minDist = R + thick;
+        if (dist >= minDist || dist < 1e-6) return;
+        const nx = ddx / dist, ny = ddy / dist;
+        b.x += nx * (minDist - dist); b.y += ny * (minDist - dist);
+        const rx = cx - pivot.x, ry = cy - pivot.y;
+        const pvx = -angVel * ry, pvy = angVel * rx; // v = ω × r, r = (rx,ry)
+        const vn = (b.vx - pvx) * nx + (b.vy - pvy) * ny;
+        if (vn < 0) { const e = 0.35; b.vx -= (1 + e) * vn * nx; b.vy -= (1 + e) * vn * ny; }
+    }
+    function bumperHit(bx, by, bp) {
+        st.combo = Math.min(10, st.combo + 1);
+        st.score += 30 + st.combo * 8;
+        st.shimmer = Math.max(st.shimmer, 0.35);
+        bp.flash = 0.15;
+        burst(bx, by, [255, 120, 150], 10);
+        vibrate(12);
+        updateHud();
+    }
+    function stepLevel3(dt) {
+        const Lay = pinLayout();
+        for (const bp of pinBumpers) bp.flash = Math.max(0, bp.flash - dt);
+        const flipRate = 20; // rad/s tope de giro (subida rápida, bajada por gravedad simulada igual)
+        const prevFlipL = st.flipLAng, prevFlipR = st.flipRAng;
+        st.flipLAng = moveToward(st.flipLAng, keys.a ? Lay.activeL : Lay.restL, flipRate * dt);
+        st.flipRAng = moveToward(st.flipRAng, keys.b ? Lay.activeR : Lay.restR, flipRate * dt);
+        const angVelL = (st.flipLAng - prevFlipL) / dt, angVelR = (st.flipRAng - prevFlipR) / dt;
+        st.worldT += (1 + st.combo * 0.15) * dt; // combo alto = zonas musicales pasan más rápido
+
+        if (!st.ballLive) {
+            st.serveTtl -= dt;
+            if (st.serveTtl <= 0) serveBall();
+            return;
+        }
+        const b = st.ball, R = BALL_R();
+        const GRAV = 1500 * k;
+        b.vy += GRAV * dt;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        // Muros: izquierda/derecha/arriba rebotan; abajo no hay muro salvo los
+        // flippers — ahí está el desagüe (drain), como en una mesa real.
+        if (b.x - R < Lay.left) { b.x = Lay.left + R; b.vx = Math.abs(b.vx) * 0.7; }
+        if (b.x + R > Lay.right) { b.x = Lay.right - R; b.vx = -Math.abs(b.vx) * 0.7; }
+        if (b.y - R < Lay.top) { b.y = Lay.top + R; b.vy = Math.abs(b.vy) * 0.7; }
+        for (const bp of pinBumpers) {
+            const p = bumperPos(bp, Lay), rad = 22 * k;
+            const dx = b.x - p.x, dy = b.y - p.y, dist = Math.hypot(dx, dy);
+            if (dist >= R + rad) continue;
+            const nx = dist > 1e-6 ? dx / dist : 0, ny = dist > 1e-6 ? dy / dist : 1;
+            b.x += nx * (R + rad - dist); b.y += ny * (R + rad - dist);
+            const vn = b.vx * nx + b.vy * ny;
+            b.vx -= (1 + 0.9) * vn * nx; b.vy -= (1 + 0.9) * vn * ny;
+            const kick = 260 * k;
+            b.vx += nx * kick; b.vy += ny * kick;
+            if (bp.flash <= 0) bumperHit(p.x, p.y, bp);
+        }
+        collideFlipper(b, R, Lay.pivotL, st.flipLAng, angVelL, Lay.flipLen);
+        collideFlipper(b, R, Lay.pivotR, st.flipRAng, angVelR, Lay.flipLen);
+        st.score += 4 * dt; // puntos por tiempo en juego (float, se redondea al mostrar)
+        if (b.y - R > H + 8 * k) {
+            st.ballLive = false;
+            st.combo = Math.max(0, st.combo - 3);
+            st.lives -= 1;
+            burst(b.x, Lay.pivotY, [255, 80, 80], 18);
+            vibrate([50, 30, 80]);
+            updateHud();
+            if (st.lives <= 0) { endRound(); return; }
+            banner('¡BOLA!');
+            st.serveTtl = 1.0;
         }
     }
 
@@ -2688,6 +2917,78 @@
         g.restore();
     }
 
+    // ── Dibujo · nivel 3 (pinball) ────────────────────────────────────────────
+    function drawPinball(t) {
+        const Lay = pinLayout();
+        g.save();
+        if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
+        g.clearRect(-20, -20, W + 40, H + 40);
+        const tint = ZONES_PINBALL[Math.max(0, st.zone)].tint;
+        const bg = g.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, `rgba(${tint[0]},${tint[1]},${tint[2]},0.12)`);
+        bg.addColorStop(0.6, '#05060b');
+        bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.08)`);
+        g.fillStyle = bg;
+        g.fillRect(-20, -20, W + 40, H + 40);
+        // Muros de la mesa
+        g.strokeStyle = 'rgba(120,200,255,0.55)';
+        g.lineWidth = 3 * k;
+        g.beginPath();
+        g.moveTo(Lay.left, H + 20);
+        g.lineTo(Lay.left, Lay.top);
+        g.lineTo(Lay.right, Lay.top);
+        g.lineTo(Lay.right, H + 20);
+        g.stroke();
+        // Bumpers: esfera brillante con destello de color al golpear (si no, se
+        // funden con el fondo teñido de la zona y no se distinguen de la mesa).
+        for (const bp of pinBumpers) {
+            const p = bumperPos(bp, Lay), rad = 22 * k;
+            const glow = bp.flash > 0 ? bp.flash / 0.15 : 0;
+            if (glow > 0) {
+                g.beginPath(); g.arc(p.x, p.y, rad + 7 * k * glow, 0, 6.283);
+                g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${glow * 0.7})`;
+                g.lineWidth = 3 * k;
+                g.stroke();
+            }
+            const grad = g.createRadialGradient(p.x - rad * 0.3, p.y - rad * 0.3, rad * 0.1, p.x, p.y, rad);
+            grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+            grad.addColorStop(0.4, `rgba(${tint[0]},${tint[1]},${tint[2]},0.95)`);
+            grad.addColorStop(1, 'rgba(20,12,30,0.95)');
+            g.beginPath(); g.arc(p.x, p.y, rad, 0, 6.283);
+            g.fillStyle = grad;
+            g.fill();
+            g.strokeStyle = `rgba(255,255,255,${0.5 + glow * 0.5})`;
+            g.lineWidth = 2 * k;
+            g.stroke();
+        }
+        // Flippers (paletas)
+        const drawFlipper = (pivot, angle, color) => {
+            const tipX = pivot.x + Math.cos(angle) * Lay.flipLen, tipY = pivot.y + Math.sin(angle) * Lay.flipLen;
+            g.strokeStyle = color;
+            g.lineWidth = 13 * k;
+            g.lineCap = 'round';
+            g.beginPath(); g.moveTo(pivot.x, pivot.y); g.lineTo(tipX, tipY); g.stroke();
+        };
+        drawFlipper(Lay.pivotL, st.flipLAng, 'rgba(255,53,94,0.9)');
+        drawFlipper(Lay.pivotR, st.flipRAng, 'rgba(255,53,94,0.9)');
+        // Bola
+        if (st.ball) {
+            const b = st.ball, R = BALL_R();
+            g.beginPath(); g.arc(b.x, b.y, R, 0, 6.283);
+            g.fillStyle = '#e8eef5';
+            g.shadowColor = '#9df6ff'; g.shadowBlur = 8 * k;
+            g.fill();
+            g.shadowBlur = 0;
+        } else if (st.serveTtl > 0) {
+            g.fillStyle = 'rgba(255,255,255,0.6)';
+            g.font = `bold ${Math.round(16 * k)}px monospace`;
+            g.textAlign = 'center';
+            g.fillText('¡BOLA!', W / 2, H * 0.45);
+        }
+        drawFxOverlays(t, tint);
+        g.restore();
+    }
+
     // Minimapa (abajo-izquierda): contorno del circuito coloreado por superficie
     // (asfalto cyan · tierra arena · túnel violeta), meta, rivales y tú (pulso).
     function drawMiniMap() {
@@ -2825,6 +3126,9 @@
         setWorldT(t) { st.worldT = t; },
         get lapLen() { return LAP_LEN; },
         setPos(p2) { st.pos = p2; },
+        goLevel3: switchToLevel3,
+        pinLayout,
+        pinBumpers,
         spawnAhead(type) {
             if (st.level === 1) {
                 if (type === 'rock') st.asteroids.push({ x: SHIP_X + 200 * k, y: st.shipY, r: 16 * k, rot: 0, vr: 0 });

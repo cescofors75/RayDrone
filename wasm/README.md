@@ -140,9 +140,9 @@ Motor con paridad casi completa con la versión JS:
   reproducible bit a bit. N = 1…8192, 12 tiradas, 5 estrategias; acumuladores f64.
   Pendientes medidas: random −0.50 (teoría −0.5), stratified/QMC ≈ −0.58.
   El estimador JS se conserva solo para el A/B audible.
-- ✅ **RayRunner (`game.html`)**: arcade de **2 niveles** cuya banda sonora la
+- ✅ **RayRunner (`game.html`)**: arcade de **3 niveles** cuya banda sonora la
   renderiza RayDrone en vivo — la demo de "audio adaptativo para videojuegos".
-  Nivel 1 (nave espacial, lateral) y Nivel 2 (**Circuito Neón**: un circuito
+  Nivel 1 (nave espacial, lateral), Nivel 2 (**Circuito Neón**: un circuito
   cerrado **3D de verdad** — WebGL con **Three.js vendorizado** en
   `vendor/` (sin CDN, sigue funcionando offline; el motor de audio continúa
   sin dependencias) — trazado como spline Catmull-Rom cerrada con curvas,
@@ -254,7 +254,23 @@ Motor con paridad casi completa con la versión JS:
   turbo pads) escalan su densidad con la longitud real de la vuelta en
   vez de usar recuentos fijos. **Sidebar de teclas** (tecla H o botón ⌨):
   panel semi-transparente (50% de opacidad, no tapa el juego) con todos
-  los controles de ambos niveles.
+  los controles de los tres niveles.
+  **Nivel 3 (Pinball)**: tras completar 2 vueltas al circuito, la partida
+  pasa a una mesa de pinball clásica en el mismo canvas 2D del Nivel 1 (sin
+  WebGL). Física con **paso fijo** igual que el resto del juego: gravedad,
+  muros laterales/superior, 4 bumpers esféricos con brillo especular y
+  destello de color al golpear (combo + puntos + impulso), y **2 flippers**
+  (← / → o los botones L/R en pantalla) simulados como un segmento rígido
+  girando sobre su pivote — la colisión bola-flipper usa la **velocidad
+  angular real** de la paleta en el punto de contacto (v = ω × r), así un
+  flipper "flicado" en el momento justo golpea mucho más fuerte que uno ya
+  levantado y quieto, sin necesidad de una constante de "impulso" inventada.
+  Sin muro inferior: el hueco entre flippers es el desagüe — si la bola cae
+  ahí (o se les escapa a los lados) se pierde una vida y se sirve una bola
+  nueva; a la tercera, fin de partida como en los otros niveles (mismo
+  `endRound()`, mismo ranking). Su propio sample de 24s/4 zonas (arranque
+  arcade → bumper blitz → tilt eléctrico → jackpot neón, chiptune con ondas
+  cuadradas) avanza más rápido cuanto más alto esté el combo.
   **Modal "Cómo jugar"**: la portada queda limpia (título, tagline y
   botones); las instrucciones completas viven en un modal aparte que se
   abre solo, una vez, en la primera visita (recordado en localStorage) y
