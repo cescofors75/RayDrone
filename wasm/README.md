@@ -228,14 +228,24 @@ Motor con paridad casi completa con la versión JS:
   render por software (SwiftShader headless; en una GPU real, mucho
   menos). Sacrifica recibir la sombra del jugador en esos tramos (el
   reflejo del propio kart compensa visualmente).
-  **Ranking global** (`api/leaderboard.js`, Vercel Serverless Function sin
-  dependencias + Upstash Redis como sorted set) con **fallback automático
-  al ranking local** si no hay backend desplegado o falla la red — el
-  mismo objeto `lb` decide en tiempo real y lo indica en la UI (🌐 global /
-  📴 este dispositivo). Sin capas pregrabadas: un solo motor, parámetros
-  vivos. En móvil: arrastre táctil (vertical en N1, horizontal en N2),
-  canvas retina ~56vh, pantalla completa, mini-HUD en el lienzo, vibración
-  y pausa automática.
+  **Ranking global** (`wasm/api/leaderboard.js`, Vercel Serverless Function
+  sin dependencias + Upstash Redis como sorted set) con **fallback
+  automático al ranking local** si no hay backend desplegado o falla la
+  red — el mismo objeto `lb` decide en tiempo real y lo indica en la UI
+  (🌐 global / 📴 este dispositivo). Sin capas pregrabadas: un solo motor,
+  parámetros vivos. En móvil: arrastre táctil (vertical en N1, horizontal
+  en N2), canvas retina ~56vh, pantalla completa, mini-HUD en el lienzo,
+  vibración y pausa automática.
+  > ⚠️ **Importante para el despliegue**: si en Vercel el "Root Directory"
+  > del proyecto está puesto a `wasm` (lo normal, ya que ese es el sitio
+  > estático que se sirve), la función **tiene** que vivir en
+  > `wasm/api/leaderboard.js` — Vercel solo detecta funciones dentro del
+  > Root Directory configurado. Si estuviera en `api/` en la raíz del
+  > repo (fuera de `wasm/`), Vercel jamás la despliega y visitar
+  > `/api/leaderboard` da 404, aunque el resto del sitio funcione bien.
+  > Además hay que conectar la integración de Storage (Upstash o Vercel
+  > KV) al proyecto para que existan `KV_REST_API_URL`/`KV_REST_API_TOKEN`
+  > (o `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`).
   **Circuito mucho más largo** (~5750u, 2.5× la versión anterior) con un
   **primer tramo de calentamiento** (recta larga y llana + curva amplia,
   ~17% de la vuelta) sin obstáculos en la primera vuelta — tiempo de
