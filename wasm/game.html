@@ -24,6 +24,10 @@
         #game { position:relative; z-index:1; }
         #stage.mode3d #game3d { display:block; }
         #stage.mode3d #game { background:transparent; border-color:transparent; }
+        /* Nivel 3 (pinball): lienzo VERTICAL (retrato) para que la mesa llene el
+           marco como una mesa real, en vez de un sliver en un lienzo apaisado. */
+        #stage.mode-pin #game { width:auto; height:min(82vh, 720px); aspect-ratio:2 / 3;
+                                margin-inline:auto; background:#04030a; }
         .hud { display:flex; justify-content:space-between; gap:10px; font-family:monospace;
                font-size:0.88rem; margin:10px 0; flex-wrap:wrap; }
         .hud b { color:var(--accent); }
@@ -651,6 +655,7 @@
         for (const t of pinTargets) t.alive = true;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
+        $('stage').classList.remove('mode-pin');
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
         loadTerrain('space');
         relabelButtons();
@@ -961,6 +966,7 @@
             statusEl.innerText = `Error al iniciar el motor: ${(err && err.message) || err}`;
             return;
         }
+        $('stage').classList.remove('mode-pin'); // por si venimos de un game over en el pinball
         resizeCanvas();
         resetRound();
         ensureThree().catch((err) => { statusEl.innerText = `3D no disponible: ${(err && err.message) || err}`; });
@@ -1054,8 +1060,10 @@
     function computePinProj() {
         const screenTop = H * 0.045, screenBot = H * 0.985;
         const hh = screenBot - screenTop;
-        const botHalf = Math.min(W * 0.30, hh * 0.285);
-        const topHalf = botHalf * 0.58;
+        // Con el lienzo en retrato (mode-pin) la mesa llena el marco: se
+        // ensancha hasta ~82% del ancho, dejando el cabinet a los lados.
+        const botHalf = Math.min(W * 0.41, hh * 0.30);
+        const topHalf = botHalf * 0.60;
         pinProj = { screenTop, screenBot, hh, botHalf, topHalf, cx: W * 0.5 };
         return pinProj;
     }
@@ -1083,6 +1091,8 @@
         st.flipLAng = pinLayout().restL; st.flipRAng = pinLayout().restR;
         st.ballLive = false; st.serveTtl = 0.6;
         $('stage').classList.remove('mode3d');
+        $('stage').classList.add('mode-pin'); // lienzo vertical
+        resizeCanvas();                        // recoge las nuevas dimensiones (retrato)
         loadTerrain('pinball');
         banner('NIVEL 3 · PINBALL');
         relabelButtons();
@@ -2906,6 +2916,11 @@
                     const kick = 300;
                     b.vx += nx * kick; b.vy += ny * kick;
                     if (bp.flash <= 0) bumperHit(p.x, p.y, bp);
+                } else if (Math.hypot(b.vx, b.vy) < 70) {
+                    // Bola casi en reposo apoyada en la cúpula: empujón lateral
+                    // mínimo para que ruede y no se quede encima (acotado por la
+                    // condición de baja velocidad — no inyecta energía sin fin).
+                    b.vx += (b.x >= p.x ? 1 : -1) * 45;
                 }
             }
             for (const t of pinTargets) collideTarget(b, R, t, Lay);
@@ -3285,6 +3300,20 @@
         g.strokeStyle = frameGrad; g.lineWidth = 3.2 * pinPPU(0.5);
         g.shadowColor = 'rgba(200,90,200,0.9)'; g.shadowBlur = 15 * k; g.stroke();
         g.shadowBlur = 0;
+        // Arco superior interior (cian): sugiere el carril de lanzamiento, como
+        // la cabecera curva del póster. Sampleado y proyectado.
+        {
+            const arc = [];
+            for (let i = 0; i <= 14; i++) {
+                const a = Math.PI * (0.14 + 0.72 * i / 14); // de izq a der por arriba
+                arc.push({ x: PW / 2 - Math.cos(a) * PW * 0.40, y: 78 - Math.sin(a) * 46 });
+            }
+            g.lineCap = 'round'; g.lineJoin = 'round';
+            pinTrace(arc);
+            g.strokeStyle = 'rgba(120,240,255,0.7)'; g.lineWidth = 4 * pinPPU(0.08);
+            g.shadowColor = 'rgba(120,240,255,0.9)'; g.shadowBlur = 9 * k; g.stroke();
+            g.shadowBlur = 0;
+        }
         // Rieles guía (cierran el hueco muro↔flipper): magenta izq · cian der.
         for (const [guide, gc] of [[Lay.guideL, [255, 60, 150]], [Lay.guideR, [90, 200, 255]]]) {
             const ppu = pinPPU((guide.p1.y + guide.p2.y) / 2 / PH);
@@ -3293,6 +3322,20 @@
             g.strokeStyle = 'rgba(235,240,250,0.6)'; g.lineWidth = 8 * ppu; g.stroke();
             g.strokeStyle = `rgba(${gc[0]},${gc[1]},${gc[2]},0.8)`; g.lineWidth = 3 * ppu;
             g.shadowColor = `rgb(${gc[0]},${gc[1]},${gc[2]})`; g.shadowBlur = 8 * k; g.stroke();
+            g.shadowBlur = 0;
+        }
+        // Rieles de inlane (blancos): un carril corto interior justo sobre cada
+        // flipper que guía la bola de vuelta, como el apron del póster.
+        for (const side of [-1, 1]) {
+            const px = side < 0 ? Lay.pivotL.x : Lay.pivotR.x;
+            const inTop = { x: px + side * 74, y: Lay.pivotY - 128 };
+            const inBot = { x: px + side * 30, y: Lay.pivotY - 8 };
+            const a = PP(inTop.x, inTop.y), b2 = PP(inBot.x, inBot.y);
+            const ppu = pinPPU((inTop.y + inBot.y) / 2 / PH);
+            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y);
+            g.lineCap = 'round';
+            g.strokeStyle = 'rgba(200,245,255,0.8)'; g.lineWidth = 3.5 * ppu;
+            g.shadowColor = 'rgba(120,240,255,0.85)'; g.shadowBlur = 7 * k; g.stroke();
             g.shadowBlur = 0;
         }
         // Slingshots: triángulo relleno magenta con banda de rebote brillante en
@@ -3338,11 +3381,13 @@
             // Sombra proyectada en el tapete.
             g.beginPath(); g.ellipse(sp.x, sp.y + rad * 0.55, rad * 1.3, rad * 0.5, 0, 0, 6.283);
             g.fillStyle = 'rgba(0,0,0,0.38)'; g.fill();
-            // Disco-base con aro cian.
-            g.beginPath(); g.arc(sp.x, sp.y, rad * 1.34, 0, 6.283);
+            // Disco-base con dos aros cian concéntricos (efecto "plato apilado").
+            g.beginPath(); g.arc(sp.x, sp.y, rad * 1.42, 0, 6.283);
             g.fillStyle = 'rgba(13,32,42,0.96)'; g.fill();
             g.strokeStyle = 'rgba(80,222,242,0.75)'; g.lineWidth = 2.6 * ppu;
             g.shadowColor = 'rgba(80,222,242,0.9)'; g.shadowBlur = 6 * k; g.stroke(); g.shadowBlur = 0;
+            g.beginPath(); g.arc(sp.x, sp.y, rad * 1.18, 0, 6.283);
+            g.strokeStyle = 'rgba(80,222,242,0.45)'; g.lineWidth = 1.6 * ppu; g.stroke();
             // Halo de color (palpita al golpear).
             g.beginPath(); g.arc(sp.x, sp.y, rad + (7 + glow * 10) * ppu, 0, 6.283);
             g.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.5 + glow * 0.5})`;
@@ -3407,12 +3452,15 @@
                 g.fillText('¡BOLA!', W / 2, H * 0.4);
             }
         }
-        // HUD propio del pinball: multiplicador de bonus.
+        // HUD propio del pinball: multiplicador de bonus (abajo, en el apron,
+        // para no chocar con el mini-HUD de arriba).
         if (st.playing) {
-            g.fillStyle = st.pinMult > 1 ? '#ffd75d' : 'rgba(255,255,255,0.55)';
-            g.font = `bold ${Math.round(13 * k)}px monospace`;
+            g.fillStyle = st.pinMult > 1 ? '#ffd75d' : 'rgba(255,255,255,0.5)';
+            g.font = `bold ${Math.round(14 * k)}px monospace`;
             g.textAlign = 'center';
-            g.fillText(`BONUS x${st.pinMult}`, W / 2, 22 * k);
+            if (st.pinMult > 1) { g.shadowColor = '#ffd75d'; g.shadowBlur = 8 * k; }
+            g.fillText(`BONUS x${st.pinMult}`, W / 2, H - 12 * k);
+            g.shadowBlur = 0;
         }
         drawFxOverlays(t, tint);
         g.restore();

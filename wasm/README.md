@@ -299,11 +299,17 @@ Motor con paridad casi completa con la versión JS:
   límite y podía disparar la velocidad lo bastante como para atravesar un
   muro en un solo paso de física — además, a alta velocidad la bola avanza
   en **subpasos** de como mucho un radio, así ninguna colisión se "salta".
-  **Render en perspectiva** (el cambio que la hace parecer una mesa de
-  verdad y no un dibujo plano visto desde arriba): la física corre en un
-  **espacio de mesa** propio, vertical y de resolución fija (PW×PH
-  unidades), y el dibujo la **proyecta** en un trapecio que se estrecha
-  arriba (lejos) y se ensancha abajo (cerca) — con rejilla que converge en
+  **Render en perspectiva + lienzo vertical** (lo que la hace parecer una
+  mesa de verdad y no un dibujo plano): en el nivel 3 el lienzo pasa a
+  **retrato** (clase `mode-pin`, `aspect-ratio 2/3`) para que la mesa llene
+  el marco como una máquina real. La física corre en un **espacio de mesa**
+  propio, vertical y de resolución fija (PW×PH unidades), y el dibujo la
+  **proyecta** en un trapecio que se estrecha arriba (lejos) y se ensancha
+  abajo (cerca), con cabinet magenta/cian a los lados, arco superior,
+  bumpers "pop" con disco-base de doble aro e icono de seta que brilla,
+  rieles habitrail magenta/cian, slingshots rosas, flippers blancos con
+  glow y rieles de inlane — estética a juego con el póster synthwave que
+  inspiró el rediseño — con rejilla que converge en
   el fondo, arco superior redondeado, y tamaños (bola, bumpers, grosores)
   que escalan con la profundidad. Separar física de render también hace la
   jugabilidad idéntica en cualquier tamaño de lienzo. **Estilo neón** (a
