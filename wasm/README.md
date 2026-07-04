@@ -140,8 +140,11 @@ Motor con paridad casi completa con la versión JS:
   reproducible bit a bit. N = 1…8192, 12 tiradas, 5 estrategias; acumuladores f64.
   Pendientes medidas: random −0.50 (teoría −0.5), stratified/QMC ≈ −0.58.
   El estimador JS se conserva solo para el A/B audible.
-- ✅ **RayRunner (`game.html`)**: arcade de **4 niveles** cuya banda sonora la
-  renderiza RayDrone en vivo — la demo de "audio adaptativo para videojuegos".
+- ✅ **RayRunner (`game.html`)**: arcade cuya banda sonora la renderiza
+  RayDrone en vivo — la demo de "audio adaptativo para videojuegos". El flujo
+  es Nivel 1 (espacio) → Nivel 2 (circuito neón 3D) → **Nivel 4 (pinball 3D)**
+  (el antiguo pinball 2D, "nivel 3", se retiró; el código de render 2D queda
+  como referencia pero ya no está en el flujo).
   Nivel 1 (nave espacial, lateral), Nivel 2 (**Circuito Neón**: un circuito
   cerrado **3D de verdad** — WebGL con **Three.js vendorizado** en
   `vendor/` (sin CDN, sigue funcionando offline; el motor de audio continúa
@@ -299,8 +302,12 @@ Motor con paridad casi completa con la versión JS:
   **Botón "🎯 Entrenar"** en la portada: un modal con los 4 niveles para
   saltar directo a cualquiera y practicarlo — en modo entreno la **puntuación
   NO se guarda** en el ranking (saltarse niveles sería trampa).
-  **Controles del pinball**: flechas ← → (N3 y N4) y también **botón
-  izquierdo/derecho del ratón** para cada flipper.
+  **Controles del pinball**: flechas ← → y también **botón izquierdo/derecho
+  del ratón** para cada flipper. **Tecla T = tilt**: empuja la mesa (impulso a
+  la bola hacia arriba + sacudida) para salvarla — pero cada empujón sube el
+  medidor de tilt; si te pasas, **¡TILT!** y los flippers quedan muertos hasta
+  que la bola drene, como en una máquina real (el medidor baja solo con el
+  tiempo).
   **Récords "leyenda"**: unas marcas base (p. ej. BRUZOS, THOR) se fusionan
   siempre en el ranking (cliente y servidor, ordenadas y sin duplicar) como
   marca a batir.

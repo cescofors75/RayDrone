@@ -177,13 +177,9 @@
                 <div><kbd>V</kbd> 📷 cámara (persec./dentro/frontal)</div>
             </div>
             <div class="grp">
-                <b>Nivel 3 · Pinball 2D</b>
-                <div><kbd>←</kbd> flipper izquierdo</div>
-                <div><kbd>→</kbd> flipper derecho</div>
-            </div>
-            <div class="grp">
                 <b>Nivel 4 · Pinball 3D</b>
-                <div><kbd>←</kbd> <kbd>→</kbd> flippers (L / R)</div>
+                <div><kbd>←</kbd> <kbd>→</kbd> flippers (o clic izq/der del ratón)</div>
+                <div><kbd>T</kbd> tilt (empuja la mesa — ¡sin pasarte!)</div>
                 <div>cámara "ojo de la bola" aleatoria</div>
             </div>
         </div>
@@ -259,19 +255,16 @@
             <b style="color:#5dffc8">flechas turbo</b>, pasa <b>rozando</b> las barreras (+25) y esquiva a los rivales
             fantasma (síguelos en el <b>minimapa</b>). Cambia de cámara con <b>V</b> o el botón 📷
             (persecución / dentro / frontal). Ir a fondo multiplica los puntos. Completa 2 vueltas para
-            pasar al nivel 3.
+            pasar al pinball.
             <br><br>
-            <b>Nivel 3 · Pinball</b> — una mesa moderna: <b>←</b> mueve el flipper izquierdo, <b>→</b> el
-            derecho (o los botones L / R en pantalla). Golpea los <b>bumpers</b> para sumar combo y
-            puntos, lanza la bola por las <b>rampas</b> (izquierda/derecha) para un bonus mayor —
-            completar 3 rampas sube el <b>multiplicador BONUS</b> (x2, x3) — y tumba las <b>3 dianas</b>
-            de arriba: el banco completo <b>desbloquea el Nivel 4</b>. No dejes que la bola caiga por el
-            hueco central o pierdes una vida.
-            <br><br>
-            <b>Nivel 4 · Pinball 3D</b> — la misma mesa pero en <b>3D de verdad</b> (WebGL): bumpers con
-            volumen, bola metálica con reflejos, luces y bloom. Mismos controles (<b>←</b> / <b>→</b>).
-            De vez en cuando, si la bola está lejos, la cámara salta a "ojo de la bola" un par de segundos.
-            Aquí sí, completar el banco da la <b>bola extra</b>.
+            <b>Nivel 4 · Pinball 3D</b> — una mesa en <b>3D de verdad</b> (WebGL): bumpers con volumen,
+            bola metálica con reflejos, luces y bloom. Mueve los flippers con <b>←</b> / <b>→</b> (o los
+            <b>botones izq/der del ratón</b>). Golpea los <b>bumpers</b> para sumar combo y puntos, lanza la
+            bola por las <b>rampas</b> (suben en 3D) para un bonus mayor — completar 3 rampas sube el
+            <b>multiplicador BONUS</b> (x2, x3) — y tumba las <b>3 dianas</b> de arriba: el banco completo da
+            una <b>bola extra</b>. <b>Tecla T</b> = tilt: empuja la mesa para salvar la bola… pero si te
+            pasas, ¡TILT! y pierdes el control. De vez en cuando la cámara salta a "ojo de la bola".
+            No dejes que la bola caiga por el hueco central o pierdes una vida.
             <br><br>
             Cada nivel tiene su propia música de 24s, generada en vivo: tu <b>combo</b> controla N (la densidad
             de rayos) — juega bien y la textura converge limpia; recibe un golpe y se rompe en polvo granular.
@@ -292,7 +285,6 @@
         <div class="train-grid">
             <button class="btn sec train-lvl" data-lvl="1">🚀 <b>Nivel 1</b><span>Espacio</span></button>
             <button class="btn sec train-lvl" data-lvl="2">🏍 <b>Nivel 2</b><span>Circuito neón 3D</span></button>
-            <button class="btn sec train-lvl" data-lvl="3">🕹 <b>Nivel 3</b><span>Pinball 2D</span></button>
             <button class="btn sec train-lvl" data-lvl="4">🪩 <b>Nivel 4</b><span>Pinball 3D</span></button>
         </div>
     </div>
@@ -681,6 +673,7 @@
         ball: null, flipLAng: 0, flipRAng: 0, ballLive: false, serveTtl: 0,
         pinMult: 1, pinRampCount: 0, extraBallUsed: false, pinTargetResetTtl: 0,
         ballCamTtl: 0, ballCamCd: 3, // nivel 4: cámara "ojo de la bola" temporal
+        tilt: 0, tiltLock: 0,       // nivel 4: medidor de tilt (T) y bloqueo si te pasas
         training: false, // modo entreno (saltar a un nivel): la puntuación NO cuenta
     };
     resizeCanvas();
@@ -703,7 +696,7 @@
         st.camMode = 0;
         st.ball = null; st.flipLAng = 0; st.flipRAng = 0; st.ballLive = false; st.serveTtl = 0;
         st.pinMult = 1; st.pinRampCount = 0; st.extraBallUsed = false; st.pinTargetResetTtl = 0;
-        st.ballCamTtl = 0; st.ballCamCd = 3; st.training = false;
+        st.ballCamTtl = 0; st.ballCamCd = 3; st.training = false; st.tilt = 0; st.tiltLock = 0;
         for (const t of pinTargets) t.alive = true;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
@@ -1204,6 +1197,7 @@
         st.flipLAng = pinLayout().restL; st.flipRAng = pinLayout().restR;
         st.ball = null; st.ballLive = false; st.serveTtl = 1.2;
         st.pinMult = 1; st.pinRampCount = 0; st.extraBallUsed = false; st.pinTargetResetTtl = 0;
+        st.tilt = 0; st.tiltLock = 0;
         for (const tg of pinTargets) tg.alive = true;
         $('stage').classList.remove('mode-pin');
         $('stage').classList.add('mode3d');
@@ -1243,6 +1237,7 @@
         else if (e.key === 'x') { if (!e.repeat) fireMissile(); }
         else if (e.key === 'c') { if (!e.repeat) useBomb(); }
         else if (e.key === 'v') { if (!e.repeat && st.level === 2) cycleCamera(); }
+        else if (e.key === 't') { if (!e.repeat && st.level === 4) nudgeTable(); }
         else if (e.key === 'h') { if (!e.repeat) toggleKeysSidebar(); }
         else if (e.key === 'z' || e.key === ' ') { fireBlaster(); } // mantener = autofuego (con cadencia)
         else if (e.key === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
@@ -2404,6 +2399,14 @@
             if (st.pinMult > 1) { g.shadowColor = '#ffd75d'; g.shadowBlur = 8 * k; }
             g.fillText(`BONUS x${st.pinMult}`, W / 2, H - 14 * k);
             g.shadowBlur = 0;
+            // Medidor de TILT (tecla T): sube al empujar, rojo si te pasas.
+            const bw = 120 * k, bx = W / 2 - bw / 2, by = 14 * k;
+            g.fillStyle = 'rgba(18,14,38,0.55)'; g.fillRect(bx, by, bw, 6 * k);
+            g.fillStyle = st.tiltLock > 0 ? '#ff466e' : (st.tilt > 0.7 ? '#ffb020' : '#5dffc8');
+            g.fillRect(bx, by, bw * (st.tiltLock > 0 ? 1 : st.tilt), 6 * k);
+            g.fillStyle = st.tiltLock > 0 ? '#ff8098' : 'rgba(180,200,220,0.7)';
+            g.font = `${Math.round(9 * k)}px monospace`;
+            g.fillText(st.tiltLock > 0 ? 'TILT' : 'T · tilt', W / 2, by + 16 * k);
         }
         drawFxOverlays(t, tint);
         g.restore();
@@ -2880,7 +2883,7 @@
             st.pos -= LAP_LEN;
             st.lap += 1;
             st.score += 250;
-            if (st.lap >= 2) { switchToLevel3(); return; }
+            if (st.lap >= 2) { switchToLevel4(); return; } // el circuito lleva directo al pinball 3D
             banner(`VUELTA ${st.lap + 1}`);
         }
         st.worldT = (wrapS(st.pos) / LAP_LEN) * TERRAIN_SECS; // sector = zona musical
@@ -3163,6 +3166,22 @@
         clearTimeout(pinFxT);
         pinFxT = setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 170);
     }
+    // Tilt / nudge (tecla T, solo nivel 4): empuja la mesa para salvar la bola —
+    // un impulso hacia arriba + sacudida. Pero cada empujón sube el medidor de
+    // tilt; si te pasas → ¡TILT! y los flippers quedan muertos hasta que la bola
+    // drene (como en una máquina real). El medidor baja solo con el tiempo.
+    function nudgeTable() {
+        if (st.level !== 4 || !st.playing || st.paused || st.tiltLock > 0 || !st.ballLive || !st.ball) return;
+        const b = st.ball;
+        b.vy -= 320;                          // empujón hacia arriba (salva la bola)
+        b.vx += (Math.random() - 0.5) * 260;  // y una sacudida lateral
+        st.shake = Math.max(st.shake, 0.5);
+        st.tilt = Math.min(1, st.tilt + 0.34);
+        pinHitFx(2);
+        vibrate(18);
+        if (st.tilt >= 1) { st.tiltLock = 1; banner('¡TILT!'); vibrate([60, 40, 120]); }
+        else banner('NUDGE');
+    }
     function bumperHit(bx, by, bp) {
         st.combo = Math.min(10, st.combo + 1);
         st.score += (30 + st.combo * 8) * st.pinMult;
@@ -3241,14 +3260,6 @@
     function bankCleared() {
         st.score += 500 * st.pinMult;
         pinHitFx(4);
-        // En el nivel 3 (2D), completar el banco DESBLOQUEA la mesa 3D (nivel 4).
-        if (st.level === 3) {
-            banner('¡BANCO COMPLETO! · MESA 3D →');
-            vibrate([30, 20, 30, 20, 80]);
-            updateHud();
-            switchToLevel4();
-            return;
-        }
         if (!st.extraBallUsed) {
             st.extraBallUsed = true;
             st.lives += 1;
@@ -3270,10 +3281,13 @@
             st.pinTargetResetTtl -= dt;
             if (st.pinTargetResetTtl <= 0) for (const t of pinTargets) t.alive = true;
         }
+        st.tilt = Math.max(0, st.tilt - dt * 0.25); // el medidor de tilt baja solo
         const flipRate = 20; // rad/s tope de giro (subida rápida, bajada por gravedad simulada igual)
         const prevFlipL = st.flipLAng, prevFlipR = st.flipRAng;
-        st.flipLAng = moveToward(st.flipLAng, keys.a ? Lay.activeL : Lay.restL, flipRate * dt);
-        st.flipRAng = moveToward(st.flipRAng, keys.b ? Lay.activeR : Lay.restR, flipRate * dt);
+        // Si has hecho TILT, los flippers quedan muertos (no responden).
+        const aOn = keys.a && st.tiltLock <= 0, bOn = keys.b && st.tiltLock <= 0;
+        st.flipLAng = moveToward(st.flipLAng, aOn ? Lay.activeL : Lay.restL, flipRate * dt);
+        st.flipRAng = moveToward(st.flipRAng, bOn ? Lay.activeR : Lay.restR, flipRate * dt);
         const angVelL = (st.flipLAng - prevFlipL) / dt, angVelR = (st.flipRAng - prevFlipR) / dt;
         st.worldT += (1 + st.combo * 0.15) * dt; // combo alto = zonas musicales pasan más rápido
 
@@ -3355,6 +3369,7 @@
             st.combo = Math.max(0, st.combo - 3);
             st.lives -= 1;
             st.pinMult = 1; st.pinRampCount = 0; // el multiplicador es por bola, no acumulado toda la partida
+            st.tilt = 0; st.tiltLock = 0;        // nueva bola → se limpia el tilt
             pinBurst(b.x, Lay.pivotY, [255, 80, 80], 18);
             vibrate([50, 30, 80]);
             updateHud();
