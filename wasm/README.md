@@ -287,8 +287,23 @@ Motor con paridad casi completa con la versión JS:
   en cuando, si la bola está lejos de los flippers, la cámara salta a montarse
   en la bola 2 s (con cooldown) — un subidón de velocidad divertido. El HUD
   (banner, combo, BONUS) se dibuja en el canvas 2D transparente por encima.
+  **Reflejos reales en la bola**: una `CubeCamera` captura la escena (bumpers,
+  rieles, mesa) desde la posición de la bola y alimenta su `envMap` cada 2
+  frames — se ven los bumpers reflejados de verdad en el metal. **Rampas 3D
+  con altura**: el tubo arquea hacia arriba y la bola sube y baja al
+  recorrerlo (misma curva de altura para tubo y bola).
+  **FX por RayDrone**: los golpes (bumper, slingshot, rampa, diana, banco) no
+  usan samples ni osciladores aparte — disparan un pulso de reflexiones en el
+  motor granular del worklet (la misma vía que misiles/bombas), así **toda la
+  música Y los efectos salen del mismo motor RayDrone**.
   **Botón "🎯 Entrenar"** en la portada: un modal con los 4 niveles para
-  saltar directo a cualquiera y practicarlo.
+  saltar directo a cualquiera y practicarlo — en modo entreno la **puntuación
+  NO se guarda** en el ranking (saltarse niveles sería trampa).
+  **Controles del pinball**: flechas ← → (N3 y N4) y también **botón
+  izquierdo/derecho del ratón** para cada flipper.
+  **Récords "leyenda"**: unas marcas base (p. ej. BRUZOS, THOR) se fusionan
+  siempre en el ranking (cliente y servidor, ordenadas y sin duplicar) como
+  marca a batir.
   **2 rampas** (izquierda/derecha): la trayectoria es un *path* de puntos en
   fracciones del tapete (sobrevive a un resize); al capturar la bola con
   velocidad ascendente suficiente cerca de la boca, viaja por el path a

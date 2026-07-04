@@ -681,6 +681,7 @@
         ball: null, flipLAng: 0, flipRAng: 0, ballLive: false, serveTtl: 0,
         pinMult: 1, pinRampCount: 0, extraBallUsed: false, pinTargetResetTtl: 0,
         ballCamTtl: 0, ballCamCd: 3, // nivel 4: cámara "ojo de la bola" temporal
+        training: false, // modo entreno (saltar a un nivel): la puntuación NO cuenta
     };
     resizeCanvas();
     for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
@@ -702,6 +703,7 @@
         st.camMode = 0;
         st.ball = null; st.flipLAng = 0; st.flipRAng = 0; st.ballLive = false; st.serveTtl = 0;
         st.pinMult = 1; st.pinRampCount = 0; st.extraBallUsed = false; st.pinTargetResetTtl = 0;
+        st.ballCamTtl = 0; st.ballCamCd = 3; st.training = false;
         for (const t of pinTargets) t.alive = true;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
@@ -758,6 +760,7 @@
     async function trainLevel(n) {
         hideTrain();
         await startRound();                 // arranca la partida (en nivel 1)
+        st.training = true;                 // modo entreno: la puntuación no se guarda
         if (n === 2) switchToLevel2();
         else if (n === 3) switchToLevel3();
         else if (n === 4) switchToLevel4();
@@ -793,6 +796,19 @@
             clearTimeout(timer);
         }
     }
+    // Récords "leyenda" que siempre aparecen como marca a batir (se fusionan
+    // con las puntuaciones reales, ordenados y sin duplicar). El servidor hace
+    // lo mismo en su GET, así salen también en el ranking global.
+    const SEED_SCORES = [
+        { n: 'BRUZOS', s: 13792, l: 1, d: 1 },
+        { n: 'THOR', s: 10230, l: 1, d: 2 },
+    ];
+    function mergeSeed(list) {
+        const merged = [...list, ...SEED_SCORES].sort((a, b) => b.s - a.s);
+        const seen = new Set(), out = [];
+        for (const e of merged) { const key = `${e.n}|${e.s}`; if (!seen.has(key)) { seen.add(key); out.push(e); } }
+        return out;
+    }
     const lb = {
         global: false,
         all() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || []; } catch (_) { return []; } },
@@ -816,7 +832,7 @@
             this.global = false;
             return localRes;
         },
-        topLocal(n) { return this.all().slice(0, n); },
+        topLocal(n) { return mergeSeed(this.all()).slice(0, n); },
         async top(n) {
             const remote = await fetchJSON(LB_API);
             if (remote && Array.isArray(remote.top)) { this.global = true; return remote.top.slice(0, n); }
@@ -1002,6 +1018,14 @@
         $('end-overlay').style.display = '';
         $('lb-position').textContent = '';
         const nick = getNick();
+        // Modo entreno (saltaste a un nivel): la puntuación NO se guarda — sería
+        // trampa. Se muestra el ranking pero sin enviar nada.
+        if (st.training) {
+            $('nick-form').style.display = 'none';
+            $('lb-position').textContent = '🎯 Modo entreno — la puntuación no cuenta para el ranking';
+            renderBoard($('lb-list'), nick);
+            return;
+        }
         if (st.score > 0 && !nick) {
             $('nick-form').style.display = '';
             $('lb-list').textContent = '';
@@ -1257,10 +1281,12 @@
     }
     let downT = 0, downX = 0, downY = 0;
     canvas.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
+        // No preventDefault en ratón: cortaría los eventos mousedown de
+        // compatibilidad (uno por botón) que usan los flippers en el pinball.
+        if (e.pointerType !== 'mouse') e.preventDefault();
         dragging = true;
         downT = performance.now(); downX = e.clientX; downY = e.clientY;
-        if (e.pointerType === 'mouse') fireBlaster(); // clic = disparo (el ratón no pilota: teclado)
+        if (e.pointerType === 'mouse') { if (st.level < 3) fireBlaster(); } // en pinball los botones = flippers (mousedown)
         else dragTo(e);
         capture(canvas, e);
     });
@@ -1274,6 +1300,18 @@
     });
     canvas.addEventListener('pointercancel', dragEnd);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Pinball (N3/N4): botón IZQUIERDO del ratón = flipper izquierdo, botón
+    // DERECHO = flipper derecho. (mouseup en window para soltar aunque el
+    // cursor salga del lienzo.)
+    canvas.addEventListener('mousedown', (e) => {
+        if (st.level < 3) return;
+        if (e.button === 0) keys.a = true;
+        else if (e.button === 2) { keys.b = true; e.preventDefault(); }
+    });
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 0) keys.a = false;
+        else if (e.button === 2) keys.b = false;
+    });
 
     // ── Cámara del circuito: persecución → dentro → frontal ─────────────────
     const CAM_NAMES = ['PERSECUCIÓN', 'DENTRO', 'FRONTAL'];
@@ -2122,6 +2160,7 @@
     // (la mesa yace en el plano XZ; el extremo de los flippers queda cerca de la
     // cámara y la cabecera al fondo). El eje Y es la altura sobre el tapete.
     const PIN_S = 0.05;
+    const RAMP_LIFT = 5.5; // cuánto sube la bola (y el tubo) en 3D al recorrer una rampa
     const w3x = (tx) => (tx - PW / 2) * PIN_S;
     const w3z = (ty) => (ty - PH / 2) * PIN_S;
     function makePinGridTex() {
@@ -2194,7 +2233,10 @@
         // ── Rampas (tubos de luz) ────────────────────────────────────────────
         const ramps = [];
         for (const [ramp, col] of [[Lay.rampL, 0xff3c96], [Lay.rampR, 0x5ac8ff]]) {
-            const pts = ramp.path.map((p) => toV(p, 1.1));
+            // El tubo ARCA hacia arriba en 3D (sube a un pico a mitad y baja),
+            // igual que la altura que tomará la bola al recorrerlo (render4).
+            const n = ramp.path.length;
+            const pts = ramp.path.map((p, i) => toV(p, 0.9 + RAMP_LIFT * Math.sin(Math.PI * i / (n - 1))));
             const cW = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
             const tube = new THREE.Mesh(
                 new THREE.TubeGeometry(cW, 60, 0.34, 8, false),
@@ -2248,8 +2290,15 @@
         // ── Bola metálica con reflejos ───────────────────────────────────────
         const ballMesh = new THREE.Mesh(
             new THREE.SphereGeometry(BALL_R * PIN_S, 28, 20),
-            new THREE.MeshStandardMaterial({ color: 0xdfe6ef, roughness: 0.12, metalness: 1.0, envMapIntensity: 1.3 }));
+            new THREE.MeshStandardMaterial({ color: 0xdfe6ef, roughness: 0.1, metalness: 1.0, envMapIntensity: 1.5 }));
         ballMesh.castShadow = true; scene.add(ballMesh);
+        // Reflejos REALES en la bola: una CubeCamera captura la escena (bumpers,
+        // rieles, mesa) desde la posición de la bola y alimenta su envMap, así se
+        // ven reflejados de verdad — no solo el entorno neón genérico.
+        const cubeRT = new THREE.WebGLCubeRenderTarget(128, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+        const cubeCam = new THREE.CubeCamera(0.1, 100, cubeRT);
+        scene.add(cubeCam);
+        ballMesh.material.envMap = cubeRT.texture;
 
         // ── Luces ────────────────────────────────────────────────────────────
         scene.add(new THREE.AmbientLight(0x404060, 0.8));
@@ -2272,7 +2321,7 @@
         composer.addPass(bloom);
         composer.addPass(new OP.OutputPass());
 
-        T4 = { scene, camera, composer, bloom, ballMesh, flipperL, flipperR, bumperMeshes, targetMeshes, ramps };
+        T4 = { scene, camera, composer, bloom, ballMesh, flipperL, flipperR, bumperMeshes, targetMeshes, ramps, cubeCam, cubeFrame: 0 };
         resize4();
     }
     function resize4() {
@@ -2287,10 +2336,12 @@
     function render4(t) {
         if (!T4) return;
         const Lay = pinLayout();
-        // Bola (o escondida si aún no está en juego).
+        // Bola (o escondida si aún no está en juego). En rampa, SUBE en 3D.
         if (st.ball) {
             T4.ballMesh.visible = true;
-            T4.ballMesh.position.set(w3x(st.ball.x), BALL_R * PIN_S, w3z(st.ball.y));
+            let by = BALL_R * PIN_S;
+            if (st.ball.onRamp) { const f = clamp(st.ball.onRamp.dist / st.ball.onRamp.total, 0, 1); by += RAMP_LIFT * Math.sin(Math.PI * f); }
+            T4.ballMesh.position.set(w3x(st.ball.x), by, w3z(st.ball.y));
         } else T4.ballMesh.visible = false;
         // Flippers: el ángulo 2D de la física → rotación Y del pivote.
         T4.flipperL.rotation.y = -st.flipLAng;
@@ -2328,6 +2379,16 @@
             T4.camera.position.set(sway, 30 + Math.cos(t * 0.4) * 0.3, w3z(PH) + 15);
             if (st.shake > 0) { T4.camera.position.x += (Math.random() - 0.5) * st.shake * 2; T4.camera.position.y += (Math.random() - 0.5) * st.shake * 2; }
             T4.camera.lookAt(0, -1, w3z(PH * 0.40));
+        }
+        // Reflejos de la bola: recapturamos la escena con la CubeCamera en su
+        // posición (cada 2 frames, y escondiéndola para que no se refleje a sí
+        // misma). Es lo que hace que se vean los bumpers reflejados en el metal.
+        T4.cubeFrame++;
+        if (st.ball && T4.ballMesh.visible && (T4.cubeFrame & 1) === 0) {
+            T4.cubeCam.position.copy(T4.ballMesh.position);
+            T4.ballMesh.visible = false;
+            T4.cubeCam.update(T3.renderer, T4.scene);
+            T4.ballMesh.visible = true;
         }
         T4.composer.render();
     }
@@ -3085,17 +3146,31 @@
                 st.score += 25 * st.pinMult;
                 s.flash = 0.15;
                 pinBurst(cx, cy, [255, 200, 80], 8);
+                pinHitFx(2);
                 vibrate(10);
                 updateHud();
             }
         }
     }
+    // FX sonoro de los golpes del pinball — SALE DE RAYDRONE: no es un sample ni
+    // un oscilador aparte, sino un pulso de reflexiones (bounces) en el motor
+    // granular del worklet, la misma vía que usan misiles/bombas en los otros
+    // niveles. Así toda la música Y los efectos vienen del mismo motor.
+    let pinFxT = 0;
+    function pinHitFx(strength) {
+        if (!node) return;
+        node.port.postMessage({ type: 'fx', aber: 0, bounces: strength, refl: 0.62, feedback: 0.12 });
+        clearTimeout(pinFxT);
+        pinFxT = setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 170);
+    }
     function bumperHit(bx, by, bp) {
         st.combo = Math.min(10, st.combo + 1);
         st.score += (30 + st.combo * 8) * st.pinMult;
         st.shimmer = Math.max(st.shimmer, 0.35);
+        st.pitchDip = Math.max(st.pitchDip, 0.18); // un pellizco de tono → "pop" del bumper
         bp.flash = 0.15;
         pinBurst(bx, by, bp.color, 10);
+        pinHitFx(2);
         vibrate(12);
         updateHud();
     }
@@ -3134,6 +3209,7 @@
         st.combo = Math.min(10, st.combo + 1);
         st.score += 150 * st.pinMult;
         st.shimmer = Math.max(st.shimmer, 0.5);
+        pinHitFx(3);
         banner(which === 'L' ? '¡RAMPA IZQUIERDA! +150' : '¡RAMPA DERECHA! +150');
         vibrate(20);
         updateHud();
@@ -3157,12 +3233,14 @@
         st.combo = Math.min(10, st.combo + 1);
         st.score += 80 * st.pinMult;
         pinBurst(p.x, p.y, [140, 220, 255], 8);
+        pinHitFx(2);
         vibrate(10);
         updateHud();
         if (pinTargets.every((x) => !x.alive)) bankCleared();
     }
     function bankCleared() {
         st.score += 500 * st.pinMult;
+        pinHitFx(4);
         // En el nivel 3 (2D), completar el banco DESBLOQUEA la mesa 3D (nivel 4).
         if (st.level === 3) {
             banner('¡BANCO COMPLETO! · MESA 3D →');
@@ -3946,6 +4024,7 @@
         goLevel3: switchToLevel3,
         goLevel4: switchToLevel4,
         get t4() { return T4; },
+        get keys() { return keys; },
         pinLayout,
         pinBumpers,
         pinTargets,

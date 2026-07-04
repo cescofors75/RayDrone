@@ -18,6 +18,20 @@ const KEY = 'raydrone:scores';
 const MAX_KEEP = 200; // cuantas entradas se conservan en el almacen
 const TOP_N = 10;     // cuantas se devuelven al pedir el ranking
 
+// Records "leyenda": marcas base que siempre aparecen en el ranking (se
+// fusionan con las reales de Upstash, ordenadas y sin duplicar). Mismo set
+// que el cliente para que local y global coincidan.
+const SEED = [
+    { n: 'BRUZOS', s: 13792, l: 1, d: 1 },
+    { n: 'THOR', s: 10230, l: 1, d: 2 },
+];
+function mergeSeed(list) {
+    const merged = [...list, ...SEED].sort((a, b) => b.s - a.s);
+    const seen = new Set(), out = [];
+    for (const e of merged) { const k = `${e.n}|${e.s}`; if (!seen.has(k)) { seen.add(k); out.push(e); } }
+    return out;
+}
+
 // Ejecuta una tanda de comandos Redis via el endpoint /pipeline de Upstash
 // (varios comandos en un unico viaje de red) y devuelve sus resultados en orden.
 async function redisPipeline(commands) {
@@ -61,8 +75,11 @@ module.exports = async (req, res) => {
 
     try {
         if (req.method === 'GET') {
-            const [entries] = await redisPipeline([['ZREVRANGE', KEY, 0, TOP_N - 1]]);
-            const top = (entries || []).map((m) => { try { return JSON.parse(m); } catch (_) { return null; } }).filter(Boolean);
+            // Se piden más de las que se devuelven porque al fusionar los records
+            // "leyenda" y deduplicar podría recortarse el top real.
+            const [entries] = await redisPipeline([['ZREVRANGE', KEY, 0, TOP_N + SEED.length]]);
+            const real = (entries || []).map((m) => { try { return JSON.parse(m); } catch (_) { return null; } }).filter(Boolean);
+            const top = mergeSeed(real).slice(0, TOP_N);
             res.status(200).json({ top });
             return;
         }
