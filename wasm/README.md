@@ -284,11 +284,26 @@ Motor con paridad casi completa con la versión JS:
   visualmente) y suman combo/puntos; tumbar las 3 da un bonus grande y, la
   **primera vez en la partida**, una **bola extra** (vida +1) — repetir el
   banco después ya no la vuelve a dar, solo el bonus; las dianas se
-  reinician solas tras un par de segundos. **Tapete moderno**: gradiente de
-  fondo con viñeta radial, muros con acabado metálico + brillo de neón a
-  juego con la zona, rampas como tubos de luz (glow + núcleo brillante),
-  flippers con gradiente de caucho rojo y tapa de pivote cromada, bola con
-  degradado metálico y estela de movimiento que se desvanece.
+  reinician solas tras un par de segundos. **Flippers largos** (geometría
+  proporcional al ancho de la mesa, con barrido simétrico de ±20° en vez de
+  un giro de ~90° para que quepan sin salirse del lienzo por arriba al
+  levantarse): se juntan cerca del centro, dejando solo un hueco de desagüe
+  razonable — antes eran cortos y dejaban casi toda la mesa sin guardia.
+  **Rieles guía** cierran el hueco entre cada muro lateral y el pivote de su
+  flipper (sin ellos la bola se colaba por fuera del alcance del flipper sin
+  tocar nada), y **2 slingshots** (cuñas encima de cada flipper) rebotan con
+  un impulso extra al golpearlas, como en una mesa real. Toda colisión que
+  puede repetirse frame a frame (bumpers, rieles, slingshots) solo aplica su
+  reflejo/impulso cuando la bola realmente se acerca (`vn<0`) — aplicarlo
+  siempre que hay solape (p.ej. la bola apoyada encima) inyectaba energía sin
+  límite y podía disparar la velocidad lo bastante como para atravesar un
+  muro en un solo paso de física. **Tapete moderno estilo neón**: gradiente
+  de fondo con viñeta radial, suelo de rejilla tipo Tron, muros con acabado
+  metálico + brillo de neón a juego con la zona, rampas como tubos de luz
+  (glow + núcleo brillante), **bumpers tipo "seta"** cada uno con su propio
+  color de neón (verde/amarillo/azul/magenta) en vez de compartir el tinte
+  de zona, flippers con gradiente de caucho rojo y tapa de pivote cromada,
+  bola con degradado metálico y estela de movimiento que se desvanece.
   **Modal "Cómo jugar"**: la portada queda limpia (título, tagline y
   botones); las instrucciones completas viven en un modal aparte que se
   abre solo, una vez, en la primera visita (recordado en localStorage) y

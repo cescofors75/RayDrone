@@ -544,10 +544,10 @@
     // sobreviven a un resize sin desincronizarse. `flash` es visual (destello
     // al golpear), no afecta a la física.
     const pinBumpers = [
-        { fx: 0.30, fy: 0.42, flash: 0 },
-        { fx: 0.50, fy: 0.34, flash: 0 },
-        { fx: 0.70, fy: 0.42, flash: 0 },
-        { fx: 0.50, fy: 0.58, flash: 0 },
+        { fx: 0.30, fy: 0.42, flash: 0, color: [80, 230, 120] },
+        { fx: 0.50, fy: 0.34, flash: 0, color: [255, 210, 60] },
+        { fx: 0.70, fy: 0.42, flash: 0, color: [90, 180, 255] },
+        { fx: 0.50, fy: 0.58, flash: 0, color: [255, 80, 180] },
     ];
     // Banco de dianas (drop targets): tumbarlas todas da un bonus grande y,
     // la primera vez en la partida, una bola extra — se reinician solas tras
@@ -556,6 +556,13 @@
         { fx: 0.40, fy: 0.09, alive: true, flash: 0 },
         { fx: 0.50, fy: 0.09, alive: true, flash: 0 },
         { fx: 0.60, fy: 0.09, alive: true, flash: 0 },
+    ];
+    // Slingshots: cuñas encima de cada flipper que rebotan con un impulso
+    // extra al golpearlas (posición relativa a su pivote, recalculada cada
+    // frame; solo `flash` persiste para el destello y el cooldown).
+    const pinSlings = [
+        { side: 'L', flash: 0 },
+        { side: 'R', flash: 0 },
     ];
 
     // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
@@ -988,18 +995,29 @@
     // tramo. Ambas mesas se calculan aquí para que sobrevivan a un resize.
     function pinLayout() {
         const margin = 22 * k, top = 30 * k;
-        const gapHalf = W * 0.11, flipLen = 62 * k;
-        const pivotY = H - 34 * k;
         const left = margin, right = W - margin;
+        const tableW = right - left;
+        // Barrido simétrico de ±20° (en vez de un giro dramático de ~90°): así
+        // el flipper puede ser mucho más largo — llega cerca del centro, como
+        // una mesa real — sin salirse del lienzo por arriba al levantarse. El
+        // presupuesto vertical disponible (altura de la mesa) limita cuánto,
+        // así que se usa lo que pida el ancho SIN pasarse de ese límite.
+        const restA = 0.35, activeA = -0.35;
+        const bottomPad = 20 * k, topPad = 20 * k;
+        const vBudget = H - top - bottomPad - topPad;
+        const swingV = Math.sin(restA) + Math.abs(Math.sin(activeA));
+        const flipLen = clamp(tableW * 0.30, 60 * k, vBudget / swingV);
+        const pivotY = H - bottomPad - flipLen * Math.sin(restA);
+        const outlane = tableW * 0.13;
         const fx = (f) => left + f * (right - left);
         const fy = (f) => top + f * (pivotY - top);
-        const pivotL = { x: W * 0.5 - gapHalf - flipLen * 0.15, y: pivotY };
-        const pivotR = { x: W * 0.5 + gapHalf + flipLen * 0.15, y: pivotY };
+        const pivotL = { x: left + outlane, y: pivotY };
+        const pivotR = { x: right - outlane, y: pivotY };
         return {
-            margin, top, gapHalf, flipLen, pivotY, left, right, fx, fy,
+            margin, top, flipLen, pivotY, left, right, fx, fy,
             pivotL, pivotR,
-            restL: 0.45, activeL: -1.0,
-            restR: Math.PI - 0.45, activeR: Math.PI + 1.0,
+            restL: restA, activeL: activeA,
+            restR: Math.PI - restA, activeR: Math.PI - activeA,
             // Rieles guía: cierran el hueco entre cada muro lateral y el pivote de
             // su flipper — sin esto, cualquier bola que caiga fuera del arco del
             // flipper se cuela sin tocar nada (el hueco era casi todo el ancho de
@@ -2663,12 +2681,49 @@
         const vn = b.vx * nx + b.vy * ny;
         if (vn < 0) { b.vx -= (1 + restitution) * vn * nx; b.vy -= (1 + restitution) * vn * ny; }
     }
+    // Slingshots: cuña angulada justo encima de cada flipper — como un riel
+    // estático, pero con un impulso propio (y solo cuando vn<0: el mismo
+    // cuidado que en los bumpers para no inyectar energía sin límite).
+    function slingPos(s, Lay) {
+        const pivot = s.side === 'L' ? Lay.pivotL : Lay.pivotR;
+        const sign = s.side === 'L' ? 1 : -1;
+        return {
+            p1: { x: pivot.x - sign * Lay.flipLen * 0.10, y: pivot.y - Lay.flipLen * 0.75 },
+            p2: { x: pivot.x + sign * Lay.flipLen * 0.55, y: pivot.y - Lay.flipLen * 0.25 },
+        };
+    }
+    function collideSlingshot(b, R, s, Lay) {
+        const seg = slingPos(s, Lay), p1 = seg.p1, p2 = seg.p2;
+        const dx = p2.x - p1.x, dy = p2.y - p1.y, segLen2 = dx * dx + dy * dy;
+        let tp = segLen2 > 0 ? ((b.x - p1.x) * dx + (b.y - p1.y) * dy) / segLen2 : 0;
+        tp = clamp(tp, 0, 1);
+        const cx = p1.x + dx * tp, cy = p1.y + dy * tp;
+        const ddx = b.x - cx, ddy = b.y - cy, dist = Math.hypot(ddx, ddy);
+        const minDist = R + 4 * k;
+        if (dist >= minDist || dist < 1e-6) return;
+        const nx = ddx / dist, ny = ddy / dist;
+        b.x += nx * (minDist - dist); b.y += ny * (minDist - dist);
+        const vn = b.vx * nx + b.vy * ny;
+        if (vn < 0) {
+            b.vx -= (1 + 0.6) * vn * nx; b.vy -= (1 + 0.6) * vn * ny;
+            const kick = 320 * k;
+            b.vx += nx * kick; b.vy += ny * kick;
+            if (s.flash <= 0) {
+                st.combo = Math.min(10, st.combo + 1);
+                st.score += 25 * st.pinMult;
+                s.flash = 0.15;
+                burst(cx, cy, [255, 200, 80], 8);
+                vibrate(10);
+                updateHud();
+            }
+        }
+    }
     function bumperHit(bx, by, bp) {
         st.combo = Math.min(10, st.combo + 1);
         st.score += (30 + st.combo * 8) * st.pinMult;
         st.shimmer = Math.max(st.shimmer, 0.35);
         bp.flash = 0.15;
-        burst(bx, by, [255, 120, 150], 10);
+        burst(bx, by, bp.color, 10);
         vibrate(12);
         updateHud();
     }
@@ -2752,6 +2807,7 @@
         const Lay = pinLayout();
         for (const bp of pinBumpers) bp.flash = Math.max(0, bp.flash - dt);
         for (const t of pinTargets) t.flash = Math.max(0, t.flash - dt);
+        for (const s of pinSlings) s.flash = Math.max(0, s.flash - dt);
         if (st.pinTargetResetTtl > 0) {
             st.pinTargetResetTtl -= dt;
             if (st.pinTargetResetTtl <= 0) for (const t of pinTargets) t.alive = true;
@@ -2820,6 +2876,7 @@
         collideFlipper(b, R, Lay.pivotR, st.flipRAng, angVelR, Lay.flipLen);
         collideSegment(b, R, Lay.guideL.p1, Lay.guideL.p2, 0.55);
         collideSegment(b, R, Lay.guideR.p1, Lay.guideR.p2, 0.55);
+        for (const s of pinSlings) collideSlingshot(b, R, s, Lay);
         st.score += 4 * dt; // puntos por tiempo en juego (float, se redondea al mostrar)
         if (b.y - R > H + 8 * k) {
             st.ballLive = false;
@@ -3131,6 +3188,15 @@
         vig.addColorStop(1, 'rgba(0,0,0,0.45)');
         g.fillStyle = vig;
         g.fillRect(-20, -20, W + 40, H + 40);
+        // Suelo de rejilla (Tron), a juego con el resto del juego: más tenue
+        // hacia arriba para dar sensación de profundidad sin competir con la
+        // mesa en sí.
+        g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},0.14)`;
+        g.lineWidth = 1 * k;
+        g.beginPath();
+        for (let x = Lay.left; x <= Lay.right; x += 34 * k) { g.moveTo(x, Lay.top); g.lineTo(x, H); }
+        for (let y = Lay.top; y <= H; y += 26 * k) { g.moveTo(Lay.left, y); g.lineTo(Lay.right, y); }
+        g.stroke();
         // Rampas (tubos de luz, dibujadas antes que el resto para que quede debajo)
         drawRampTube(Lay.rampL.path, tint);
         drawRampTube(Lay.rampR.path, [90, 200, 255]);
@@ -3156,6 +3222,15 @@
             g.lineWidth = 1.6 * k;
             g.stroke();
         }
+        // Slingshots: cuña naranja/blanca con destello al golpear.
+        for (const s of pinSlings) {
+            const seg = slingPos(s, Lay);
+            const glow = s.flash > 0 ? s.flash / 0.15 : 0;
+            g.strokeStyle = glow > 0 ? '#fff4d6' : 'rgba(255,180,60,0.85)';
+            g.lineWidth = (9 + glow * 4) * k;
+            g.lineCap = 'round';
+            g.beginPath(); g.moveTo(seg.p1.x, seg.p1.y); g.lineTo(seg.p2.x, seg.p2.y); g.stroke();
+        }
         // Dianas (drop targets): iluminadas si están en pie, apagadas si caídas
         for (const tg of pinTargets) {
             const p = targetPos(tg, Lay), hw = 16 * k, hh = 9 * k;
@@ -3168,21 +3243,22 @@
             else g.rect(p.x - hw, p.y - hh, hw * 2, hh * 2);
             g.fill(); g.stroke();
         }
-        // Bumpers: esfera brillante con destello de color al golpear (si no, se
-        // funden con el fondo teñido de la zona y no se distinguen de la mesa).
+        // Bumpers tipo "seta" de neón: cada uno con su propio color (no solo el
+        // tinte de zona) para que se lean como luces distintas sobre la mesa,
+        // con halo + destello al golpear.
         for (const bp of pinBumpers) {
-            const p = bumperPos(bp, Lay), rad = 22 * k;
+            const p = bumperPos(bp, Lay), rad = 22 * k, c = bp.color;
             const glow = bp.flash > 0 ? bp.flash / 0.15 : 0;
-            if (glow > 0) {
-                g.beginPath(); g.arc(p.x, p.y, rad + 7 * k * glow, 0, 6.283);
-                g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${glow * 0.7})`;
-                g.lineWidth = 3 * k;
-                g.stroke();
-            }
+            g.beginPath(); g.arc(p.x, p.y, rad + (5 + glow * 6) * k, 0, 6.283);
+            g.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.35 + glow * 0.5})`;
+            g.lineWidth = (3 + glow * 2) * k;
+            g.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`; g.shadowBlur = (6 + glow * 8) * k;
+            g.stroke();
+            g.shadowBlur = 0;
             const grad = g.createRadialGradient(p.x - rad * 0.3, p.y - rad * 0.3, rad * 0.1, p.x, p.y, rad);
-            grad.addColorStop(0, 'rgba(255,255,255,0.9)');
-            grad.addColorStop(0.4, `rgba(${tint[0]},${tint[1]},${tint[2]},0.95)`);
-            grad.addColorStop(1, 'rgba(20,12,30,0.95)');
+            grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+            grad.addColorStop(0.4, `rgba(${c[0]},${c[1]},${c[2]},0.95)`);
+            grad.addColorStop(1, 'rgba(15,12,24,0.95)');
             g.beginPath(); g.arc(p.x, p.y, rad, 0, 6.283);
             g.fillStyle = grad;
             g.fill();
@@ -3386,6 +3462,7 @@
         pinLayout,
         pinBumpers,
         pinTargets,
+        pinSlings,
         spawnAhead(type) {
             if (st.level === 1) {
                 if (type === 'rock') st.asteroids.push({ x: SHIP_X + 200 * k, y: st.shipY, r: 16 * k, rot: 0, vr: 0 });
