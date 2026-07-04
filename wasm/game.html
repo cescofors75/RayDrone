@@ -1502,14 +1502,25 @@
             scene.add(new THREE.Points(gsp, new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, sizeAttenuation: false, fog: false })));
         }
         const winTex = makeWindowsTex();
+        // Radio del anillo de skyline: antes era un número fijo (820-1140) centrado
+        // en (250,230), calibrado para el trazado viejo y mucho más pequeño — con
+        // el nuevo (2.5× más largo) el anillo caía ENCIMA de varios tramos de la
+        // pista. Ahora se mide la distancia real máxima del trazado a su centro y
+        // el anillo se pone bien lejos de eso, sea cual sea el tamaño del circuito.
+        let trackMaxR = 0;
+        for (let i = 0; i < 128; i++) {
+            const d = curve.getPointAt(i / 128).distanceTo(trackCentroid);
+            if (d > trackMaxR) trackMaxR = d;
+        }
+        const skyR0 = trackMaxR + 260;
         for (let i = 0; i < 40; i++) {
             const a = (i / 40) * Math.PI * 2;
-            const r = 820 + Math.random() * 320;
+            const r = skyR0 + Math.random() * 320;
             const hgt = 50 + Math.random() * 130;
             const b = new THREE.Mesh(
                 new THREE.BoxGeometry(46 + Math.random() * 50, hgt, 46 + Math.random() * 50),
-                new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x223038, emissiveMap: winTex }));
-            b.position.set(250 + Math.cos(a) * r, hgt / 2 - 1, 230 + Math.sin(a) * r);
+                new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x2e3f52, emissiveMap: winTex }));
+            b.position.set(trackCentroid.x + Math.cos(a) * r, hgt / 2 - 1, trackCentroid.z + Math.sin(a) * r);
             scene.add(b);
         }
 
@@ -1544,7 +1555,7 @@
             };
             const N_BLD = Math.max(90, Math.round(LAP_LEN / 26)); // escala con la vuelta (antes: 90 fijo)
             const bldGeo = new THREE.BoxGeometry(1, 1, 1);
-            const bldMat = new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x223038, emissiveMap: winTex });
+            const bldMat = new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x2e3f52, emissiveMap: winTex });
             const bld = new THREE.InstancedMesh(bldGeo, bldMat, N_BLD);
             const M4 = new THREE.Matrix4(), Q0 = new THREE.Quaternion();
             const S3 = new THREE.Vector3(), P3 = new THREE.Vector3();
@@ -1718,7 +1729,7 @@
         }
         scene.add(kart);
 
-        const hemi = new THREE.HemisphereLight(0x9a6cff, 0x1a0c30, 1.25);
+        const hemi = new THREE.HemisphereLight(0x9a6cff, 0x241640, 1.9); // más luz de relleno: se veía muy oscuro
         scene.add(hemi);
         const sunDir = new THREE.Vector3(0.4, 0.5, -1).normalize();
         const sunLight = new THREE.DirectionalLight(0xff9a5a, 1.1);
