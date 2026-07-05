@@ -87,7 +87,7 @@ module.exports = async (req, res) => {
         if (req.method === 'POST') {
             const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
             const score = Math.max(0, Math.min(999999, Math.floor(Number(body.score))));
-            const level = (body.level === 2 || body.level === 3) ? body.level : 1;
+            const level = (body.level === 2 || body.level === 3 || body.level === 4) ? body.level : 1;
             if (!Number.isFinite(score)) { res.status(400).json({ error: 'score invalido' }); return; }
             const nick = sanitizeNick(body.nick);
             const entry = { n: nick, s: score, l: level, d: Date.now() };

@@ -142,9 +142,12 @@ Motor con paridad casi completa con la versión JS:
   El estimador JS se conserva solo para el A/B audible.
 - ✅ **RayRunner (`game.html`)**: arcade cuya banda sonora la renderiza
   RayDrone en vivo — la demo de "audio adaptativo para videojuegos". El flujo
-  es Nivel 1 (espacio) → Nivel 2 (circuito neón 3D) → **Nivel 4 (pinball 3D)**
-  (el antiguo pinball 2D, "nivel 3", se retiró; el código de render 2D queda
-  como referencia pero ya no está en el flujo).
+  es Nivel 1 (espacio) → Nivel 2 (circuito neón, de noche) → **Nivel 3 (el
+  mismo circuito, pero de día y en sentido inverso)** → Nivel 4 (pinball 3D).
+  El antiguo pinball 2D que ocupaba el nivel 3 se retiró; su física de bola
+  (`stepLevel3`, `pinLayout`…) sigue viva — ahora la usa en exclusiva el nivel
+  4 — pero su *render* 2D (`drawPinball` y ayudantes de proyección) ya no
+  está en el flujo y queda sin usar en el código.
   Nivel 1 (nave espacial, lateral), Nivel 2 (**Circuito Neón**: un circuito
   cerrado **3D de verdad** — WebGL con **Three.js vendorizado** en
   `vendor/` (sin CDN, sigue funcionando offline; el motor de audio continúa
@@ -258,27 +261,29 @@ Motor con paridad casi completa con la versión JS:
   vez de usar recuentos fijos. **Sidebar de teclas** (tecla H o botón ⌨):
   panel semi-transparente (50% de opacidad, no tapa el juego) con todos
   los controles de los tres niveles.
-  **Nivel 3 (Pinball)**: tras completar 2 vueltas al circuito, la partida
-  pasa a una mesa de pinball clásica en el mismo canvas 2D del Nivel 1 (sin
-  WebGL). Física con **paso fijo** igual que el resto del juego: gravedad,
-  muros laterales/superior, 4 bumpers esféricos con brillo especular y
-  destello de color al golpear (combo + puntos + impulso), y **2 flippers**
-  (← / → o los botones L/R en pantalla) simulados como un segmento rígido
-  girando sobre su pivote — la colisión bola-flipper usa la **velocidad
-  angular real** de la paleta en el punto de contacto (v = ω × r), así un
-  flipper "flicado" en el momento justo golpea mucho más fuerte que uno ya
-  levantado y quieto, sin necesidad de una constante de "impulso" inventada.
-  Sin muro inferior: el hueco entre flippers es el desagüe — si la bola cae
-  ahí (o se les escapa a los lados) se pierde una vida y se sirve una bola
-  nueva; a la tercera, fin de partida como en los otros niveles (mismo
-  `endRound()`, mismo ranking). Su propio sample de 24s/4 zonas (arranque
-  arcade → bumper blitz → tilt eléctrico → jackpot neón, chiptune con ondas
-  cuadradas) avanza más rápido cuanto más alto esté el combo.
-  **Nivel 4 (Pinball 3D)**: al completar el banco de dianas en el nivel 3 se
-  **desbloquea la misma mesa pero en 3D de verdad** (WebGL/Three.js). La
-  jugada clave: **reutiliza exactamente la física 2D del nivel 3** (la bola
-  se mueve en un plano → ya es 2D) y solo cambia el *render* a 3D —
-  `stepLevel3` sirve para N3 y N4, así la jugabilidad es idéntica y probada.
+  **Nivel 3 (circuito de día, sentido inverso)**: tras completar 2 vueltas
+  al circuito neón nocturno, la partida no salta al pinball todavía — antes
+  hay una segunda vuelta por la MISMA escena 3D (ni un solo mesh se
+  reconstruye: asfalto, edificios, pilones, túnel, carteles… todo se reutiliza
+  tal cual), pero recorrida **en sentido inverso** y bajo un **cielo de día**.
+  El sentido inverso no duplica el trazado ni la física: un flag (`st.trackRev`)
+  y tres funciones puente (`curveF`/`curvePt`/`curveTan`/`curveK`) reinterpretan
+  la MISMA curva Catmull-Rom leyéndola al revés — posición, tangente (rumbo) y
+  curvatura (para el banking/centrífuga) se recalculan coherentemente, así que
+  el manillar, la cámara, los rivales fantasma, los turbo pads y el minimapa
+  quedan bien orientados sin tocar la geometría estática. El día no es solo un
+  cambio de fondo: cielo y sol cambian de textura (gradiente azul/blanco en vez
+  de morado nocturno), la luz hemisférica y el sol direccional cambian de
+  color e intensidad, las estrellas se ocultan, y el bloom baja su intensidad
+  base (el neón no necesita tanto halo a plena luz). Mismas armas, mismo
+  acelerador/freno, misma cámara de 3 vistas, mismo minimapa — es el nivel 2
+  con otra luz y el volante al revés, no un nivel nuevo que aprender.
+  **Nivel 4 (Pinball 3D)**: al completar 2 vueltas del nivel 3 se pasa al
+  pinball, ahora **en 3D de verdad** (WebGL/Three.js). La jugada clave:
+  **reutiliza exactamente la física 2D** que tenía el pinball original (la
+  bola se mueve en un plano → ya es 2D) y solo cambia el *render* a 3D —
+  `stepLevel3` (nombre heredado de cuando el pinball vivía en el nivel 3) es
+  hoy la física exclusiva del nivel 4.
   La escena (`ensurePinball3D`/`T4`) **reutiliza el mismo renderer WebGL** que
   el nivel 2 (un único contexto): tapete con rejilla, muros y rampas como
   tubos neón (magenta/cian), 4 bumpers con volumen (cilindro + cúpula
@@ -340,9 +345,11 @@ Motor con paridad casi completa con la versión JS:
   muro en un solo paso de física — además, a alta velocidad la bola avanza
   en **subpasos** de como mucho un radio, así ninguna colisión se "salta".
   **Render en perspectiva + lienzo vertical** (lo que la hace parecer una
-  mesa de verdad y no un dibujo plano): en el nivel 3 el lienzo pasa a
-  **retrato** (clase `mode-pin`, `aspect-ratio 2/3`) para que la mesa llene
-  el marco como una máquina real. La física corre en un **espacio de mesa**
+  mesa de verdad y no un dibujo plano): el pinball 2D original ponía el
+  lienzo en **retrato** (clase `mode-pin`, `aspect-ratio 2/3`, hoy sin usar
+  tras el cambio de nivel — el nivel 4 usa su propio retrato en 3D,
+  `mode-pin3d`) para que la mesa llenase el marco como una máquina real. La
+  física corre en un **espacio de mesa**
   propio, vertical y de resolución fija (PW×PH unidades), y el dibujo la
   **proyecta** en un trapecio que se estrecha arriba (lejos) y se ensancha
   abajo (cerca), con cabinet magenta/cian a los lados, arco superior,

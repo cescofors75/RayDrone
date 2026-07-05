@@ -24,8 +24,9 @@
         #game { position:relative; z-index:1; }
         #stage.mode3d #game3d { display:block; }
         #stage.mode3d #game { background:transparent; border-color:transparent; }
-        /* Nivel 3 (pinball): lienzo VERTICAL (retrato) para que la mesa llene el
-           marco como una mesa real, en vez de un sliver en un lienzo apaisado. */
+        /* .mode-pin: pinball 2D en perspectiva (lienzo retrato). El nivel 3 ya no
+           usa esta clase (ahora es el circuito de día invertido, con mode3d) —
+           queda sin usar tras el cambio, tal como drawPinball()/pinLayout() 2D. */
         #stage.mode-pin #game { width:auto; height:min(82vh, 720px); aspect-ratio:2 / 3;
                                 margin-inline:auto; background:#04030a; }
         /* Nivel 4 (pinball 3D): lienzo VERTICAL (retrato), igual que el 2D, para
@@ -296,7 +297,8 @@
         <div class="how" style="font-size:0.82rem; margin-bottom:14px;">Salta directo a cualquier nivel para practicarlo.</div>
         <div class="train-grid">
             <button class="btn sec train-lvl" data-lvl="1">🚀 <b>Nivel 1</b><span>Espacio</span></button>
-            <button class="btn sec train-lvl" data-lvl="2">🏍 <b>Nivel 2</b><span>Circuito neón 3D</span></button>
+            <button class="btn sec train-lvl" data-lvl="2">🏍 <b>Nivel 2</b><span>Circuito neón (noche)</span></button>
+            <button class="btn sec train-lvl" data-lvl="3">☀️ <b>Nivel 3</b><span>Mismo circuito, de día e inverso</span></button>
             <button class="btn sec train-lvl" data-lvl="4">🪩 <b>Nivel 4</b><span>Pinball 3D</span></button>
         </div>
     </div>
@@ -687,12 +689,34 @@
         ballCamTtl: 0, ballCamCd: 3, // nivel 4: cámara "ojo de la bola" temporal
         tilt: 0, tiltLock: 0,       // nivel 4: medidor de tilt (T) y bloqueo si te pasas
         training: false, // modo entreno (saltar a un nivel): la puntuación NO cuenta
+        trackRev: false, // nivel 3: mismo circuito que el 2, recorrido en sentido inverso
     };
     resizeCanvas();
     for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
     const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (nivel 2); a/b = flippers en nivel 3
 
-    const zones = () => st.level === 1 ? ZONES_SPACE : st.level === 2 ? ZONES_NEON : ZONES_PINBALL;
+    const zones = () => st.level === 1 ? ZONES_SPACE : (st.level === 2 || st.level === 3) ? ZONES_NEON : ZONES_PINBALL;
+
+    // Nivel 3 = el mismo circuito del nivel 2, recorrido en sentido inverso.
+    // La geometría (asfalto, edificios, pilones...) no cambia — solo la MANERA
+    // de leer la curva: convertimos la fracción LÓGICA (0..1, siempre creciente
+    // en el sentido en que se conduce, venga de st.pos o de un "s" cualquiera)
+    // en el parámetro FÍSICO real de la curva, invertido si st.trackRev. Así
+    // todo el código que ya sabía leer "un punto/tangente/curvatura a una
+    // fracción dada" sigue funcionando igual, sin duplicar ninguna fórmula.
+    function curveF(f) {
+        const g = ((f % 1) + 1) % 1;
+        return st.trackRev ? (1 - g + 1) % 1 : g;
+    }
+    function curvePt(f) { return T3.curve.getPointAt(curveF(f)); }
+    function curveTan(f) {
+        const Tg = T3.curve.getTangentAt(curveF(f));
+        return st.trackRev ? Tg.multiplyScalar(-1) : Tg;
+    }
+    function curveK(f) {
+        const idx = Math.floor(curveF(f) * curvK.length) % curvK.length;
+        return st.trackRev ? -curvK[idx] : curvK[idx];
+    }
 
     function resetRound() {
         st.level = 1;
@@ -709,6 +733,7 @@
         st.ball = null; st.flipLAng = 0; st.flipRAng = 0; st.ballLive = false; st.serveTtl = 0;
         st.pinMult = 1; st.pinRampCount = 0; st.extraBallUsed = false; st.pinTargetResetTtl = 0;
         st.ballCamTtl = 0; st.ballCamCd = 3; st.training = false; st.tilt = 0; st.tiltLock = 0;
+        st.trackRev = false;
         for (const t of pinTargets) t.alive = true;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
@@ -730,8 +755,8 @@
         hudBombs.innerText = st.bombs;
     }
     function relabelButtons() {
-        $('btn-a').innerText = st.level === 1 ? '▲' : st.level === 2 ? '◀' : 'L';
-        $('btn-b').innerText = st.level === 1 ? '▼' : st.level === 2 ? '▶' : 'R';
+        $('btn-a').innerText = st.level === 1 ? '▲' : (st.level === 2 || st.level === 3) ? '◀' : 'L';
+        $('btn-b').innerText = st.level === 1 ? '▼' : (st.level === 2 || st.level === 3) ? '▶' : 'R';
     }
     const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
     function banner(text) { st.banner = text; st.bannerTtl = 1; }
@@ -919,7 +944,7 @@
     }
     // Bláster: arma básica ilimitada con cadencia — clic de ratón, toque corto o Z
     function fireBlaster() {
-        if (!st.playing || st.paused || st.blastCd > 0 || st.level >= 3) return; // sin armas en el pinball (N3/N4)
+        if (!st.playing || st.paused || st.blastCd > 0 || st.level >= 4) return; // sin armas en el pinball (N4)
         st.blastCd = 0.22;
         st.shimmer = Math.max(st.shimmer, 0.25); // cada disparo, un chispazo shimmer
         if (st.level === 1) {
@@ -1009,7 +1034,7 @@
         const conc = Math.max(1, rate * grainMs / 1000);
         const gain = clamp(1.5 / Math.sqrt(conc), 0, 0.5);
         node.port.postMessage({ type: 'params', focus: focusSec, aperture, grainMs, grainRate: rate, gain, master: 1.0 });
-        node.port.postMessage({ type: 'reverb', wet: (st.level === 2 ? 0.2 : 0.12) + c * 0.2 });
+        node.port.postMessage({ type: 'reverb', wet: ((st.level === 2 || st.level === 3) ? 0.2 : 0.12) + c * 0.2 });
         node.port.postMessage({ type: 'space', width: 0.6, oct: st.shimmer * 0.6 });
         node.port.postMessage({ type: 'pitch', mult: 1 - st.pitchDip * 0.22 });
     }
@@ -1081,6 +1106,7 @@
         st.level = 2;
         st.zone = -1;
         st.worldT = 0;
+        st.trackRev = false;
         st.laneX = 0; st.laneV = 0;
         st.touchTarget = null; st.touchTargetX = null;
         st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = [];
@@ -1092,6 +1118,7 @@
         $('stage').classList.remove('mode-pin'); $('stage').classList.remove('mode-pin3d');
         $('stage').classList.add('mode3d');
         resize3D();
+        applyTrackTheme(false); // noche neón
         st.spawnObj = 1.2; st.spawnCry = 1.2; st.spawnPick = 6;
         loadTerrain('neon');
         banner('NIVEL 2 · CIRCUITO NEÓN');
@@ -1099,10 +1126,11 @@
         updateHud();
     }
 
-    // ── Nivel 3 (pinball): mesa en el mismo canvas 2D que el nivel 1 ─────────
-    // Geometría en fracciones de W/H, recalculada cada frame — así un resize
-    // (girar el móvil) no desincroniza nada salvo la bola, que si se reescala
-    // en resizeCanvas() como el resto de entidades del juego.
+    // ── Mesa de pinball (nivel 4 · física compartida con el render 3D) ──────
+    // pinLayout()/serveBall() ya no los usa un pinball 2D (el nivel 3 pasó a
+    // ser el circuito de día invertido) — hoy sirven a la física del nivel 4;
+    // solo drawPinball() y sus ayudantes de proyección (PP, pinProj...), más
+    // abajo, quedan del pinball 2D original y ya no se usan.
     // Geometría de la mesa en unidades de mesa (0..PW, 0..PH). No depende del
     // tamaño del lienzo — la perspectiva la aplica el render.
     function pinLayout() {
@@ -1179,26 +1207,32 @@
             y: pinProj.screenTop + clamp(ny, -0.02, 1.06) * (pinProj.screenBot - pinProj.screenTop),
         };
     }
-    // Las partículas (burst) viven en píxeles de pantalla, pero la física del
-    // pinball está en unidades de mesa: hay que proyectar antes de crearlas.
-    // Solo en el nivel 3 (2D): en el nivel 4 el destello lo da el emisivo 3D.
-    function pinBurst(tx, ty, col, n) {
-        if (st.level !== 3) return;
-        if (!pinProj) computePinProj();
-        const p = PP(tx, ty);
-        burst(p.x, p.y, col, n);
-    }
+    // El nivel 3 es el MISMO circuito 3D que el nivel 2 (misma escena, mismos
+    // edificios/asfalto/pilones — nada se reconstruye) pero recorrido en
+    // SENTIDO INVERSO y de DÍA: st.trackRev invierte cómo se lee la curva
+    // (ver curveF/curvePt/curveTan/curveK) y applyTrackTheme(true) recolorea
+    // cielo, sol, niebla y luces. stepLevel2/render3D son los mismos que en
+    // el nivel 2 — el dispatcher de step()/frame() los comparte entre ambos.
     function switchToLevel3() {
         st.level = 3;
         st.zone = -1;
         st.worldT = 0;
-        st.flipLAng = pinLayout().restL; st.flipRAng = pinLayout().restR;
-        st.ballLive = false; st.serveTtl = 0.6;
-        $('stage').classList.remove('mode3d');
-        $('stage').classList.add('mode-pin'); // lienzo vertical
-        resizeCanvas();                        // recoge las nuevas dimensiones (retrato)
-        loadTerrain('pinball');
-        banner('NIVEL 3 · PINBALL');
+        st.trackRev = true;
+        st.laneX = 0; st.laneV = 0;
+        st.touchTarget = null; st.touchTargetX = null;
+        st.asteroids = []; st.crystals = []; st.pickups = []; st.shots = [];
+        st.ghosts = [];
+        st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
+        st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
+        st.camMode = 1;
+        clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
+        $('stage').classList.remove('mode-pin'); $('stage').classList.remove('mode-pin3d');
+        $('stage').classList.add('mode3d');
+        resize3D();
+        applyTrackTheme(true); // de día
+        st.spawnObj = 1.2; st.spawnCry = 1.2; st.spawnPick = 6;
+        loadTerrain('neon');
+        banner('NIVEL 3 · CIRCUITO DE DÍA (SENTIDO INVERSO)');
         relabelButtons();
         updateHud();
     }
@@ -1242,13 +1276,13 @@
         if (e.target.tagName === 'INPUT') return;
         const up = e.key === 'ArrowUp' || e.key === 'w', down = e.key === 'ArrowDown' || e.key === 's';
         const left = e.key === 'ArrowLeft' || e.key === 'a', right = e.key === 'ArrowRight' || e.key === 'd';
-        if ((st.level === 1 && up) || (st.level >= 2 && left)) keys.a = true; // flipper izq. en N3/N4
-        else if ((st.level === 1 && down) || (st.level >= 2 && right)) keys.b = true; // flipper der. en N3/N4
-        else if (st.level === 2 && up) keys.u = true;    // acelerador
-        else if (st.level === 2 && down) keys.d = true;  // freno
+        if ((st.level === 1 && up) || (st.level >= 2 && left)) keys.a = true; // volante izq. en N2/N3, flipper izq. en N4
+        else if ((st.level === 1 && down) || (st.level >= 2 && right)) keys.b = true; // volante der. en N2/N3, flipper der. en N4
+        else if ((st.level === 2 || st.level === 3) && up) keys.u = true;    // acelerador
+        else if ((st.level === 2 || st.level === 3) && down) keys.d = true;  // freno
         else if (e.key === 'x') { if (!e.repeat) fireMissile(); }
         else if (e.key === 'c') { if (!e.repeat) useBomb(); }
-        else if (e.key === 'v') { if (!e.repeat && st.level === 2) cycleCamera(); }
+        else if (e.key === 'v') { if (!e.repeat && (st.level === 2 || st.level === 3)) cycleCamera(); }
         else if (e.key === 't') { if (!e.repeat && st.level === 4) nudgeTable(); }
         else if (e.key === 'h') { if (!e.repeat) toggleKeysSidebar(); }
         else if (e.key === 'z' || e.key === ' ') { fireBlaster(); } // mantener = autofuego (con cadencia)
@@ -1293,7 +1327,7 @@
         if (e.pointerType !== 'mouse') e.preventDefault();
         dragging = true;
         downT = performance.now(); downX = e.clientX; downY = e.clientY;
-        if (e.pointerType === 'mouse') { if (st.level < 3) fireBlaster(); } // en pinball los botones = flippers (mousedown)
+        if (e.pointerType === 'mouse') { if (st.level < 4) fireBlaster(); } // en pinball (N4) los botones = flippers (mousedown)
         else dragTo(e);
         capture(canvas, e);
     });
@@ -1307,11 +1341,11 @@
     });
     canvas.addEventListener('pointercancel', dragEnd);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    // Pinball (N3/N4): botón IZQUIERDO del ratón = flipper izquierdo, botón
+    // Pinball (N4): botón IZQUIERDO del ratón = flipper izquierdo, botón
     // DERECHO = flipper derecho. (mouseup en window para soltar aunque el
     // cursor salga del lienzo.)
     canvas.addEventListener('mousedown', (e) => {
-        if (st.level < 3) return;
+        if (st.level < 4) return;
         if (e.button === 0) keys.a = true;
         else if (e.button === 2) { keys.b = true; e.preventDefault(); }
     });
@@ -1326,7 +1360,7 @@
         st.camMode = (st.camMode + 1) % 3;
         banner(`CÁMARA · ${CAM_NAMES[st.camMode]}`); // la visibilidad de la moto la fija render3D cada frame
     }
-    $('cam-btn').addEventListener('click', () => { if (st.level === 2) cycleCamera(); });
+    $('cam-btn').addEventListener('click', () => { if (st.level === 2 || st.level === 3) cycleCamera(); });
 
     // ── Sidebar de teclas (H): overlay al 50% de opacidad sobre el juego ─────
     function toggleKeysSidebar() { $('stage').classList.toggle('show-keys'); }
@@ -1597,20 +1631,24 @@
             }
         }, 1, 1);
     }
-    function makeSunTex() {
+    function makeSunTex(day) {
         return canvasTex(256, 256, (c2, w, h) => {
             const gr = c2.createLinearGradient(0, 0, 0, h);
-            gr.addColorStop(0, '#ffd36e'); gr.addColorStop(0.55, '#ff8f5a'); gr.addColorStop(1, '#ff355e');
+            if (day) { gr.addColorStop(0, '#fffdf2'); gr.addColorStop(0.6, '#fff2b0'); gr.addColorStop(1, '#ffd873'); }
+            else { gr.addColorStop(0, '#ffd36e'); gr.addColorStop(0.55, '#ff8f5a'); gr.addColorStop(1, '#ff355e'); }
             c2.fillStyle = gr;
             c2.beginPath(); c2.arc(w / 2, h / 2, w / 2 - 2, 0, 7); c2.fill();
-            c2.globalCompositeOperation = 'destination-out';
-            for (let i = 0; i < 6; i++) c2.fillRect(0, h * 0.5 + i * h * 0.09, w, 3 + i * 2.5);
+            if (!day) {
+                c2.globalCompositeOperation = 'destination-out';
+                for (let i = 0; i < 6; i++) c2.fillRect(0, h * 0.5 + i * h * 0.09, w, 3 + i * 2.5);
+            }
         }, 1, 1);
     }
-    function makeSkyTex() {
+    function makeSkyTex(day) {
         return canvasTex(4, 256, (c2, w, h) => {
             const gr = c2.createLinearGradient(0, 0, 0, h);
-            gr.addColorStop(0, '#06020f'); gr.addColorStop(0.55, '#1d0a33'); gr.addColorStop(0.78, '#54123f'); gr.addColorStop(1, '#140826');
+            if (day) { gr.addColorStop(0, '#2e78c9'); gr.addColorStop(0.5, '#7fc3ee'); gr.addColorStop(0.78, '#cfeaff'); gr.addColorStop(1, '#eaf6ff'); }
+            else { gr.addColorStop(0, '#06020f'); gr.addColorStop(0.55, '#1d0a33'); gr.addColorStop(0.78, '#54123f'); gr.addColorStop(1, '#140826'); }
             c2.fillStyle = gr; c2.fillRect(0, 0, w, h);
         }, 1, 1);
     }
@@ -1867,12 +1905,13 @@
         // Cielo, sol de rayas, estrellas, skyline con ventanas
         const sky = new THREE.Mesh(
             new THREE.SphereGeometry(1600, 20, 12),
-            new THREE.MeshBasicMaterial({ map: makeSkyTex(), side: THREE.BackSide, fog: false }));
+            new THREE.MeshBasicMaterial({ map: makeSkyTex(false), side: THREE.BackSide, fog: false }));
         scene.add(sky);
-        const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeSunTex(), fog: false, transparent: true }));
+        const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeSunTex(false), fog: false, transparent: true }));
         sun.scale.set(420, 420, 1);
         sun.position.set(260, 130, -1250);
         scene.add(sun);
+        let stars;
         {
             const n = 320, sp = [];
             for (let i = 0; i < n; i++) {
@@ -1881,7 +1920,8 @@
             }
             const gsp = new THREE.BufferGeometry();
             gsp.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
-            scene.add(new THREE.Points(gsp, new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, sizeAttenuation: false, fog: false })));
+            stars = new THREE.Points(gsp, new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, sizeAttenuation: false, fog: false }));
+            scene.add(stars);
         }
         const winTex = makeWindowsTex();
         // Radio del anillo de skyline: antes era un número fijo (820-1140) centrado
@@ -2143,9 +2183,31 @@
         composer.addPass(new OP.OutputPass());
 
         T3 = { renderer, scene, camera, curve, kart, up, hemi, composer, bloom, sunLight, sunTarget, sunDir,
+               sky, sun, stars, day: false,
                fogBase: new THREE.Color(0x140826), zoneCol: new THREE.Color(0x140826),
                ssrTarget, ssrMat, ssrMeshes: [roadMeshA, roadMeshB], ssrFrame: 0 };
         resize3D();
+        applyTrackTheme(st.level === 3); // por si ya se cambió de nivel mientras cargaba Three.js
+    }
+    // Nivel 3 = mismo circuito y misma escena que el nivel 2, pero de día: solo
+    // recolorea cielo/sol/niebla/luces (la geometría no cambia). Se llama al
+    // entrar en cada nivel Y al terminar de construir la escena (por si el
+    // cambio de nivel llegó antes de que Three.js acabase de cargar).
+    function applyTrackTheme(day) {
+        if (!T3) return;
+        T3.day = day;
+        T3.sky.material.map.dispose(); T3.sky.material.map = makeSkyTex(day); T3.sky.material.needsUpdate = true;
+        T3.sun.material.map.dispose(); T3.sun.material.map = makeSunTex(day); T3.sun.material.needsUpdate = true;
+        T3.stars.visible = !day; // de día no se ven las estrellas
+        if (day) {
+            T3.fogBase.set(0xbfe0f5);
+            T3.hemi.color.set(0xbfe0ff); T3.hemi.groundColor.set(0x8a7050); T3.hemi.intensity = 1.55;
+            T3.sunLight.color.set(0xfff2cf); T3.sunLight.intensity = 1.25;
+        } else {
+            T3.fogBase.set(0x140826);
+            T3.hemi.color.set(0x9a6cff); T3.hemi.groundColor.set(0x241640); T3.hemi.intensity = 1.9;
+            T3.sunLight.color.set(0xff9a5a); T3.sunLight.intensity = 1.1;
+        }
     }
     function resize3D() {
         if (!T3) return;
@@ -2674,8 +2736,8 @@
     }
     function placeObj(o) {
         const f = wrapS(o.s) / LAP_LEN;
-        const P = T3.curve.getPointAt(f);
-        const Tg = T3.curve.getTangentAt(f);
+        const P = curvePt(f);
+        const Tg = curveTan(f);
         const side = new THREE.Vector3().crossVectors(T3.up, Tg).setY(0).normalize();
         const base = o.mesh.position.y - (o.baseY || 0);
         o.baseY = P.y;
@@ -2721,11 +2783,9 @@
         }
         if (st.level === 1) {
             drawSpace(t / 1000);
-        } else if (st.level === 2) {
+        } else if (st.level === 2 || st.level === 3) {
             render3D(t / 1000);
             drawOverlay2D(t / 1000);
-        } else if (st.level === 3) {
-            drawPinball(t / 1000);
         } else {
             render4(t / 1000);
             drawPinball3DOverlay(t / 1000);
@@ -2762,8 +2822,8 @@
 
     function step(dt) {
         if (st.level === 1) stepLevel1(dt);
-        else if (st.level === 2) stepLevel2(dt);
-        else stepLevel3(dt);
+        else if (st.level === 2 || st.level === 3) stepLevel2(dt);
+        else stepLevel3(dt); // nivel 4: física de la mesa de pinball
         stepCommon(dt);
     }
 
@@ -2875,8 +2935,8 @@
     function stepLevel2(dt) {
         if (!T3) return; // la escena 3D aún carga (se precarga al despegar)
         const frac = wrapS(st.pos) / LAP_LEN;
-        st.inTunnel = tunnelAt(frac);
-        const onDirt = surfaceAt(frac) === 'dirt';
+        st.inTunnel = tunnelAt(curveF(frac));
+        const onDirt = surfaceAt(curveF(frac)) === 'dirt';
         const offRoad = Math.abs(st.laneX) > 1.12;
         // Acelerador/freno de verdad: ↑ acelera, ↓ frena, nada = crucero.
         // En táctil, arrastrar el dedo hacia arriba/abajo hace lo mismo.
@@ -2902,7 +2962,10 @@
             st.pos -= LAP_LEN;
             st.lap += 1;
             st.score += 250;
-            if (st.lap >= 2) { switchToLevel4(); return; } // el circuito lleva directo al pinball 3D
+            if (st.lap >= 2) {
+                if (st.level === 2) { switchToLevel3(); return; } // circuito de noche completado → circuito de día invertido
+                switchToLevel4(); return; // circuito de día completado → pinball 3D
+            }
             banner(`VUELTA ${st.lap + 1}`);
         }
         st.worldT = (wrapS(st.pos) / LAP_LEN) * TERRAIN_SECS; // sector = zona musical
@@ -2912,7 +2975,6 @@
         // no sobre la posición — así no se puede "clavar" el carril de golpe.
         const steerAccel = onDirt ? 3.4 : 5.4;
         const grip = onDirt ? 0.025 : 0.0009; // fricción/seg (menor = más derrape)
-        const kIdx = Math.floor(frac * curvK.length) % curvK.length;
         if (st.touchTargetX !== null) {
             // El dedo marca la posición objetivo directamente (no solo dirección):
             // ganancia más firme para que el táctil responda al toque, no a medias.
@@ -2921,7 +2983,7 @@
             const inputDir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
             st.laneV += inputDir * steerAccel * dt;
         }
-        st.laneV += curvK[kIdx] * sSpeed * dt * 0.16; // empuje centrífugo (acelera, no desplaza)
+        st.laneV += curveK(frac) * sSpeed * dt * 0.16; // empuje centrífugo (acelera, no desplaza)
         st.laneV *= Math.pow(grip, dt);
         st.laneV = clamp(st.laneV, -3.6, 3.6);
         st.laneX += st.laneV * dt;
@@ -2944,7 +3006,7 @@
             const base = 300 + Math.random() * 60;
             // Calentamiento: en la primera vuelta, sin barreras en el primer tramo
             // (recta larga + curva suave) — tiempo de acostumbrarse a la moto.
-            const warmup = st.lap === 0 && wrapS(st.pos + base) / LAP_LEN < WARMUP_END;
+            const warmup = st.lap === 0 && curveF(wrapS(st.pos + base) / LAP_LEN) < WARMUP_END;
             const r = Math.random(), hard = Math.min(1, st.lap * 0.34);
             if (warmup) {
                 // nada — solo se reinicia el temporizador, sin obstáculos aquí
@@ -3167,7 +3229,6 @@
                 st.combo = Math.min(10, st.combo + 1);
                 st.score += 25 * st.pinMult;
                 s.flash = 0.15;
-                pinBurst(cx, cy, [255, 200, 80], 8);
                 pinHitFx(2);
                 vibrate(10);
                 updateHud();
@@ -3207,7 +3268,6 @@
         st.shimmer = Math.max(st.shimmer, 0.35);
         st.pitchDip = Math.max(st.pitchDip, 0.18); // un pellizco de tono → "pop" del bumper
         bp.flash = 0.15;
-        pinBurst(bx, by, bp.color, 10);
         pinHitFx(2);
         vibrate(12);
         updateHud();
@@ -3270,7 +3330,6 @@
         t.alive = false; t.flash = 0.2;
         st.combo = Math.min(10, st.combo + 1);
         st.score += 80 * st.pinMult;
-        pinBurst(p.x, p.y, [140, 220, 255], 8);
         pinHitFx(2);
         vibrate(10);
         updateHud();
@@ -3389,7 +3448,6 @@
             st.lives -= 1;
             st.pinMult = 1; st.pinRampCount = 0; // el multiplicador es por bola, no acumulado toda la partida
             st.tilt = 0; st.tiltLock = 0;        // nueva bola → se limpia el tilt
-            pinBurst(b.x, Lay.pivotY, [255, 80, 80], 18);
             vibrate([50, 30, 80]);
             updateHud();
             if (st.lives <= 0) { endRound(); return; }
@@ -3484,8 +3542,8 @@
     function render3D(t) {
         if (!T3) return;
         const frac = wrapS(st.pos) / LAP_LEN;
-        const P = T3.curve.getPointAt(frac);
-        const Tg = T3.curve.getTangentAt(frac);
+        const P = curvePt(frac);
+        const Tg = curveTan(frac);
         const side = V3().crossVectors(T3.up, Tg).setY(0).normalize();
         const kartPos = P.clone().addScaledVector(side, -st.laneX * ROAD_HALF * 0.86);
         kartPos.y += 0.25;
@@ -3493,12 +3551,11 @@
         // a su velocidad lateral de verdad — no a una aproximación del mando)
         const kart = T3.kart;
         kart.position.copy(kartPos);
-        const ahead = T3.curve.getPointAt((frac + 6 / LAP_LEN) % 1).addScaledVector(side, -st.laneX * ROAD_HALF * 0.86);
+        const ahead = curvePt(frac + 6 / LAP_LEN).addScaledVector(side, -st.laneX * ROAD_HALF * 0.86);
         kart.lookAt(ahead.x, kartPos.y, ahead.z);
-        const kIdx = Math.floor(frac * curvK.length) % curvK.length;
-        kart.rotation.z = clamp(-st.laneV * 0.17 - curvK[kIdx] * 15, -0.55, 0.55);
+        kart.rotation.z = clamp(-st.laneV * 0.17 - curveK(frac) * 15, -0.55, 0.55);
         if (st.spin > 0) kart.rotateY((1 - st.spin) * Math.PI * 2); // trompo: una vuelta completa
-        if (surfaceAt(frac) === 'dirt') kart.position.y += Math.abs(Math.sin(t * 34)) * 0.12;
+        if (surfaceAt(curveF(frac)) === 'dirt') kart.position.y += Math.abs(Math.sin(t * 34)) * 0.12;
         // Ruedas girando ∝ velocidad
         const spin = st.speed2 * S3D * t;
         for (const wh of kart.userData.wheels) wh.rotation.x = spin;
@@ -3518,12 +3575,12 @@
         for (const gh of ghosts2) {
             if (gh.dead > 0) continue;
             const gf = wrapS(gh.s) / LAP_LEN;
-            const gP = T3.curve.getPointAt(gf);
-            const gT = T3.curve.getTangentAt(gf);
+            const gP = curvePt(gf);
+            const gT = curveTan(gf);
             const gSide = V3().crossVectors(T3.up, gT).setY(0).normalize();
             gh.mesh.position.copy(gP).addScaledVector(gSide, -gh.lane * ROAD_HALF * 0.86);
             gh.mesh.position.y += 0.32 + Math.sin(t * 2.4 + gh.ph) * 0.14; // levitan
-            const gA = T3.curve.getPointAt((gf + 6 / LAP_LEN) % 1).addScaledVector(gSide, -gh.lane * ROAD_HALF * 0.86);
+            const gA = curvePt(gf + 6 / LAP_LEN).addScaledVector(gSide, -gh.lane * ROAD_HALF * 0.86);
             gh.mesh.lookAt(gA.x, gh.mesh.position.y, gA.z);
             for (const wh of gh.mesh.userData.wheels) wh.rotation.x = spin;
             const fl = 0.75 + 0.25 * Math.sin(t * 7 + gh.ph);
@@ -3532,8 +3589,8 @@
         // Bolts de bláster sobre la pista
         for (const b of bolts2) {
             const bf = wrapS(b.s) / LAP_LEN;
-            const bP = T3.curve.getPointAt(bf);
-            const bT = T3.curve.getTangentAt(bf);
+            const bP = curvePt(bf);
+            const bT = curveTan(bf);
             const bSide = V3().crossVectors(T3.up, bT).setY(0).normalize();
             b.mesh.position.copy(bP).addScaledVector(bSide, -b.lane * ROAD_HALF * 0.86);
             b.mesh.position.y += 0.62;
@@ -3553,7 +3610,7 @@
         let fovTgt;
         if (st.camMode === 1) {
             cam.position.copy(kartPos).addScaledVector(Tg, 0.6).add(new THREE.Vector3(0, 1.28, 0));
-            const look = T3.curve.getPointAt((frac + 22 / LAP_LEN) % 1)
+            const look = curvePt(frac + 22 / LAP_LEN)
                 .addScaledVector(side, -st.laneX * ROAD_HALF * 0.86).add(new THREE.Vector3(0, 1.0, 0));
             cam.lookAt(look);
             cam.rotateZ(clamp(-st.laneV * 0.1, -0.2, 0.2)); // roll local: el horizonte se inclina contigo
@@ -3587,7 +3644,7 @@
         // del sector (el circuito "cuenta" por dónde va el sample)
         const zt = ZONES_NEON[Math.max(0, st.zone)].tint;
         T3.zoneCol.setRGB(zt[0] / 255, zt[1] / 255, zt[2] / 255);
-        fog.color.copy(T3.fogBase).lerp(T3.zoneCol, 0.16);
+        fog.color.copy(T3.fogBase).lerp(T3.zoneCol, T3.day ? 0.08 : 0.16); // de día el tinte por zona es más sutil
         // Objetos: flotan/rotan; los pasados de largo se limpian en step
         for (const o of objs2) {
             if (o.type === 'crystal') o.mesh.rotation.y = t * 2 + o.s;
@@ -3598,7 +3655,7 @@
         // grande para una sola sombra fija; el shimmer del combo hace respirar el bloom.
         T3.sunLight.position.copy(kartPos).addScaledVector(T3.sunDir, 30);
         T3.sunTarget.position.copy(kartPos);
-        T3.bloom.strength = 0.5 + st.shimmer * 0.35;
+        T3.bloom.strength = (T3.day ? 0.22 : 0.5) + st.shimmer * 0.35; // de día el neón no necesita tanto halo
         // Reflejo del asfalto (SSR): una pasada extra, barata y a baja resolución,
         // con el asfalto en su material plano (para no leerse a sí mismo mientras
         // se dibuja) — ese color+profundidad es lo que el asfalto reflectante
@@ -3621,8 +3678,7 @@
     }
     // Altura de la calzada un poco por detrás del kart (para la cámara en crestas)
     function roadHeightAt(frac, back) {
-        const f = ((frac + back / LAP_LEN) % 1 + 1) % 1;
-        return T3.curve.getPointAt(f).y;
+        return curvePt(frac + back / LAP_LEN).y;
     }
     // Overlay 2D en el nivel 3D: sin fondo — partículas, banners, HUD y escudo
     function drawOverlay2D(t) {
@@ -3955,10 +4011,10 @@
         g.fillStyle = 'rgba(190,150,255,0.95)'; // rivales fantasma
         for (const gh of ghosts2) {
             if (gh.dead > 0) continue;
-            const i = Math.floor((wrapS(gh.s) / LAP_LEN) * n);
+            const i = Math.floor(curveF(wrapS(gh.s) / LAP_LEN) * n);
             g.beginPath(); g.arc(px(i), py(i), 2.2 * k, 0, 7); g.fill();
         }
-        const i = Math.floor((wrapS(st.pos) / LAP_LEN) * n); // tú
+        const i = Math.floor(curveF(wrapS(st.pos) / LAP_LEN) * n); // tú
         g.fillStyle = '#5df0ff';
         g.beginPath(); g.arc(px(i), py(i), (3.2 + Math.sin(performance.now() / 180) * 0.8) * k, 0, 7); g.fill();
         g.restore();
@@ -4036,7 +4092,7 @@
             g.font = `${Math.round(12 * k)}px monospace`;
             g.textAlign = 'left';
             g.fillStyle = 'rgba(240,226,230,0.75)';
-            const lapTag = st.level === 2 ? ` · V${st.lap + 1}` : '';
+            const lapTag = (st.level === 2 || st.level === 3) ? ` · V${st.lap + 1}` : '';
             g.fillText(`${'♥'.repeat(Math.max(0, st.lives))}  ${Math.round(st.score)} pts${lapTag}  🛡${st.shield} 🚀${st.missiles} 💣${st.bombs}`, 10 * k, 18 * k);
             g.fillStyle = 'rgba(40,230,220,0.75)';
             g.textAlign = 'right';
