@@ -278,6 +278,14 @@ Motor con paridad casi completa con la versión JS:
   base (el neón no necesita tanto halo a plena luz). Mismas armas, mismo
   acelerador/freno, misma cámara de 3 vistas, mismo minimapa — es el nivel 2
   con otra luz y el volante al revés, no un nivel nuevo que aprender.
+  El look de día está cuidado: **nubes procedurales** (cúmulos de elipses
+  difusas pintados en la textura del cielo, con copias en ±ancho para que la
+  costura de la esfera no corte ninguna nube, y estratos finos cerca del
+  horizonte), **sol de mediodía** alto y compacto, atmósfera despejada
+  (niebla mucho más lejana que de noche) y el **umbral del bloom subido a
+  0.82** — con el umbral nocturno (0.4) el cielo claro entero "bloomeaba" y
+  lavaba la escena; de día solo brillan los neones de verdad. Los cheurones
+  de los **turbo pads giran 180°** para apuntar en el sentido de marcha real.
   **Nivel 4 (Pinball 3D)**: al completar 2 vueltas del nivel 3 se pasa al
   pinball, ahora **en 3D de verdad** (WebGL/Three.js). La jugada clave:
   **reutiliza exactamente la física 2D** que tenía el pinball original (la
@@ -307,12 +315,16 @@ Motor con paridad casi completa con la versión JS:
   **Botón "🎯 Entrenar"** en la portada: un modal con los 4 niveles para
   saltar directo a cualquiera y practicarlo — en modo entreno la **puntuación
   NO se guarda** en el ranking (saltarse niveles sería trampa).
-  **Controles del pinball**: flechas ← → y también **botón izquierdo/derecho
-  del ratón** para cada flipper. **Tecla T = tilt**: empuja la mesa (impulso a
+  **Controles del pinball**: flechas ← →, **botón izquierdo/derecho del
+  ratón**, o en táctil **tocar la mitad izquierda/derecha de la mesa**
+  (multi-touch: cada dedo cuenta por separado — dos dedos = los dos
+  flippers). **Tecla T = tilt**: empuja la mesa (impulso a
   la bola hacia arriba + sacudida) para salvarla — pero cada empujón sube el
   medidor de tilt; si te pasas, **¡TILT!** y los flippers quedan muertos hasta
   que la bola drene, como en una máquina real (el medidor baja solo con el
-  tiempo).
+  tiempo). En el pinball no hay armas: X/C/bláster quedan desactivados (y al
+  entrar se limpian los restos del circuito — sin ello, un misil podía
+  "matar" un fantasma invisible sobrante y regalar puntos).
   **Récords "leyenda"**: unas marcas base (p. ej. BRUZOS, THOR) se fusionan
   siempre en el ranking (cliente y servidor, ordenadas y sin duplicar) como
   marca a batir.

@@ -182,7 +182,7 @@
                 <div><kbd>Z</kbd> <kbd>espacio</kbd> clic — bláster</div>
             </div>
             <div class="grp">
-                <b>Nivel 2 · Circuito</b>
+                <b>Niveles 2 y 3 · Circuito (noche / día inverso)</b>
                 <div><kbd>←</kbd> <kbd>→</kbd> girar</div>
                 <div><kbd>↑</kbd> acelerar · <kbd>↓</kbd> frenar</div>
                 <div><kbd>X</kbd> misil · <kbd>C</kbd> bomba</div>
@@ -192,6 +192,7 @@
             <div class="grp">
                 <b>Nivel 4 · Pinball 3D</b>
                 <div><kbd>←</kbd> <kbd>→</kbd> flippers (o clic izq/der del ratón)</div>
+                <div>táctil: toca la mitad izq/der de la mesa</div>
                 <div><kbd>T</kbd> tilt (empuja la mesa — ¡sin pasarte!)</div>
                 <div>cámara "ojo de la bola" aleatoria</div>
             </div>
@@ -268,11 +269,16 @@
             <b style="color:#5dffc8">flechas turbo</b>, pasa <b>rozando</b> las barreras (+25) y esquiva a los rivales
             fantasma (síguelos en el <b>minimapa</b>). Cambia de cámara con <b>V</b> o el botón 📷
             (persecución / dentro / frontal). Ir a fondo multiplica los puntos. Completa 2 vueltas para
-            pasar al pinball.
+            pasar al circuito de día.
+            <br><br>
+            <b>Nivel 3 · Circuito de día (sentido inverso)</b> — el mismo circuito, pero a plena luz
+            y recorrido <b>al revés</b>: las curvas que conocías ahora vienen del otro lado. Mismos
+            controles, armas y cámaras que el nivel 2. Otras 2 vueltas y pasas al pinball.
             <br><br>
             <b>Nivel 4 · Pinball 3D</b> — una mesa en <b>3D de verdad</b> (WebGL): bumpers con volumen,
-            bola metálica con reflejos, luces y bloom. Mueve los flippers con <b>←</b> / <b>→</b> (o los
-            <b>botones izq/der del ratón</b>). Golpea los <b>bumpers</b> para sumar combo y puntos, lanza la
+            bola metálica con reflejos, luces y bloom. Mueve los flippers con <b>←</b> / <b>→</b>, los
+            <b>botones izq/der del ratón</b> o, en táctil, <b>tocando la mitad izquierda/derecha</b> de la
+            mesa (dos dedos = los dos flippers). Golpea los <b>bumpers</b> para sumar combo y puntos, lanza la
             bola por las <b>rampas</b> (suben en 3D) para un bonus mayor — completar 3 rampas sube el
             <b>multiplicador BONUS</b> (x2, x3) — y tumba las <b>3 dianas</b> de arriba: el banco completo da
             una <b>bola extra</b>. <b>Tecla T</b> = tilt: empuja la mesa para salvar la bola… pero si te
@@ -911,7 +917,10 @@
         updateHud();
     }
     function fireMissile() {
-        if (!st.playing || st.paused || st.missiles <= 0) return;
+        // st.level >= 4: en el pinball no hay armas — sin el guard, X (o el botón
+        // 🚀) gastaba un misil sin efecto visible… o PEOR: mataba un fantasma
+        // sobrante del circuito (invisible en N4) y regalaba +80 puntos.
+        if (!st.playing || st.paused || st.missiles <= 0 || st.level >= 4) return;
         st.missiles -= 1;
         st.shimmer = Math.max(st.shimmer, 0.6); // el disparo enciende un destello shimmer
         if (st.level === 1) {
@@ -960,7 +969,7 @@
         vibrate(8);
     }
     function useBomb() {
-        if (!st.playing || st.paused || st.bombs <= 0) return;
+        if (!st.playing || st.paused || st.bombs <= 0 || st.level >= 4) return; // sin armas en el pinball
         st.bombs -= 1;
         st.shake = 1.4;
         // La bomba deja una cola recursiva grande (rebotes) — impacto sónico sin castigo
@@ -1245,6 +1254,11 @@
         st.pinMult = 1; st.pinRampCount = 0; st.extraBallUsed = false; st.pinTargetResetTtl = 0;
         st.tilt = 0; st.tiltLock = 0;
         for (const tg of pinTargets) tg.alive = true;
+        // Limpia los restos del circuito (fantasmas/obstáculos/bolts/escombros):
+        // quedaban en T3.scene invisibles pero vivos — un misil en N4 podía
+        // "matar" un fantasma sobrante y regalar puntos, y los meshes ocupaban
+        // memoria/GPU sin motivo.
+        clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode-pin');
         $('stage').classList.add('mode3d');
         $('stage').classList.add('mode-pin3d'); // lienzo más alto para la mesa 3D
@@ -1272,29 +1286,34 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
 
     // ── Entrada ───────────────────────────────────────────────────────────────
+    // e.key en minúscula para las letras: con Bloq Mayús (o Shift) llegaba
+    // 'X'/'W'… y ninguna tecla de acción funcionaba.
+    const keyOf = (e) => e.key.length === 1 ? e.key.toLowerCase() : e.key;
     window.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT') return;
-        const up = e.key === 'ArrowUp' || e.key === 'w', down = e.key === 'ArrowDown' || e.key === 's';
-        const left = e.key === 'ArrowLeft' || e.key === 'a', right = e.key === 'ArrowRight' || e.key === 'd';
+        const kk = keyOf(e);
+        const up = kk === 'ArrowUp' || kk === 'w', down = kk === 'ArrowDown' || kk === 's';
+        const left = kk === 'ArrowLeft' || kk === 'a', right = kk === 'ArrowRight' || kk === 'd';
         if ((st.level === 1 && up) || (st.level >= 2 && left)) keys.a = true; // volante izq. en N2/N3, flipper izq. en N4
         else if ((st.level === 1 && down) || (st.level >= 2 && right)) keys.b = true; // volante der. en N2/N3, flipper der. en N4
         else if ((st.level === 2 || st.level === 3) && up) keys.u = true;    // acelerador
         else if ((st.level === 2 || st.level === 3) && down) keys.d = true;  // freno
-        else if (e.key === 'x') { if (!e.repeat) fireMissile(); }
-        else if (e.key === 'c') { if (!e.repeat) useBomb(); }
-        else if (e.key === 'v') { if (!e.repeat && (st.level === 2 || st.level === 3)) cycleCamera(); }
-        else if (e.key === 't') { if (!e.repeat && st.level === 4) nudgeTable(); }
-        else if (e.key === 'h') { if (!e.repeat) toggleKeysSidebar(); }
-        else if (e.key === 'z' || e.key === ' ') { fireBlaster(); } // mantener = autofuego (con cadencia)
-        else if (e.key === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
+        else if (kk === 'x') { if (!e.repeat) fireMissile(); }
+        else if (kk === 'c') { if (!e.repeat) useBomb(); }
+        else if (kk === 'v') { if (!e.repeat && (st.level === 2 || st.level === 3)) cycleCamera(); }
+        else if (kk === 't') { if (!e.repeat && st.level === 4) nudgeTable(); }
+        else if (kk === 'h') { if (!e.repeat) toggleKeysSidebar(); }
+        else if (kk === 'z' || kk === ' ') { fireBlaster(); } // mantener = autofuego (con cadencia)
+        else if (kk === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
         else return;
         e.preventDefault();
     });
     window.addEventListener('keyup', (e) => {
-        if (['ArrowUp', 'w', 'ArrowLeft', 'a'].includes(e.key)) keys.a = false;
-        if (['ArrowDown', 's', 'ArrowRight', 'd'].includes(e.key)) keys.b = false;
-        if (['ArrowUp', 'w'].includes(e.key)) keys.u = false;
-        if (['ArrowDown', 's'].includes(e.key)) keys.d = false;
+        const kk = keyOf(e);
+        if (['ArrowUp', 'w', 'ArrowLeft', 'a'].includes(kk)) keys.a = false;
+        if (['ArrowDown', 's', 'ArrowRight', 'd'].includes(kk)) keys.b = false;
+        if (['ArrowUp', 'w'].includes(kk)) keys.u = false;
+        if (['ArrowDown', 's'].includes(kk)) keys.d = false;
     });
     const capture = (el, e) => { try { el.setPointerCapture(e.pointerId); } catch (_) { /* sin captura, sigue */ } };
     const holdBtn = (id, key) => {
@@ -1320,6 +1339,25 @@
             st.touchThrottle = clamp((0.5 - (e.clientY - rect.top) / rect.height) * 2.6, -1, 1);
         }
     }
+    // Pinball táctil (N4): tocar la MITAD izquierda/derecha del lienzo acciona
+    // ese flipper (multi-touch: cada dedo cuenta por separado — dos dedos =
+    // los dos flippers). Antes tocar el lienzo no hacía nada y había que
+    // acertar a los botoncitos L/R bajo el juego.
+    const touchFlips = new Map(); // pointerId → 'a' | 'b'
+    function touchFlipDown(e) {
+        const rect = canvas.getBoundingClientRect();
+        const key = (e.clientX - rect.left) < rect.width / 2 ? 'a' : 'b';
+        touchFlips.set(e.pointerId, key);
+        keys[key] = true;
+    }
+    function touchFlipUp(e) {
+        const key = touchFlips.get(e.pointerId);
+        if (!key) return;
+        touchFlips.delete(e.pointerId);
+        let held = false; // otro dedo puede seguir pisando el mismo flipper
+        for (const v of touchFlips.values()) if (v === key) held = true;
+        if (!held) keys[key] = false;
+    }
     let downT = 0, downX = 0, downY = 0;
     canvas.addEventListener('pointerdown', (e) => {
         // No preventDefault en ratón: cortaría los eventos mousedown de
@@ -1328,30 +1366,35 @@
         dragging = true;
         downT = performance.now(); downX = e.clientX; downY = e.clientY;
         if (e.pointerType === 'mouse') { if (st.level < 4) fireBlaster(); } // en pinball (N4) los botones = flippers (mousedown)
+        else if (st.level === 4) touchFlipDown(e); // táctil: mitades = flippers
         else dragTo(e);
         capture(canvas, e);
     });
-    canvas.addEventListener('pointermove', (e) => { if (dragging && e.pointerType !== 'mouse') dragTo(e); });
+    canvas.addEventListener('pointermove', (e) => { if (dragging && e.pointerType !== 'mouse' && st.level !== 4) dragTo(e); });
     const dragEnd = () => { dragging = false; st.touchTarget = null; st.touchTargetX = null; st.touchThrottle = 0; };
     canvas.addEventListener('pointerup', (e) => {
+        touchFlipUp(e);
         // Toque corto (sin arrastre) = disparo de bláster también en táctil
         if (e.pointerType !== 'mouse' && performance.now() - downT < 220 &&
             Math.hypot(e.clientX - downX, e.clientY - downY) < 12) fireBlaster();
         dragEnd();
     });
-    canvas.addEventListener('pointercancel', dragEnd);
+    canvas.addEventListener('pointercancel', (e) => { touchFlipUp(e); dragEnd(); });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     // Pinball (N4): botón IZQUIERDO del ratón = flipper izquierdo, botón
     // DERECHO = flipper derecho. (mouseup en window para soltar aunque el
-    // cursor salga del lienzo.)
+    // cursor salga del lienzo.) mouseFlip recuerda QUÉ puso el ratón: sin
+    // ello, el mouseup soltaba keys.a/b incondicionalmente — y en N1–N3 un
+    // clic de bláster te "soltaba" la flecha de dirección que tenías pulsada.
+    const mouseFlip = { a: false, b: false };
     canvas.addEventListener('mousedown', (e) => {
         if (st.level < 4) return;
-        if (e.button === 0) keys.a = true;
-        else if (e.button === 2) { keys.b = true; e.preventDefault(); }
+        if (e.button === 0) { keys.a = true; mouseFlip.a = true; }
+        else if (e.button === 2) { keys.b = true; mouseFlip.b = true; e.preventDefault(); }
     });
     window.addEventListener('mouseup', (e) => {
-        if (e.button === 0) keys.a = false;
-        else if (e.button === 2) keys.b = false;
+        if (e.button === 0 && mouseFlip.a) { keys.a = false; mouseFlip.a = false; }
+        else if (e.button === 2 && mouseFlip.b) { keys.b = false; mouseFlip.b = false; }
     });
 
     // ── Cámara del circuito: persecución → dentro → frontal ─────────────────
@@ -1645,10 +1688,49 @@
         }, 1, 1);
     }
     function makeSkyTex(day) {
+        if (day) {
+            // Día: gradiente + NUBES procedurales (cúmulos de elipses difusas,
+            // más planas y densas cerca del horizonte) + calima cálida abajo.
+            // La textura envuelve la esfera del cielo: cada nube se pinta
+            // también desplazada ±w para que la costura u=0/1 no la corte.
+            return canvasTex(512, 256, (c2, w, h) => {
+                const gr = c2.createLinearGradient(0, 0, 0, h);
+                gr.addColorStop(0, '#2e78c9'); gr.addColorStop(0.5, '#7fc3ee'); gr.addColorStop(0.78, '#cfeaff'); gr.addColorStop(1, '#eaf6ff');
+                c2.fillStyle = gr; c2.fillRect(0, 0, w, h);
+                const puff = (cx, cy, rx, ry, a) => {
+                    for (const ox of [-w, 0, w]) { // copias para la costura
+                        const rg = c2.createRadialGradient(cx + ox, cy, 1, cx + ox, cy, rx);
+                        rg.addColorStop(0, `rgba(255,255,255,${a})`);
+                        rg.addColorStop(0.6, `rgba(255,255,255,${a * 0.45})`);
+                        rg.addColorStop(1, 'rgba(255,255,255,0)');
+                        c2.save();
+                        c2.translate(cx + ox, cy); c2.scale(1, ry / rx); c2.translate(-(cx + ox), -cy);
+                        c2.fillStyle = rg;
+                        c2.beginPath(); c2.arc(cx + ox, cy, rx, 0, 7); c2.fill();
+                        c2.restore();
+                    }
+                };
+                for (let i = 0; i < 9; i++) { // cúmulos: 3-4 bolas solapadas por nube
+                    const cx = Math.random() * w, cy = h * (0.16 + Math.random() * 0.34);
+                    const base = 16 + Math.random() * 26, flat = 0.30 + Math.random() * 0.14;
+                    const n = 3 + (Math.random() * 2 | 0);
+                    for (let j = 0; j < n; j++) {
+                        puff(cx + (j - n / 2) * base * 0.8, cy + (Math.random() - 0.5) * base * 0.24,
+                             base * (0.75 + Math.random() * 0.5), base * flat, 0.5 + Math.random() * 0.3);
+                    }
+                }
+                for (let i = 0; i < 6; i++) { // estratos finos cerca del horizonte
+                    puff(Math.random() * w, h * (0.58 + Math.random() * 0.14),
+                         40 + Math.random() * 55, 5 + Math.random() * 4, 0.22 + Math.random() * 0.12);
+                }
+                const hz = c2.createLinearGradient(0, h * 0.78, 0, h); // calima cálida
+                hz.addColorStop(0, 'rgba(255,240,214,0)'); hz.addColorStop(1, 'rgba(255,238,200,0.5)');
+                c2.fillStyle = hz; c2.fillRect(0, h * 0.78, w, h * 0.22);
+            }, 1, 1);
+        }
         return canvasTex(4, 256, (c2, w, h) => {
             const gr = c2.createLinearGradient(0, 0, 0, h);
-            if (day) { gr.addColorStop(0, '#2e78c9'); gr.addColorStop(0.5, '#7fc3ee'); gr.addColorStop(0.78, '#cfeaff'); gr.addColorStop(1, '#eaf6ff'); }
-            else { gr.addColorStop(0, '#06020f'); gr.addColorStop(0.55, '#1d0a33'); gr.addColorStop(0.78, '#54123f'); gr.addColorStop(1, '#140826'); }
+            gr.addColorStop(0, '#06020f'); gr.addColorStop(0.55, '#1d0a33'); gr.addColorStop(0.78, '#54123f'); gr.addColorStop(1, '#140826');
             c2.fillStyle = gr; c2.fillRect(0, 0, w, h);
         }, 1, 1);
     }
@@ -2128,12 +2210,16 @@
                 // Orden YXZ: primero rumbo sobre el eje vertical, luego tumbarla plana —
                 // así la flecha de la textura apunta en el sentido de marcha.
                 mesh.rotation.order = 'YXZ';
-                mesh.rotation.y = Math.atan2(-Tg.x, -Tg.z);
+                const baseRotY = Math.atan2(-Tg.x, -Tg.z);
+                mesh.rotation.y = baseRotY;
                 mesh.rotation.x = -Math.PI / 2;
                 mesh.position.copy(P).addScaledVector(side, -lane * ROAD_HALF * 0.86);
                 mesh.position.y += 0.11;
                 scene.add(mesh);
-                pads2.push({ s: f * LAP_LEN, lane, mesh, cd: 0 });
+                // baseRotY guardado: en N3 (sentido inverso) applyTrackTheme gira
+                // cada pad 180° para que los cheurones sigan apuntando en el
+                // sentido de marcha real, no contra él.
+                pads2.push({ s: f * LAP_LEN, lane, mesh, baseRotY, cd: 0 });
             }
         }
 
@@ -2200,14 +2286,23 @@
         T3.sun.material.map.dispose(); T3.sun.material.map = makeSunTex(day); T3.sun.material.needsUpdate = true;
         T3.stars.visible = !day; // de día no se ven las estrellas
         if (day) {
-            T3.fogBase.set(0xbfe0f5);
+            T3.fogBase.set(0xcfe4f2); // calima diurna neutra (menos cian: no debe lavar el cielo)
             T3.hemi.color.set(0xbfe0ff); T3.hemi.groundColor.set(0x8a7050); T3.hemi.intensity = 1.55;
             T3.sunLight.color.set(0xfff2cf); T3.sunLight.intensity = 1.25;
+            T3.sun.position.set(430, 760, -1050); T3.sun.scale.set(170, 170, 1); // sol de mediodía: alto y compacto
+            // De día, el bloom solo para los neones de verdad: con el umbral
+            // nocturno (0.4) el cielo claro entero "bloomeaba" y lavaba la escena.
+            T3.bloom.threshold = 0.82;
         } else {
             T3.fogBase.set(0x140826);
             T3.hemi.color.set(0x9a6cff); T3.hemi.groundColor.set(0x241640); T3.hemi.intensity = 1.9;
             T3.sunLight.color.set(0xff9a5a); T3.sunLight.intensity = 1.1;
+            T3.sun.position.set(260, 130, -1250); T3.sun.scale.set(420, 420, 1); // sol synthwave bajo en el horizonte
+            T3.bloom.threshold = 0.4;
         }
+        // Turbo pads: en sentido inverso (N3) los cheurones giran 180° para
+        // seguir apuntando en el sentido de marcha (si no, señalan al revés).
+        for (const pd of pads2) pd.mesh.rotation.y = pd.baseRotY + (st.trackRev ? Math.PI : 0);
     }
     function resize3D() {
         if (!T3) return;
@@ -2739,7 +2834,6 @@
         const P = curvePt(f);
         const Tg = curveTan(f);
         const side = new THREE.Vector3().crossVectors(T3.up, Tg).setY(0).normalize();
-        const base = o.mesh.position.y - (o.baseY || 0);
         o.baseY = P.y;
         o.mesh.position.set(P.x, P.y, P.z).addScaledVector(side, -o.lane * ROAD_HALF * 0.86);
     }
@@ -2778,6 +2872,13 @@
             accT += dt;
             let n = 0;
             while (accT >= STEP && n < 8) { step(STEP); accT -= STEP; n++; }
+            // Audio + HUD una sola vez por frame pintado (no por subpaso):
+            // mismos valores, una fracción del tráfico al worklet y al DOM.
+            if (n > 0) {
+                sendAudio();
+                hudN.innerText = Math.round(st.rate);
+                hudScore.innerText = Math.round(st.score);
+            }
         } else {
             accT = 0;
         }
@@ -2815,9 +2916,9 @@
         st.shieldFlash = Math.max(0, st.shieldFlash - 2 * dt);
         st.zoneFlash = Math.max(0, st.zoneFlash - 0.5 * dt);
         st.bannerTtl = Math.max(0, st.bannerTtl - 0.35 * dt);
-        sendAudio();
-        hudN.innerText = Math.round(st.rate);
-        hudScore.innerText = Math.round(st.score);
+        // sendAudio() y las escrituras del HUD viven en frame(), 1× por frame
+        // pintado — aquí correrían por SUBPASO de física (hasta 8× por frame:
+        // ~480 postMessages/s al worklet y otras tantas escrituras al DOM).
     }
 
     function step(dt) {
@@ -3635,9 +3736,11 @@
             cam.fov += (fovTgt - cam.fov) * 0.08;
             cam.updateProjectionMatrix();
         }
-        // Túnel: niebla cerrada y luz baja dentro; fuera, la noche synthwave
+        // Túnel: niebla cerrada y luz baja dentro; fuera, la noche synthwave —
+        // y de DÍA la atmósfera está mucho más despejada (si no, la calima
+        // cian lo lava todo y ni el cielo ni las nubes se llegan a ver).
         const fog = T3.scene.fog;
-        const tgtNear = st.inTunnel ? 14 : 160, tgtFar = st.inTunnel ? 130 : 1350;
+        const tgtNear = st.inTunnel ? 14 : (T3.day ? 300 : 160), tgtFar = st.inTunnel ? 130 : (T3.day ? 2400 : 1350);
         fog.near += (tgtNear - fog.near) * 0.08;
         fog.far += (tgtFar - fog.far) * 0.08;
         // El ambiente respira con la zona musical: la niebla se tiñe hacia el color
@@ -4115,6 +4218,7 @@
         goLevel4: switchToLevel4,
         get t4() { return T4; },
         get keys() { return keys; },
+        get pads() { return pads2; },
         pinLayout,
         pinBumpers,
         pinTargets,
