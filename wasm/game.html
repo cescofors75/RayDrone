@@ -28,8 +28,20 @@
            marco como una mesa real, en vez de un sliver en un lienzo apaisado. */
         #stage.mode-pin #game { width:auto; height:min(82vh, 720px); aspect-ratio:2 / 3;
                                 margin-inline:auto; background:#04030a; }
-        /* Nivel 4 (pinball 3D): lienzo más alto para encuadrar bien la mesa. */
-        #stage.mode-pin3d #game, #stage.mode-pin3d #game3d { height:min(74vh, 620px); }
+        /* Nivel 4 (pinball 3D): lienzo VERTICAL (retrato), igual que el 2D, para
+           que la mesa llene la pantalla y los flippers se vean — si no, la mesa
+           (que es alta) queda como una tira estrecha e injugable. El WebGL
+           (#game3d) y el overlay 2D (#game) se apilan centrados al mismo tamaño. */
+        /* Retrato 2:3, acotado por el ancho de pantalla (92vw, móvil), el alto
+           (54.6vh = 2/3 de 82vh) y un máximo de 480px. Medidas EXPLÍCITas
+           (width + height con calc, sin aspect-ratio ni auto): el #game3d es
+           absoluto y ahí auto/aspect-ratio no calcula bien → WebGL en negro. */
+        #stage.mode-pin3d #game { position:relative; width:min(92vw, 54.6vh, 480px);
+                                  height:calc(min(92vw, 54.6vh, 480px) * 1.5);
+                                  margin-inline:auto; background:transparent; }
+        #stage.mode-pin3d #game3d { position:absolute; left:50%; top:0; transform:translateX(-50%);
+                                    width:min(92vw, 54.6vh, 480px);
+                                    height:calc(min(92vw, 54.6vh, 480px) * 1.5); }
         .hud { display:flex; justify-content:space-between; gap:10px; font-family:monospace;
                font-size:0.88rem; margin:10px 0; flex-wrap:wrap; }
         .hud b { color:var(--accent); }
@@ -2199,9 +2211,9 @@
         scene.background = new THREE.Color(0x05040d);
         scene.fog = new THREE.Fog(0x0a0618, 40, 120);
         scene.environment = makePinEnv(renderer);
-        const camera = new THREE.PerspectiveCamera(42, 2, 0.1, 300);
-        camera.position.set(0, 30, w3z(PH) + 15);
-        camera.lookAt(0, -1, w3z(PH * 0.40));
+        const camera = new THREE.PerspectiveCamera(40, 2, 0.1, 300);
+        camera.position.set(0, 33, w3z(PH) + 27); // atrás y arriba: cabe toda la mesa
+        camera.lookAt(0, -2, 0);                   // mira al centro (flippers visibles abajo)
 
         // ── Tapete ──────────────────────────────────────────────────────────
         const gridTex = makePinGridTex();
@@ -2330,6 +2342,13 @@
     }
     function render4(t) {
         if (!T4) return;
+        // Re-sincroniza el renderer con el tamaño REAL del lienzo si cambió (el
+        // primer resize4 puede correr antes de que el CSS de retrato se asiente,
+        // sobre todo en móvil → si no, el WebGL sale en negro).
+        const cv3 = $('game3d');
+        if (cv3.clientWidth > 0 && (Math.abs(cv3.clientWidth - (render4._w || 0)) > 1 || Math.abs(cv3.clientHeight - (render4._h || 0)) > 1)) {
+            render4._w = cv3.clientWidth; render4._h = cv3.clientHeight; resize4();
+        }
         const Lay = pinLayout();
         // Bola (o escondida si aún no está en juego). En rampa, SUBE en 3D.
         if (st.ball) {
@@ -2369,11 +2388,11 @@
             T4.camera.position.set(bx - dx * 4.5, by + 3.2, bz - dy * 4.5);
             T4.camera.lookAt(bx + dx * 8, by + 0.5, bz + dy * 8);
         } else {
-            // Vista cenital clásica con leve vaivén + sacudida al golpear.
+            // Vista 3/4 clásica con leve vaivén + sacudida al golpear.
             const sway = Math.sin(t * 0.5) * 0.5;
-            T4.camera.position.set(sway, 30 + Math.cos(t * 0.4) * 0.3, w3z(PH) + 15);
+            T4.camera.position.set(sway, 33 + Math.cos(t * 0.4) * 0.3, w3z(PH) + 27);
             if (st.shake > 0) { T4.camera.position.x += (Math.random() - 0.5) * st.shake * 2; T4.camera.position.y += (Math.random() - 0.5) * st.shake * 2; }
-            T4.camera.lookAt(0, -1, w3z(PH * 0.40));
+            T4.camera.lookAt(0, -2, 0);
         }
         // Reflejos de la bola: recapturamos la escena con la CubeCamera en su
         // posición (cada 2 frames, y escondiéndola para que no se refleje a sí
