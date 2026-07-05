@@ -2990,7 +2990,11 @@
     let heroSheet = null; // {canvas, rows:{estado:[frames]}, ref} — null = placeholder
     function buildHeroSheet(img) {
         const p = processSheet(img);
-        if (p.bands.length < HERO_STATES.length) { heroSheet = null; return; }
+        if (p.bands.length < HERO_STATES.length) {
+            heroSheet = null;
+            console.warn(`RayRunner: sprites/hero.png cargó pero solo se detectaron ${p.bands.length} filas de animación (hacen falta ${HERO_STATES.length}: ${HERO_STATES.join('/')}). Usando héroe placeholder. Revisa que el fondo tenga suficiente contraste con los sprites y que cada fila esté claramente separada.`);
+            return;
+        }
         const rows = {};
         HERO_STATES.forEach((s2, i) => { rows[s2] = p.bands[i].frames; });
         // Escala de referencia: la altura mediana de los frames de idle = el
@@ -3006,21 +3010,36 @@
     let enemySheet = null; // {canvas, rows:{tipo:[frames]}}
     function buildEnemySheet(img) {
         const p = processSheet(img);
-        if (p.bands.length < 6) { enemySheet = null; return; }
+        if (p.bands.length < 6) {
+            enemySheet = null;
+            console.warn(`RayRunner: sprites/enemies.png cargó pero solo se detectaron ${p.bands.length} filas de animación (hacen falta al menos 6, orden esperado: ${ENEMY_ROWS.join('/')}). Usando placeholders.`);
+            return;
+        }
         const rows = {};
         ENEMY_ROWS.forEach((t2, i) => { if (p.bands[i]) rows[t2] = p.bands[i].frames; });
         enemySheet = { canvas: p.canvas, rows };
     }
+    // fetch({cache:'no-store'}) en vez de <img src>: evita que el navegador
+    // sirva una versión CACHEADA del PNG si lo reemplazaste sin cambiar el
+    // nombre (por eso "antes cargaba y ahora no" — el 304 de la consola del
+    // servidor era justo eso: el navegador ni pidió los bytes nuevos).
     function loadSheet(src, build) {
-        const img = new Image();
-        img.onload = () => { try { build(img); } catch (_) { /* hoja rara → placeholder */ } };
-        img.src = src;
+        fetch(src, { cache: 'no-store' })
+            .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+            .then((blob) => new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('imagen corrupta o formato no soportado'));
+                img.src = URL.createObjectURL(blob);
+            }))
+            .then((img) => { try { build(img); } catch (err) { console.warn(`RayRunner: no se pudo procesar ${src}:`, err); } })
+            .catch((err) => console.warn(`RayRunner: ${src} no se pudo cargar (usando placeholder) —`, err.message || err));
     }
     let dunAssetsLoaded = false;
     function ensureDungeonAssets() {
         if (dunAssetsLoaded) return;
         dunAssetsLoaded = true;
-        loadSheet('sprites/hero.png', buildHeroSheet);       // sin PNG → onerror silencioso → placeholder
+        loadSheet('sprites/hero.png', buildHeroSheet);       // sin PNG: un warn en consola (dev-only) + placeholder
         loadSheet('sprites/enemies.png', buildEnemySheet);
     }
     // ── Enemigos: tipos, spawns fijos (deterministas) y proyectiles ─────────
