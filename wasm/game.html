@@ -196,6 +196,12 @@
                 <div><kbd>T</kbd> tilt (empuja la mesa — ¡sin pasarte!)</div>
                 <div>cámara "ojo de la bola" aleatoria</div>
             </div>
+            <div class="grp">
+                <b>Nivel 5 · Mazmorra (beta, en Entrenar)</b>
+                <div><kbd>←</kbd> <kbd>→</kbd> andar/correr</div>
+                <div><kbd>↑</kbd> <kbd>espacio</kbd> saltar (táctil: toque corto)</div>
+                <div><kbd>Z</kbd> clic — tajo de espada</div>
+            </div>
         </div>
         <div class="overlay" id="start-overlay">
             <div style="font-size:1.15rem; font-weight:bold; letter-spacing:1px;">🏍 RAYRUNNER</div>
@@ -306,6 +312,7 @@
             <button class="btn sec train-lvl" data-lvl="2">🏍 <b>Nivel 2</b><span>Circuito neón (noche)</span></button>
             <button class="btn sec train-lvl" data-lvl="3">☀️ <b>Nivel 3</b><span>Mismo circuito, de día e inverso</span></button>
             <button class="btn sec train-lvl" data-lvl="4">🪩 <b>Nivel 4</b><span>Pinball 3D</span></button>
+            <button class="btn sec train-lvl" data-lvl="5">🗡 <b>Nivel 5</b><span>Mazmorra (beta)</span></button>
         </div>
     </div>
 </div>
@@ -696,12 +703,14 @@
         tilt: 0, tiltLock: 0,       // nivel 4: medidor de tilt (T) y bloqueo si te pasas
         training: false, // modo entreno (saltar a un nivel): la puntuación NO cuenta
         trackRev: false, // nivel 3: mismo circuito que el 2, recorrido en sentido inverso
+        hero: null, camX: 0, // nivel 5 (mazmorra): héroe de plataformas + cámara lateral
     };
     resizeCanvas();
     for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
     const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (nivel 2); a/b = flippers en nivel 3
 
-    const zones = () => st.level === 1 ? ZONES_SPACE : (st.level === 2 || st.level === 3) ? ZONES_NEON : ZONES_PINBALL;
+    const zones = () => st.level === 1 ? ZONES_SPACE : (st.level === 2 || st.level === 3) ? ZONES_NEON
+                      : st.level === 5 ? ZONES_DUNGEON : ZONES_PINBALL;
 
     // Nivel 3 = el mismo circuito del nivel 2, recorrido en sentido inverso.
     // La geometría (asfalto, edificios, pilones...) no cambia — solo la MANERA
@@ -740,6 +749,7 @@
         st.pinMult = 1; st.pinRampCount = 0; st.extraBallUsed = false; st.pinTargetResetTtl = 0;
         st.ballCamTtl = 0; st.ballCamCd = 3; st.training = false; st.tilt = 0; st.tiltLock = 0;
         st.trackRev = false;
+        st.hero = null; st.camX = 0;
         for (const t of pinTargets) t.alive = true;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
@@ -761,8 +771,8 @@
         hudBombs.innerText = st.bombs;
     }
     function relabelButtons() {
-        $('btn-a').innerText = st.level === 1 ? '▲' : (st.level === 2 || st.level === 3) ? '◀' : 'L';
-        $('btn-b').innerText = st.level === 1 ? '▼' : (st.level === 2 || st.level === 3) ? '▶' : 'R';
+        $('btn-a').innerText = st.level === 1 ? '▲' : st.level === 4 ? 'L' : '◀';
+        $('btn-b').innerText = st.level === 1 ? '▼' : st.level === 4 ? 'R' : '▶';
     }
     const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
     function banner(text) { st.banner = text; st.bannerTtl = 1; }
@@ -800,6 +810,7 @@
         if (n === 2) switchToLevel2();
         else if (n === 3) switchToLevel3();
         else if (n === 4) switchToLevel4();
+        else if (n === 5) switchToLevel5(); // mazmorra: aún fuera del flujo principal (beta)
     }
     $('train-btn').addEventListener('click', showTrain);
     $('train-close').addEventListener('click', hideTrain);
@@ -1294,16 +1305,21 @@
         const kk = keyOf(e);
         const up = kk === 'ArrowUp' || kk === 'w', down = kk === 'ArrowDown' || kk === 's';
         const left = kk === 'ArrowLeft' || kk === 'a', right = kk === 'ArrowRight' || kk === 'd';
-        if ((st.level === 1 && up) || (st.level >= 2 && left)) keys.a = true; // volante izq. en N2/N3, flipper izq. en N4
-        else if ((st.level === 1 && down) || (st.level >= 2 && right)) keys.b = true; // volante der. en N2/N3, flipper der. en N4
+        if ((st.level === 1 && up) || (st.level >= 2 && left)) keys.a = true; // volante izq. en N2/N3/N5, flipper izq. en N4
+        else if ((st.level === 1 && down) || (st.level >= 2 && right)) keys.b = true; // volante der. en N2/N3/N5, flipper der. en N4
         else if ((st.level === 2 || st.level === 3) && up) keys.u = true;    // acelerador
         else if ((st.level === 2 || st.level === 3) && down) keys.d = true;  // freno
+        else if (st.level === 5 && up) { if (!e.repeat) heroJump(); }        // mazmorra: saltar
         else if (kk === 'x') { if (!e.repeat) fireMissile(); }
         else if (kk === 'c') { if (!e.repeat) useBomb(); }
         else if (kk === 'v') { if (!e.repeat && (st.level === 2 || st.level === 3)) cycleCamera(); }
         else if (kk === 't') { if (!e.repeat && st.level === 4) nudgeTable(); }
         else if (kk === 'h') { if (!e.repeat) toggleKeysSidebar(); }
-        else if (kk === 'z' || kk === ' ') { fireBlaster(); } // mantener = autofuego (con cadencia)
+        else if (kk === 'z' || kk === ' ') {
+            // mazmorra: Z = tajo de espada, espacio = salto; resto: bláster
+            if (st.level === 5) { if (!e.repeat) (kk === ' ' ? heroJump() : heroAttack()); }
+            else fireBlaster(); // mantener = autofuego (con cadencia)
+        }
         else if (kk === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
         else return;
         e.preventDefault();
@@ -1365,18 +1381,23 @@
         if (e.pointerType !== 'mouse') e.preventDefault();
         dragging = true;
         downT = performance.now(); downX = e.clientX; downY = e.clientY;
-        if (e.pointerType === 'mouse') { if (st.level < 4) fireBlaster(); } // en pinball (N4) los botones = flippers (mousedown)
+        if (e.pointerType === 'mouse') {
+            if (st.level === 5) heroAttack();           // mazmorra: clic = tajo
+            else if (st.level < 4) fireBlaster();       // en pinball (N4) los botones = flippers (mousedown)
+        }
         else if (st.level === 4) touchFlipDown(e); // táctil: mitades = flippers
-        else dragTo(e);
+        else dragTo(e); // N5 incluido: dedo apoyado a un lado = andar hacia ahí
         capture(canvas, e);
     });
     canvas.addEventListener('pointermove', (e) => { if (dragging && e.pointerType !== 'mouse' && st.level !== 4) dragTo(e); });
     const dragEnd = () => { dragging = false; st.touchTarget = null; st.touchTargetX = null; st.touchThrottle = 0; };
     canvas.addEventListener('pointerup', (e) => {
         touchFlipUp(e);
-        // Toque corto (sin arrastre) = disparo de bláster también en táctil
+        // Toque corto (sin arrastre) = bláster en N1-N3, SALTO en la mazmorra
         if (e.pointerType !== 'mouse' && performance.now() - downT < 220 &&
-            Math.hypot(e.clientX - downX, e.clientY - downY) < 12) fireBlaster();
+            Math.hypot(e.clientX - downX, e.clientY - downY) < 12) {
+            if (st.level === 5) heroJump(); else fireBlaster();
+        }
         dragEnd();
     });
     canvas.addEventListener('pointercancel', (e) => { touchFlipUp(e); dragEnd(); });
@@ -1388,7 +1409,7 @@
     // clic de bláster te "soltaba" la flecha de dirección que tenías pulsada.
     const mouseFlip = { a: false, b: false };
     canvas.addEventListener('mousedown', (e) => {
-        if (st.level < 4) return;
+        if (st.level !== 4) return; // SOLO el pinball usa los botones del ratón como flippers
         if (e.button === 0) { keys.a = true; mouseFlip.a = true; }
         else if (e.button === 2) { keys.b = true; mouseFlip.b = true; e.preventDefault(); }
     });
@@ -2855,6 +2876,261 @@
         return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H };
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    // NIVEL 5 · MAZMORRA (beta, solo desde Entrenar) — hack & slash de scroll
+    // lateral en el canvas 2D. FASE 1: héroe completo (andar/correr/saltar/
+    // atacar) + mundo (suelo, plataformas, parallax por biomas, cámara).
+    //
+    // El mundo vive en UNIDADES DE MAZMORRA fijas (DUN_H de alto), igual que
+    // el pinball vive en unidades de mesa: la proyección a pantalla es
+    // sc = H/DUN_H y un resize no desincroniza nada.
+    //
+    // SPRITES: si existe `sprites/hero.png` (la hoja de sprites del héroe),
+    // se usa — HERO_ATLAS de abajo recorta cada fila de animación (las
+    // coordenadas son estimadas y habrá que AJUSTARLAS con el PNG real).
+    // Si no existe, un héroe placeholder dibujado a mano con los mismos 8
+    // estados mantiene el nivel jugable sin assets.
+    // ════════════════════════════════════════════════════════════════════════
+    const DUN_LEN = 6400, DUN_H = 540, DUN_GROUND = 470;
+    const DUN_PLATS = [ // {x, y(=cota de los pies), w} — alcanzables con el salto (apex ≈ 184u)
+        { x: 620, y: 370, w: 160 }, { x: 980, y: 330, w: 140 }, { x: 1340, y: 380, w: 170 },
+        { x: 1750, y: 340, w: 150 }, { x: 2150, y: 370, w: 160 }, { x: 2560, y: 330, w: 150 },
+        { x: 2950, y: 380, w: 170 }, { x: 3350, y: 340, w: 150 }, { x: 3760, y: 370, w: 160 },
+        { x: 4170, y: 330, w: 150 }, { x: 4580, y: 380, w: 170 }, { x: 4990, y: 340, w: 150 },
+        { x: 5400, y: 370, w: 160 }, { x: 5800, y: 330, w: 150 },
+    ];
+    // Biomas = zonas musicales (uno por cuarto del recorrido). top/bot = cielo,
+    // silh = siluetas del parallax; name/tint son lo que consume zones().
+    const ZONES_DUNGEON = [
+        { name: 'BOSQUE OSCURO', tint: [110, 220, 150], top: [24, 43, 38], bot: [59, 88, 66], silh: '#0e1a14' },
+        { name: 'PASO DE MONTAÑA', tint: [120, 160, 255], top: [30, 36, 58], bot: [84, 97, 140], silh: '#141a2c' },
+        { name: 'PATIO DEL CASTILLO', tint: [220, 140, 255], top: [43, 30, 48], bot: [106, 74, 102], silh: '#1c1224' },
+        { name: 'CRIPTA DEL JEFE', tint: [255, 110, 110], top: [26, 15, 28], bot: [58, 29, 51], silh: '#0d0812' },
+    ];
+    // Hoja de sprites real (opcional): coordenadas ESTIMADAS de cada fila
+    // sobre una imagen de 1536×1024 — ajustar en cuanto el PNG esté en el repo.
+    const HERO_ATLAS = {
+        idle: { y: 15, h: 100, frames: 9, fps: 5 },
+        walk: { y: 130, h: 105, frames: 9, fps: 9 },
+        run: { y: 250, h: 105, frames: 9, fps: 12 },
+        jump: { y: 370, h: 105, frames: 4, fps: 8 },
+        fall: { y: 490, h: 105, frames: 4, fps: 8 },
+        attack: { y: 605, h: 130, frames: 8, fps: 24 },
+        damage: { y: 745, h: 110, frames: 6, fps: 12 },
+        die: { y: 895, h: 100, frames: 8, fps: 10 },
+    };
+    const HERO_SX0 = 70, HERO_SDX = 115, HERO_SW = 100; // rejilla horizontal estimada
+    let heroImg = null, heroImgOk = false;
+    function ensureDungeonAssets() {
+        if (heroImg) return;
+        heroImg = new Image();
+        heroImg.onload = () => { heroImgOk = true; };
+        heroImg.onerror = () => { heroImgOk = false; }; // sin PNG → placeholder
+        heroImg.src = 'sprites/hero.png';
+    }
+    function switchToLevel5() {
+        st.level = 5;
+        st.zone = -1;
+        st.worldT = 0;
+        st.touchTarget = null; st.touchTargetX = null; st.touchThrottle = 0;
+        st.hero = { x: 60, y: DUN_GROUND, vx: 0, vy: 0, dir: 1, state: 'idle', animT: 0, attackT: 0,
+                    onGround: true, maxX: 60, done: false };
+        st.camX = 0;
+        clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
+        $('stage').classList.remove('mode3d'); $('stage').classList.remove('mode-pin'); $('stage').classList.remove('mode-pin3d');
+        resizeCanvas();
+        ensureDungeonAssets();
+        loadTerrain('pinball'); // sample provisional (chiptune) — la fase 3 traerá el suyo
+        banner('NIVEL 5 · MAZMORRA (BETA)');
+        relabelButtons();
+        updateHud();
+    }
+    function heroJump() {
+        const h = st.hero;
+        if (st.level !== 5 || !st.playing || st.paused || !h || !h.onGround || h.attackT > 0) return;
+        h.vy = -980;
+        h.onGround = false;
+        pinHitFx(1);
+        vibrate(8);
+    }
+    function heroAttack() {
+        const h = st.hero;
+        if (st.level !== 5 || !st.playing || st.paused || !h || h.attackT > 0) return;
+        h.attackT = 0.28;
+        h.animT = 0;
+        st.shimmer = Math.max(st.shimmer, 0.3);
+        pinHitFx(2);
+        // Destello en la punta de la espada (los enemigos llegan en la fase 2)
+        const sc = H / DUN_H;
+        burst((h.x - st.camX + h.dir * 34) * sc, (h.y - 40) * sc, [120, 220, 255], 6);
+        vibrate(10);
+    }
+    function stepLevel5(dt) {
+        const h = st.hero;
+        if (!h) return;
+        const prevY = h.y;
+        // Dirección: flechas/botones (keys.a/b) o dedo apoyado a un lado
+        let dir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
+        if (st.touchTargetX !== null) dir = st.touchTargetX > 0.15 ? 1 : st.touchTargetX < -0.15 ? -1 : 0;
+        if (h.attackT > 0 && h.onGround) dir = 0; // el tajo en suelo te planta
+        const SPD = 300;
+        h.vx += (dir * SPD - h.vx) * Math.min(1, 12 * dt);
+        h.vy += 2600 * dt;
+        h.x = clamp(h.x + h.vx * dt, 20, DUN_LEN - 20);
+        h.y += h.vy * dt;
+        // Suelo y plataformas (solo se aterriza cayendo, one-way como un plataformas clásico)
+        h.onGround = false;
+        if (h.y >= DUN_GROUND) { h.y = DUN_GROUND; h.vy = 0; h.onGround = true; }
+        else if (h.vy > 0) {
+            for (const p of DUN_PLATS) {
+                if (h.x < p.x || h.x > p.x + p.w) continue;
+                if (prevY <= p.y && h.y >= p.y) { h.y = p.y; h.vy = 0; h.onGround = true; break; }
+            }
+        }
+        // Máquina de estados → sprite
+        h.attackT = Math.max(0, h.attackT - dt);
+        let state;
+        if (h.attackT > 0) state = 'attack';
+        else if (!h.onGround) state = h.vy < 0 ? 'jump' : 'fall';
+        else if (Math.abs(h.vx) > 210) state = 'run';
+        else if (Math.abs(h.vx) > 24) state = 'walk';
+        else state = 'idle';
+        if (state !== h.state) { h.state = state; h.animT = 0; }
+        h.animT += dt;
+        if (dir) h.dir = dir;
+        // Progreso: avanzar hacia la derecha puntúa; el fondo (y la música) siguen tu posición
+        if (h.x > h.maxX) { st.score += (h.x - h.maxX) * 0.08; h.maxX = h.x; }
+        st.worldT = clamp(h.x / DUN_LEN, 0, 0.999) * TERRAIN_SECS;
+        if (!h.done && h.x > DUN_LEN - 60) { h.done = true; st.score += 500; banner('¡MAZMORRA COMPLETADA (BETA)!'); pinHitFx(4); }
+        // Cámara con suavizado, acotada a los bordes del mundo
+        const viewW = W / (H / DUN_H);
+        st.camX += (clamp(h.x - viewW * 0.42, 0, Math.max(0, DUN_LEN - viewW)) - st.camX) * Math.min(1, 8 * dt);
+    }
+    const lerpC = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+    const cssC = (c, al = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${al})`;
+    function draw5(t) {
+        const h = st.hero;
+        if (!h) return;
+        const sc = H / DUN_H;
+        g.save();
+        if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
+        g.clearRect(-20, -20, W + 40, H + 40);
+        // Bioma continuo: mezcla entre el actual y el siguiente según el avance
+        const prog = clamp(h.x / DUN_LEN, 0, 0.999) * 4;
+        const bi = Math.min(3, prog | 0), bf = clamp((prog - bi - 0.7) / 0.3, 0, 1); // funde solo al final de cada bioma
+        const B0 = ZONES_DUNGEON[bi], B1 = ZONES_DUNGEON[Math.min(3, bi + 1)];
+        const top = lerpC(B0.top, B1.top, bf), bot = lerpC(B0.bot, B1.bot, bf);
+        const sky = g.createLinearGradient(0, 0, 0, H * 0.87);
+        sky.addColorStop(0, cssC(top)); sky.addColorStop(1, cssC(bot));
+        g.fillStyle = sky; g.fillRect(-20, -20, W + 40, H + 40);
+        // Parallax LEJOS (0.22×): cordillera de picos determinista (sin en vez de RNG → estable)
+        g.fillStyle = B0.silh;
+        g.beginPath();
+        const farOff = st.camX * 0.22 * sc, seg = 56 * sc;
+        g.moveTo(-20, H);
+        for (let px = -20; px <= W + seg; px += seg) {
+            const i = (px + farOff) / seg;
+            const y = H * 0.62 - (Math.sin(i * 0.7) * 0.5 + Math.sin(i * 0.23 + 2) * 0.5) * H * 0.2;
+            g.lineTo(px, y);
+        }
+        g.lineTo(W + 20, H); g.closePath(); g.fill();
+        // Parallax MEDIO (0.5×): árboles/torres alternados, también deterministas
+        g.fillStyle = 'rgba(6,8,10,0.55)';
+        const midOff = st.camX * 0.5 * sc, midStep = 150 * sc;
+        for (let px = -midStep; px <= W + midStep; px += midStep) {
+            const i = Math.round((px + midOff) / midStep);
+            const bx = px - (midOff % midStep);
+            const hgt = (0.16 + ((i * 37) % 13) / 13 * 0.14) * H;
+            if (i % 3 === 2) { // torre con almenas
+                g.fillRect(bx, H * 0.87 - hgt, 34 * sc, hgt);
+                for (let m = 0; m < 3; m++) g.fillRect(bx + m * 12 * sc, H * 0.87 - hgt - 7 * sc, 8 * sc, 7 * sc);
+            } else { // árbol triangular
+                g.beginPath();
+                g.moveTo(bx, H * 0.87); g.lineTo(bx + 17 * sc, H * 0.87 - hgt); g.lineTo(bx + 34 * sc, H * 0.87);
+                g.closePath(); g.fill();
+            }
+        }
+        // Suelo: losa oscura con juntas de ladrillo desplazándose con la cámara
+        const gy = DUN_GROUND * sc;
+        g.fillStyle = '#191521'; g.fillRect(-20, gy, W + 40, H - gy + 20);
+        g.strokeStyle = 'rgba(255,255,255,0.07)'; g.lineWidth = Math.max(1, sc);
+        const bw = 52 * sc, bh = 20 * sc, gOff = (st.camX * sc) % (bw * 2);
+        for (let row = 0; row < 3; row++) {
+            const yy = gy + 6 * sc + row * bh;
+            g.beginPath(); g.moveTo(0, yy); g.lineTo(W, yy); g.stroke();
+            for (let px = -gOff + (row % 2) * bw / 2; px < W; px += bw) { g.beginPath(); g.moveTo(px, yy); g.lineTo(px, yy + bh); g.stroke(); }
+        }
+        g.fillStyle = cssC(lerpC(B0.tint, B1.tint, bf), 0.22); // borde superior teñido por bioma
+        g.fillRect(-20, gy - 2 * sc, W + 40, 3 * sc);
+        // Plataformas
+        for (const p of DUN_PLATS) {
+            const px = (p.x - st.camX) * sc, pw = p.w * sc;
+            if (px + pw < -30 || px > W + 30) continue;
+            const py = p.y * sc;
+            g.fillStyle = '#241e30'; g.fillRect(px, py, pw, 12 * sc);
+            g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(px, py, pw, 2.5 * sc);
+        }
+        drawHero5((h.x - st.camX) * sc, h.y * sc, sc, h, t);
+        drawFxOverlays(t, ZONES_DUNGEON[Math.max(0, st.zone)].tint);
+        g.restore();
+    }
+    function drawHero5(px, py, sc, h, t) {
+        // Con la hoja real: recorte de HERO_ATLAS. Sin ella: caballerito a mano.
+        if (heroImgOk) {
+            const row = HERO_ATLAS[h.state] || HERO_ATLAS.idle;
+            const fi = Math.floor(h.animT * row.fps) % row.frames;
+            const dh = 78 * sc, dw = dh * (HERO_SW / row.h);
+            g.save();
+            g.translate(px, py);
+            if (h.dir < 0) g.scale(-1, 1);
+            g.imageSmoothingEnabled = false; // píxel art nítido
+            g.drawImage(heroImg, HERO_SX0 + fi * HERO_SDX, row.y, HERO_SW, row.h, -dw / 2, -dh, dw, dh);
+            g.restore();
+            return;
+        }
+        g.save();
+        g.translate(px, py);
+        g.scale(h.dir * sc, sc); // py = pies; se dibuja hacia arriba
+        const bob = h.state === 'idle' ? Math.sin(t * 3) * 1.5 : 0;
+        const swing = h.state === 'run' ? Math.sin(h.animT * 14) : h.state === 'walk' ? Math.sin(h.animT * 8) * 0.6 : 0;
+        if (h.state === 'die') g.rotate(-Math.PI / 2);
+        // capa (al correr, al viento)
+        g.fillStyle = '#8c2430';
+        g.beginPath();
+        g.moveTo(-4, -46); g.lineTo(-14 - Math.abs(swing) * 8, -20 + swing * 4); g.lineTo(-6, -14); g.closePath(); g.fill();
+        // piernas
+        g.fillStyle = '#3c4149';
+        g.fillRect(-7 + swing * 5, -16, 6, 16);
+        g.fillRect(1 - swing * 5, -16, 6, 16);
+        g.fillStyle = '#5b3a22'; // botas
+        g.fillRect(-8 + swing * 5, -4, 8, 4);
+        g.fillRect(0 - swing * 5, -4, 8, 4);
+        // torso + bufanda + cabeza
+        g.fillStyle = '#7d8590'; g.fillRect(-8, -42 + bob, 16, 26);
+        g.fillStyle = '#2f6fd0'; g.fillRect(-8, -44 + bob, 16, 6);
+        g.fillStyle = '#d9a071'; g.fillRect(-7, -58 + bob, 14, 14);
+        g.fillStyle = '#7a4a26'; g.fillRect(-8, -62 + bob, 16, 8); // pelo
+        g.fillStyle = '#20242c'; g.fillRect(2, -54 + bob, 2.5, 3); // ojo
+        // espada (ataque: barrido con arco de luz)
+        if (h.state === 'attack') {
+            const f = 1 - h.attackT / 0.28; // 0→1 durante el tajo
+            const a = -1.9 + f * 2.6;
+            g.save();
+            g.translate(6, -34 + bob);
+            g.rotate(a);
+            g.fillStyle = '#cfd6e4'; g.fillRect(0, -2.5, 30, 5);
+            g.fillStyle = '#8c6a3a'; g.fillRect(-6, -3, 6, 6);
+            g.restore();
+            g.strokeStyle = `rgba(120,220,255,${0.7 * (1 - f)})`;
+            g.lineWidth = 4;
+            g.beginPath(); g.arc(6, -34 + bob, 34, a - 0.9, a + 0.15); g.stroke();
+        } else if (h.state !== 'die') {
+            g.fillStyle = '#cfd6e4'; g.fillRect(7, -30 + bob, 4, 20); // envainada al costado
+        }
+        if (h.state === 'damage') { g.fillStyle = 'rgba(255,60,60,0.35)'; g.fillRect(-10, -62, 20, 62); }
+        g.restore();
+    }
+
     // ── Bucle ─────────────────────────────────────────────────────────────────
     // Paso de física fijo con acumulador: la conducción (y sus colisiones) no
     // deben ir más lentas si el dibujado (bloom/sombras en el circuito) se
@@ -2887,6 +3163,8 @@
         } else if (st.level === 2 || st.level === 3) {
             render3D(t / 1000);
             drawOverlay2D(t / 1000);
+        } else if (st.level === 5) {
+            draw5(t / 1000);
         } else {
             render4(t / 1000);
             drawPinball3DOverlay(t / 1000);
@@ -2924,6 +3202,7 @@
     function step(dt) {
         if (st.level === 1) stepLevel1(dt);
         else if (st.level === 2 || st.level === 3) stepLevel2(dt);
+        else if (st.level === 5) stepLevel5(dt); // mazmorra (plataformas)
         else stepLevel3(dt); // nivel 4: física de la mesa de pinball
         stepCommon(dt);
     }
@@ -4216,9 +4495,12 @@
         setPos(p2) { st.pos = p2; },
         goLevel3: switchToLevel3,
         goLevel4: switchToLevel4,
+        goLevel5: switchToLevel5,
         get t4() { return T4; },
         get keys() { return keys; },
         get pads() { return pads2; },
+        get hero() { return st.hero; },
+        dunLen: DUN_LEN,
         pinLayout,
         pinBumpers,
         pinTargets,

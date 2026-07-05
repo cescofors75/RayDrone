@@ -312,9 +312,24 @@ Motor con paridad casi completa con la versión JS:
   usan samples ni osciladores aparte — disparan un pulso de reflexiones en el
   motor granular del worklet (la misma vía que misiles/bombas), así **toda la
   música Y los efectos salen del mismo motor RayDrone**.
-  **Botón "🎯 Entrenar"** en la portada: un modal con los 4 niveles para
+  **Botón "🎯 Entrenar"** en la portada: un modal con los 5 niveles para
   saltar directo a cualquiera y practicarlo — en modo entreno la **puntuación
   NO se guarda** en el ranking (saltarse niveles sería trampa).
+  **Nivel 5 (Mazmorra, BETA — solo desde Entrenar)**: hack & slash de scroll
+  lateral en el canvas 2D. Fase 1 lista: héroe de plataformas con los 8
+  estados de la hoja de sprites (idle/walk/run/jump/fall/attack/damage/die),
+  salto (↑/espacio o toque corto), tajo de espada con arco de luz (Z o clic),
+  andar/correr (←→, botones, o el dedo apoyado a un lado), suelo + 14
+  plataformas one-way, cámara lateral con suavizado y **parallax por biomas**
+  (bosque oscuro → paso de montaña → patio del castillo → cripta del jefe),
+  donde cada bioma = una zona musical (worldT sigue tu avance). El mundo
+  vive en unidades fijas (DUN_H) como la mesa de pinball: un resize no
+  desincroniza nada. Si `sprites/hero.png` (la hoja de sprites real) está
+  en el repo, se recorta con HERO_ATLAS; si no, un héroe placeholder
+  dibujado a mano con los mismos estados mantiene el nivel jugable.
+  Pendiente (fases 2-3): enemigos con IA (slime, goblin, esqueleto,
+  murciélago, lobo, seta, ojo, orco miniboss, mago jefe), combate con
+  combo→N, pickups, sample de audio propio y entrada en el flujo principal.
   **Controles del pinball**: flechas ← →, **botón izquierdo/derecho del
   ratón**, o en táctil **tocar la mitad izquierda/derecha de la mesa**
   (multi-touch: cada dedo cuenta por separado — dos dedos = los dos
