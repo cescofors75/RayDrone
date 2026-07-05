@@ -2878,18 +2878,20 @@
 
     // ════════════════════════════════════════════════════════════════════════
     // NIVEL 5 · MAZMORRA (beta, solo desde Entrenar) — hack & slash de scroll
-    // lateral en el canvas 2D. FASE 1: héroe completo (andar/correr/saltar/
-    // atacar) + mundo (suelo, plataformas, parallax por biomas, cámara).
+    // lateral en el canvas 2D. FASE 1: héroe + mundo. FASE 2: enemigos con IA
+    // y combate (espada con hitbox, daño al héroe con invulnerabilidad).
     //
     // El mundo vive en UNIDADES DE MAZMORRA fijas (DUN_H de alto), igual que
     // el pinball vive en unidades de mesa: la proyección a pantalla es
     // sc = H/DUN_H y un resize no desincroniza nada.
     //
-    // SPRITES: si existe `sprites/hero.png` (la hoja de sprites del héroe),
-    // se usa — HERO_ATLAS de abajo recorta cada fila de animación (las
-    // coordenadas son estimadas y habrá que AJUSTARLAS con el PNG real).
-    // Si no existe, un héroe placeholder dibujado a mano con los mismos 8
-    // estados mantiene el nivel jugable sin assets.
+    // SPRITES: si existe `sprites/hero.png` (y `sprites/enemies.png`), la hoja
+    // se procesa al cargar: (1) el FONDO NEGRO se hace transparente con un
+    // flood-fill desde los bordes (los píxeles oscuros DE los sprites no tocan
+    // el borde y sobreviven), y (2) el ATLAS se detecta solo, midiendo dónde
+    // hay tinta: bandas horizontales = filas de animación, grupos de columnas
+    // = frames (con bbox fino) — nada de coordenadas a ojo. Si el PNG no
+    // existe, un placeholder dibujado a mano mantiene el nivel jugable.
     // ════════════════════════════════════════════════════════════════════════
     const DUN_LEN = 6400, DUN_H = 540, DUN_GROUND = 470;
     const DUN_PLATS = [ // {x, y(=cota de los pies), w} — alcanzables con el salto (apex ≈ 184u)
@@ -2907,35 +2909,154 @@
         { name: 'PATIO DEL CASTILLO', tint: [220, 140, 255], top: [43, 30, 48], bot: [106, 74, 102], silh: '#1c1224' },
         { name: 'CRIPTA DEL JEFE', tint: [255, 110, 110], top: [26, 15, 28], bot: [58, 29, 51], silh: '#0d0812' },
     ];
-    // Hoja de sprites real (opcional): coordenadas ESTIMADAS de cada fila
-    // sobre una imagen de 1536×1024 — ajustar en cuanto el PNG esté en el repo.
-    const HERO_ATLAS = {
-        idle: { y: 15, h: 100, frames: 9, fps: 5 },
-        walk: { y: 130, h: 105, frames: 9, fps: 9 },
-        run: { y: 250, h: 105, frames: 9, fps: 12 },
-        jump: { y: 370, h: 105, frames: 4, fps: 8 },
-        fall: { y: 490, h: 105, frames: 4, fps: 8 },
-        attack: { y: 605, h: 130, frames: 8, fps: 24 },
-        damage: { y: 745, h: 110, frames: 6, fps: 12 },
-        die: { y: 895, h: 100, frames: 8, fps: 10 },
-    };
-    const HERO_SX0 = 70, HERO_SDX = 115, HERO_SW = 100; // rejilla horizontal estimada
-    let heroImg = null, heroImgOk = false;
-    function ensureDungeonAssets() {
-        if (heroImg) return;
-        heroImg = new Image();
-        heroImg.onload = () => { heroImgOk = true; };
-        heroImg.onerror = () => { heroImgOk = false; }; // sin PNG → placeholder
-        heroImg.src = 'sprites/hero.png';
+    // ── Pipeline de hojas de sprites ─────────────────────────────────────────
+    // processSheet(img): fondo→transparente + detección automática del atlas.
+    function processSheet(img) {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(img, 0, 0);
+        const W2 = c.width, H2 = c.height;
+        const d = x.getImageData(0, 0, W2, H2), px = d.data;
+        // 1) Fondo → transparente: flood-fill desde los 4 bordes sobre píxeles
+        // oscuros (fondo negro Y líneas de rejilla). Los píxeles oscuros DE los
+        // sprites (ojos, contornos) no están conectados al borde y sobreviven
+        // (como mucho pierden un ribete de 1px de contorno, aceptable).
+        const seen = new Uint8Array(W2 * H2);
+        const stack = [];
+        for (let i = 0; i < W2; i++) { stack.push(i, (H2 - 1) * W2 + i); }
+        for (let j = 0; j < H2; j++) { stack.push(j * W2, j * W2 + W2 - 1); }
+        while (stack.length) {
+            const p = stack.pop();
+            if (seen[p]) continue;
+            seen[p] = 1;
+            const i4 = p * 4;
+            if (px[i4] + px[i4 + 1] + px[i4 + 2] >= 110) continue; // no es fondo/rejilla
+            px[i4 + 3] = 0;
+            const xx = p % W2, yy = (p / W2) | 0;
+            if (xx > 0) stack.push(p - 1);
+            if (xx < W2 - 1) stack.push(p + 1);
+            if (yy > 0) stack.push(p - W2);
+            if (yy < H2 - 1) stack.push(p + W2);
+        }
+        x.putImageData(d, 0, 0);
+        // 2) Atlas automático: bandas horizontales con tinta = filas de
+        // animación; dentro de cada banda, grupos de columnas = frames (con
+        // bbox vertical fino). Solo el bloque izquierdo (74% del ancho): los
+        // paneles laterales (DIRECTIONS/EXTRAS/PALETTE) quedan fuera, y los
+        // rótulos de texto del margen izquierdo se descartan por posición.
+        const maxX = Math.floor(W2 * 0.74);
+        const ink = (xx, yy) => px[(yy * W2 + xx) * 4 + 3] > 0;
+        const rowInk = new Uint8Array(H2);
+        for (let yy = 0; yy < H2; yy++) for (let xx = 0; xx < maxX; xx++) if (ink(xx, yy)) { rowInk[yy] = 1; break; }
+        const bands = [];
+        let y0 = -1, gapY = 0;
+        for (let yy = 0; yy <= H2; yy++) {
+            if (yy < H2 && rowInk[yy]) { if (y0 < 0) y0 = yy; gapY = 0; }
+            else if (y0 >= 0 && ++gapY > 9) { // huecos de <10px no parten la banda
+                const y1 = yy - gapY + 1;
+                if (y1 - y0 > 14) bands.push({ y0, y1 });
+                y0 = -1; gapY = 0;
+            }
+        }
+        for (const b of bands) {
+            b.frames = [];
+            const colInk = new Uint8Array(maxX);
+            for (let xx = 0; xx < maxX; xx++) for (let yy = b.y0; yy < b.y1; yy++) if (ink(xx, yy)) { colInk[xx] = 1; break; }
+            let x0 = -1, gapX = 0;
+            for (let xx = 0; xx <= maxX; xx++) {
+                if (xx < maxX && colInk[xx]) { if (x0 < 0) x0 = xx; gapX = 0; }
+                else if (x0 >= 0 && ++gapX > 7) {
+                    const x1 = xx - gapX + 1;
+                    // descarta rótulos ("IDLE", "WALK"...) pegados al margen y motas
+                    if (x1 - x0 > 12 && x0 > W2 * 0.05) {
+                        let fy0 = b.y1, fy1 = b.y0;
+                        for (let yy = b.y0; yy < b.y1; yy++) {
+                            for (let xk = x0; xk < x1; xk++) if (ink(xk, yy)) { if (yy < fy0) fy0 = yy; if (yy > fy1) fy1 = yy; break; }
+                        }
+                        b.frames.push({ x: x0, y: fy0, w: x1 - x0, h: fy1 - fy0 + 1 });
+                    }
+                    x0 = -1; gapX = 0;
+                }
+            }
+        }
+        return { canvas: c, bands: bands.filter((b) => b.frames.length >= 1) };
     }
+    // Héroe: filas en el orden de la hoja. FACE dice hacia dónde mira cada fila
+    // dibujada (1 = derecha, -1 = izquierda) — ajustable si el PNG real difiere.
+    const HERO_STATES = ['idle', 'walk', 'run', 'jump', 'fall', 'attack', 'damage', 'die'];
+    const HERO_FPS = { idle: 5, walk: 9, run: 12, jump: 8, fall: 8, attack: 26, damage: 12, die: 10 };
+    const HERO_FACE = { idle: 1, walk: 1, run: 1, jump: 1, fall: 1, attack: 1, damage: 1, die: 1 };
+    let heroSheet = null; // {canvas, rows:{estado:[frames]}, ref} — null = placeholder
+    function buildHeroSheet(img) {
+        const p = processSheet(img);
+        if (p.bands.length < HERO_STATES.length) { heroSheet = null; return; }
+        const rows = {};
+        HERO_STATES.forEach((s2, i) => { rows[s2] = p.bands[i].frames; });
+        // Escala de referencia: la altura mediana de los frames de idle = el
+        // "cuerpo" del héroe → 78 unidades de mundo. Los frames de ataque son
+        // más anchos/altos (espada extendida) y se dibujan más grandes SIN
+        // encoger el cuerpo — justo lo que se veía mal con el recorte a ojo.
+        const hs = rows.idle.map((f) => f.h).sort((a, b) => a - b);
+        heroSheet = { canvas: p.canvas, rows, ref: hs[hs.length >> 1] || 90 };
+    }
+    // Enemigos: filas de la hoja en su orden; columnas = idle, walk1, walk2,
+    // attack1, attack2, hit, die (como la hoja de referencia).
+    const ENEMY_ROWS = ['slime', 'goblin', 'skeleton', 'bat', 'orc', 'wolf', 'shroom', 'ghost', 'eye', 'mage'];
+    let enemySheet = null; // {canvas, rows:{tipo:[frames]}}
+    function buildEnemySheet(img) {
+        const p = processSheet(img);
+        if (p.bands.length < 6) { enemySheet = null; return; }
+        const rows = {};
+        ENEMY_ROWS.forEach((t2, i) => { if (p.bands[i]) rows[t2] = p.bands[i].frames; });
+        enemySheet = { canvas: p.canvas, rows };
+    }
+    function loadSheet(src, build) {
+        const img = new Image();
+        img.onload = () => { try { build(img); } catch (_) { /* hoja rara → placeholder */ } };
+        img.src = src;
+    }
+    let dunAssetsLoaded = false;
+    function ensureDungeonAssets() {
+        if (dunAssetsLoaded) return;
+        dunAssetsLoaded = true;
+        loadSheet('sprites/hero.png', buildHeroSheet);       // sin PNG → onerror silencioso → placeholder
+        loadSheet('sprites/enemies.png', buildEnemySheet);
+    }
+    // ── Enemigos: tipos, spawns fijos (deterministas) y proyectiles ─────────
+    // r = radio de contacto, h = altura, spd = velocidad de persecución,
+    // hp = golpes de espada que aguanta, pts = puntos al morir.
+    const ETYPES = {
+        slime: { r: 16, h: 26, spd: 0, hp: 1, pts: 20, col: [110, 230, 110] },
+        shroom: { r: 15, h: 32, spd: 0, hp: 2, pts: 35, col: [235, 90, 90] },
+        goblin: { r: 14, h: 46, spd: 105, hp: 2, pts: 40, col: [120, 200, 90] },
+        bat: { r: 14, h: 22, spd: 95, hp: 1, pts: 30, col: [190, 120, 230] },
+        skeleton: { r: 15, h: 56, spd: 90, hp: 3, pts: 50, col: [230, 230, 215] },
+        wolf: { r: 20, h: 30, spd: 330, hp: 2, pts: 60, col: [150, 155, 170] },
+    };
+    const DUN_SPAWNS = [ // por bioma: bosque → montaña → castillo → cripta (más denso al final)
+        { x: 560, t: 'slime' }, { x: 900, t: 'shroom' }, { x: 1150, t: 'slime' }, { x: 1420, t: 'goblin' },
+        { x: 1780, t: 'bat' }, { x: 2060, t: 'wolf' }, { x: 2360, t: 'slime' }, { x: 2660, t: 'bat' }, { x: 2960, t: 'goblin' },
+        { x: 3360, t: 'skeleton' }, { x: 3620, t: 'goblin' }, { x: 3920, t: 'skeleton' }, { x: 4160, t: 'shroom' }, { x: 4460, t: 'bat' }, { x: 4720, t: 'skeleton' },
+        { x: 4960, t: 'wolf' }, { x: 5210, t: 'skeleton' }, { x: 5460, t: 'bat' }, { x: 5710, t: 'goblin' }, { x: 5960, t: 'wolf' }, { x: 6160, t: 'skeleton' },
+    ];
+    let dunEnemies = [], dunShots = []; // enemigos vivos + esporas de las setas
     function switchToLevel5() {
         st.level = 5;
         st.zone = -1;
         st.worldT = 0;
         st.touchTarget = null; st.touchTargetX = null; st.touchThrottle = 0;
         st.hero = { x: 60, y: DUN_GROUND, vx: 0, vy: 0, dir: 1, state: 'idle', animT: 0, attackT: 0,
-                    onGround: true, maxX: 60, done: false };
+                    onGround: true, maxX: 60, done: false, invulnT: 0, hurtT: 0, swingId: 0 };
         st.camX = 0;
+        // Enemigos frescos desde la tabla de spawns (determinista: los tests
+        // saben qué hay y dónde). Los voladores guardan su altura de crucero.
+        dunShots = [];
+        dunEnemies = DUN_SPAWNS.map((s2) => ({
+            type: s2.t, x: s2.x, homeX: s2.x, y: DUN_GROUND, baseY: DUN_GROUND - (s2.t === 'bat' ? 110 : 0),
+            vx: 0, dir: -1, hp: ETYPES[s2.t].hp, animT: Math.random() * 6, hitT: 0, cd: 0,
+            charge: 0, chargeT: 0, attackT: 0, dying: 0, gone: false, lastSwing: -1,
+        }));
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d'); $('stage').classList.remove('mode-pin'); $('stage').classList.remove('mode-pin3d');
         resizeCanvas();
@@ -2955,15 +3076,29 @@
     }
     function heroAttack() {
         const h = st.hero;
-        if (st.level !== 5 || !st.playing || st.paused || !h || h.attackT > 0) return;
+        if (st.level !== 5 || !st.playing || st.paused || !h || h.attackT > 0 || h.hurtT > 0) return;
         h.attackT = 0.28;
         h.animT = 0;
+        h.swingId++; // cada tajo golpea a cada enemigo COMO MUCHO una vez
         st.shimmer = Math.max(st.shimmer, 0.3);
         pinHitFx(2);
-        // Destello en la punta de la espada (los enemigos llegan en la fase 2)
         const sc = H / DUN_H;
         burst((h.x - st.camX + h.dir * 34) * sc, (h.y - 40) * sc, [120, 220, 255], 6);
         vibrate(10);
+    }
+    // Daño al héroe: knockback + invulnerabilidad breve (parpadeo). Vidas,
+    // escudo, audio y fin de partida van por hitShip() — el mismo contrato
+    // que el resto de niveles (la música "se rompe" igual).
+    function heroHurt(srcX) {
+        const h = st.hero;
+        if (!h || h.invulnT > 0 || !st.playing) return;
+        h.invulnT = 1.3;
+        h.hurtT = 0.32;
+        h.attackT = 0;
+        h.vx = (h.x < srcX ? -1 : 1) * 260;
+        h.vy = Math.min(h.vy, -240);
+        h.onGround = false;
+        hitShip();
     }
     function stepLevel5(dt) {
         const h = st.hero;
@@ -2987,10 +3122,13 @@
                 if (prevY <= p.y && h.y >= p.y) { h.y = p.y; h.vy = 0; h.onGround = true; break; }
             }
         }
-        // Máquina de estados → sprite
+        // Máquina de estados → sprite (daño > ataque > aire > correr/andar/quieto)
         h.attackT = Math.max(0, h.attackT - dt);
+        h.hurtT = Math.max(0, h.hurtT - dt);
+        h.invulnT = Math.max(0, h.invulnT - dt);
         let state;
-        if (h.attackT > 0) state = 'attack';
+        if (h.hurtT > 0) state = 'damage';
+        else if (h.attackT > 0) state = 'attack';
         else if (!h.onGround) state = h.vy < 0 ? 'jump' : 'fall';
         else if (Math.abs(h.vx) > 210) state = 'run';
         else if (Math.abs(h.vx) > 24) state = 'walk';
@@ -2998,6 +3136,86 @@
         if (state !== h.state) { h.state = state; h.animT = 0; }
         h.animT += dt;
         if (dir) h.dir = dir;
+        // Hitbox de la espada: activa en el tramo central del tajo (v = ω×r
+        // espiritual: el filo "corta" a mitad de barrido, no al armar ni al recoger)
+        const sc = H / DUN_H;
+        const swing = h.attackT > 0.05 && h.attackT < 0.24;
+        const hbX0 = h.x + (h.dir > 0 ? 4 : -60), hbX1 = h.x + (h.dir > 0 ? 60 : -4);
+        // ── Enemigos: IA + espada + contacto ─────────────────────────────────
+        for (const e of dunEnemies) {
+            if (e.gone) continue;
+            const T = ETYPES[e.type];
+            if (e.dying > 0) { // muerte: se desvanece y desaparece
+                e.dying -= dt; e.animT += dt;
+                if (e.dying <= 0) e.gone = true;
+                continue;
+            }
+            e.animT += dt;
+            const dx = h.x - e.x, adx = Math.abs(dx);
+            if (adx > 950) continue; // fuera de rango: dormido (y barato)
+            e.hitT = Math.max(0, e.hitT - dt);
+            e.cd = Math.max(0, e.cd - dt);
+            e.attackT = Math.max(0, e.attackT - dt);
+            // IA por tipo (3 líneas por cabeza, como debe ser)
+            if (e.type === 'slime') {
+                e.x += e.dir * 30 * dt;
+                if (Math.abs(e.x - e.homeX) > 85) e.dir = -Math.sign(e.x - e.homeX);
+            } else if (e.type === 'shroom') {
+                if (adx < 300 && e.cd <= 0) { // escupe una espora hacia ti
+                    e.cd = 2.4; e.attackT = 0.3;
+                    dunShots.push({ x: e.x + Math.sign(dx) * 14, y: e.y - 20, vx: Math.sign(dx) * 190, ttl: 2.6 });
+                }
+                e.dir = Math.sign(dx) || e.dir;
+            } else if (e.type === 'goblin' || e.type === 'skeleton') {
+                if (adx < 250) { e.x += Math.sign(dx) * T.spd * dt; e.dir = Math.sign(dx) || e.dir; }
+                else { e.x += e.dir * 34 * dt; if (Math.abs(e.x - e.homeX) > 110) e.dir = -Math.sign(e.x - e.homeX); }
+            } else if (e.type === 'bat') {
+                e.y = e.baseY + Math.sin(e.animT * 3) * 24;
+                if (adx < 280) { e.x += Math.sign(dx) * T.spd * dt; e.baseY += clamp((h.y - 40) - e.baseY, -46 * dt, 46 * dt); e.dir = Math.sign(dx) || e.dir; }
+            } else if (e.type === 'wolf') {
+                if (!e.charge && adx < 330 && e.cd <= 0) { e.charge = Math.sign(dx) || 1; e.chargeT = 1.0; e.cd = 2.6; }
+                if (e.charge) {
+                    e.x += e.charge * T.spd * dt; e.dir = e.charge;
+                    e.chargeT -= dt;
+                    if (e.chargeT <= 0) { e.charge = 0; }
+                }
+            }
+            if (e.type !== 'bat') e.y = DUN_GROUND; // los terrestres pisan el suelo
+            // Espada: un golpe por tajo y por enemigo
+            const eTop = e.y - T.h;
+            if (swing && e.lastSwing !== h.swingId && e.x + T.r > hbX0 && e.x - T.r < hbX1 && eTop < h.y - 4 && e.y > h.y - 66) {
+                e.lastSwing = h.swingId;
+                e.hp -= 1;
+                e.hitT = 0.22;
+                e.x += h.dir * 16; // retroceso del impacto
+                pinHitFx(2);
+                burst((e.x - st.camX) * sc, (e.y - T.h * 0.6) * sc, T.col, 8);
+                if (e.hp <= 0) {
+                    e.dying = 0.45; e.animT = 0;
+                    st.combo = Math.min(10, st.combo + 1); // matar sube el combo → N (la música converge)
+                    st.score += T.pts;
+                    st.shimmer = 1;
+                    burst((e.x - st.camX) * sc, (e.y - T.h * 0.6) * sc, T.col, 14);
+                    vibrate(14);
+                    updateHud();
+                }
+            }
+            // Contacto con el héroe = daño (con la invulnerabilidad como colchón)
+            if (h.invulnT <= 0 && adx < T.r + 15 && (h.y > eTop - 8) && (h.y - 66 < e.y)) heroHurt(e.x);
+        }
+        // Esporas de las setas: viajan, caducan, se paran con la espada o te dan
+        for (let i = dunShots.length - 1; i >= 0; i--) {
+            const s2 = dunShots[i];
+            s2.x += s2.vx * dt;
+            s2.ttl -= dt;
+            let dead = s2.ttl <= 0;
+            if (!dead && swing && s2.x > hbX0 - 8 && s2.x < hbX1 + 8 && Math.abs(s2.y - (h.y - 34)) < 40) {
+                dead = true; st.score += 5; // batear una espora tiene premio
+                burst((s2.x - st.camX) * sc, s2.y * sc, [235, 90, 90], 6);
+            }
+            if (!dead && h.invulnT <= 0 && Math.abs(s2.x - h.x) < 16 && Math.abs(s2.y - (h.y - 34)) < 34) { heroHurt(s2.x); dead = true; }
+            if (dead) dunShots.splice(i, 1);
+        }
         // Progreso: avanzar hacia la derecha puntúa; el fondo (y la música) siguen tu posición
         if (h.x > h.maxX) { st.score += (h.x - h.maxX) * 0.08; h.maxX = h.x; }
         st.worldT = clamp(h.x / DUN_LEN, 0, 0.999) * TERRAIN_SECS;
@@ -3070,21 +3288,43 @@
             g.fillStyle = '#241e30'; g.fillRect(px, py, pw, 12 * sc);
             g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(px, py, pw, 2.5 * sc);
         }
-        drawHero5((h.x - st.camX) * sc, h.y * sc, sc, h, t);
+        // Esporas de las setas
+        g.fillStyle = 'rgba(235,90,90,0.95)';
+        for (const s2 of dunShots) {
+            const sx2 = (s2.x - st.camX) * sc;
+            if (sx2 < -20 || sx2 > W + 20) continue;
+            g.beginPath(); g.arc(sx2, s2.y * sc, 5 * sc, 0, 7); g.fill();
+        }
+        // Enemigos (detrás del héroe)
+        for (const e of dunEnemies) {
+            if (e.gone) continue;
+            const ex = (e.x - st.camX) * sc;
+            if (ex < -80 || ex > W + 80) continue;
+            drawEnemy5(e, ex, e.y * sc, sc, t);
+        }
+        // Héroe (parpadea mientras es invulnerable tras un golpe)
+        if (!(h.invulnT > 0 && (t * 14 | 0) % 2)) drawHero5((h.x - st.camX) * sc, h.y * sc, sc, h, t);
         drawFxOverlays(t, ZONES_DUNGEON[Math.max(0, st.zone)].tint);
         g.restore();
     }
     function drawHero5(px, py, sc, h, t) {
-        // Con la hoja real: recorte de HERO_ATLAS. Sin ella: caballerito a mano.
-        if (heroImgOk) {
-            const row = HERO_ATLAS[h.state] || HERO_ATLAS.idle;
-            const fi = Math.floor(h.animT * row.fps) % row.frames;
-            const dh = 78 * sc, dw = dh * (HERO_SW / row.h);
+        // Con la hoja real (procesada: fondo transparente + atlas automático):
+        // frame de la fila del estado, anclado a los PIES y escalado a un
+        // cuerpo de referencia constante — los frames de ataque son más
+        // grandes (espada extendida) y se dibujan más grandes, sin encoger
+        // el cuerpo, que era lo que se veía mal con el recorte a ojo.
+        if (heroSheet) {
+            const fr = heroSheet.rows[h.state] || heroSheet.rows.idle;
+            const fps = HERO_FPS[h.state] || 8;
+            const raw = Math.floor(h.animT * fps);
+            const fi = h.state === 'die' ? Math.min(fr.length - 1, raw) : raw % fr.length; // die no se repite
+            const f = fr[fi];
+            const s2 = (78 / heroSheet.ref) * sc; // px del sheet → pantalla, cuerpo = 78u
             g.save();
             g.translate(px, py);
-            if (h.dir < 0) g.scale(-1, 1);
+            if (h.dir !== (HERO_FACE[h.state] || 1)) g.scale(-1, 1);
             g.imageSmoothingEnabled = false; // píxel art nítido
-            g.drawImage(heroImg, HERO_SX0 + fi * HERO_SDX, row.y, HERO_SW, row.h, -dw / 2, -dh, dw, dh);
+            g.drawImage(heroSheet.canvas, f.x, f.y, f.w, f.h, -f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
             g.restore();
             return;
         }
@@ -3128,6 +3368,77 @@
             g.fillStyle = '#cfd6e4'; g.fillRect(7, -30 + bob, 4, 20); // envainada al costado
         }
         if (h.state === 'damage') { g.fillStyle = 'rgba(255,60,60,0.35)'; g.fillRect(-10, -62, 20, 62); }
+        g.restore();
+    }
+    function drawEnemy5(e, ex, ey, sc, t) {
+        const T = ETYPES[e.type];
+        const fade = e.dying > 0 ? e.dying / 0.45 : 1;
+        // Con la hoja real: columnas idle/walk1/walk2/attack1/attack2/hit/die
+        if (enemySheet && enemySheet.rows[e.type] && enemySheet.rows[e.type].length >= 6) {
+            const fr = enemySheet.rows[e.type];
+            let fi;
+            if (e.dying > 0) fi = Math.min(6, fr.length - 1);
+            else if (e.hitT > 0) fi = Math.min(5, fr.length - 1);
+            else if (e.attackT > 0) fi = 3 + ((e.animT * 8 | 0) % 2);
+            else if (e.type === 'shroom') fi = 0; // la seta no anda
+            else fi = 1 + ((e.animT * 6 | 0) % 2);
+            const f = fr[Math.min(fi, fr.length - 1)];
+            const s2 = (T.h * 1.25 / f.h) * sc;
+            g.save();
+            g.globalAlpha = fade;
+            g.translate(ex, ey);
+            if (e.dir > 0) g.scale(-1, 1); // la hoja mira a la izquierda
+            g.imageSmoothingEnabled = false;
+            g.drawImage(enemySheet.canvas, f.x, f.y, f.w, f.h, -f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
+            g.restore();
+            return;
+        }
+        // Placeholders: formas simples pero legibles, una por tipo
+        g.save();
+        g.globalAlpha = fade;
+        g.translate(ex, ey);
+        g.scale(sc * (e.dying > 0 ? 1 + (1 - fade) * 0.4 : 1), sc * (e.dying > 0 ? fade : 1)); // muerte: se aplasta
+        const wob = Math.sin(e.animT * 6);
+        if (e.type === 'slime') {
+            g.fillStyle = '#6ee66e';
+            g.beginPath(); g.ellipse(0, -12 - wob, 16 + wob * 2, 12 - wob, 0, 0, 7); g.fill();
+            g.fillStyle = '#123312'; g.fillRect(-6, -16, 3, 4); g.fillRect(3, -16, 3, 4);
+        } else if (e.type === 'shroom') {
+            g.fillStyle = '#e8d9b8'; g.fillRect(-6, -18, 12, 18); // pie
+            g.fillStyle = e.attackT > 0 ? '#ff7a7a' : '#d84848';
+            g.beginPath(); g.ellipse(0, -22, 17, 10, 0, Math.PI, 0); g.fill();
+            g.fillStyle = '#fff'; g.beginPath(); g.arc(-7, -25, 2.6, 0, 7); g.arc(6, -24, 2.2, 0, 7); g.fill();
+        } else if (e.type === 'goblin') {
+            g.fillStyle = '#78c85a'; g.fillRect(-8, -34, 16, 22); // cuerpo
+            g.fillRect(-10, -44, 20, 12); // cabezón con orejas
+            g.beginPath(); g.moveTo(-10, -42); g.lineTo(-16, -46); g.lineTo(-10, -37); g.fill();
+            g.beginPath(); g.moveTo(10, -42); g.lineTo(16, -46); g.lineTo(10, -37); g.fill();
+            g.fillStyle = '#3c2a18'; g.fillRect(-7 + wob * 2, -12, 5, 12); g.fillRect(2 - wob * 2, -12, 5, 12);
+            g.fillStyle = '#cfd6e4'; g.fillRect(e.dir * 9, -30, e.dir * 10, 3); // cuchillo
+        } else if (e.type === 'skeleton') {
+            g.fillStyle = '#e6e6d7'; g.fillRect(-7, -40, 14, 24);
+            g.fillRect(-8, -54, 16, 14); // calavera
+            g.fillStyle = '#101018'; g.fillRect(-5, -50, 4, 4); g.fillRect(2, -50, 4, 4);
+            g.fillStyle = '#e6e6d7'; g.fillRect(-7 + wob * 2, -16, 5, 16); g.fillRect(2 - wob * 2, -16, 5, 16);
+            g.strokeStyle = '#9a9a8a'; g.lineWidth = 2; g.beginPath(); g.arc(e.dir * -12, -34, 8, 0, 7); g.stroke(); // escudo
+        } else if (e.type === 'bat') {
+            g.fillStyle = '#b478e6';
+            g.beginPath(); g.ellipse(0, -12, 8, 7, 0, 0, 7); g.fill();
+            const flap = Math.sin(e.animT * 14) * 10;
+            g.beginPath(); g.moveTo(-6, -14); g.lineTo(-20, -16 - flap); g.lineTo(-8, -8); g.fill();
+            g.beginPath(); g.moveTo(6, -14); g.lineTo(20, -16 - flap); g.lineTo(8, -8); g.fill();
+            g.fillStyle = '#ffdddd'; g.fillRect(-4, -13, 2, 2); g.fillRect(2, -13, 2, 2);
+        } else if (e.type === 'wolf') {
+            const lean = e.charge ? 0.18 : 0;
+            g.rotate(-lean * e.dir);
+            g.fillStyle = '#969baa';
+            g.fillRect(-20, -22, 40, 14); // cuerpo largo
+            g.fillRect(e.dir * 14, -30, e.dir * 14, 12); // cabeza
+            g.fillStyle = '#6a6f7d';
+            g.fillRect(-18 + wob * 3, -9, 5, 9); g.fillRect(-4 - wob * 3, -9, 5, 9); g.fillRect(10 + wob * 3, -9, 5, 9);
+            g.fillStyle = '#2a0f0f'; g.fillRect(e.dir * 20, -27, 3, 3); // ojo
+        }
+        if (e.hitT > 0) { g.fillStyle = `rgba(255,255,255,${e.hitT * 2.4})`; g.fillRect(-20, -T.h - 6, 40, T.h + 8); }
         g.restore();
     }
 
@@ -4500,6 +4811,13 @@
         get keys() { return keys; },
         get pads() { return pads2; },
         get hero() { return st.hero; },
+        get enemies() { return dunEnemies; },
+        get shots() { return dunShots; },
+        get heroSheet() { return heroSheet; },
+        get enemySheet() { return enemySheet; },
+        setHeroSheet(url) { loadSheet(url, buildHeroSheet); },     // tests: hoja sintética por dataURL
+        setEnemySheet(url) { loadSheet(url, buildEnemySheet); },
+        heroAttack, heroJump,
         dunLen: DUN_LEN,
         pinLayout,
         pinBumpers,

@@ -316,7 +316,7 @@ Motor con paridad casi completa con la versión JS:
   saltar directo a cualquiera y practicarlo — en modo entreno la **puntuación
   NO se guarda** en el ranking (saltarse niveles sería trampa).
   **Nivel 5 (Mazmorra, BETA — solo desde Entrenar)**: hack & slash de scroll
-  lateral en el canvas 2D. Fase 1 lista: héroe de plataformas con los 8
+  lateral en el canvas 2D. Fases 1+2 listas: héroe de plataformas con los 8
   estados de la hoja de sprites (idle/walk/run/jump/fall/attack/damage/die),
   salto (↑/espacio o toque corto), tajo de espada con arco de luz (Z o clic),
   andar/correr (←→, botones, o el dedo apoyado a un lado), suelo + 14
@@ -324,12 +324,31 @@ Motor con paridad casi completa con la versión JS:
   (bosque oscuro → paso de montaña → patio del castillo → cripta del jefe),
   donde cada bioma = una zona musical (worldT sigue tu avance). El mundo
   vive en unidades fijas (DUN_H) como la mesa de pinball: un resize no
-  desincroniza nada. Si `sprites/hero.png` (la hoja de sprites real) está
-  en el repo, se recorta con HERO_ATLAS; si no, un héroe placeholder
-  dibujado a mano con los mismos estados mantiene el nivel jugable.
-  Pendiente (fases 2-3): enemigos con IA (slime, goblin, esqueleto,
-  murciélago, lobo, seta, ojo, orco miniboss, mago jefe), combate con
-  combo→N, pickups, sample de audio propio y entrada en el flujo principal.
+  desincroniza nada.
+  **Enemigos (fase 2)**: 21 spawns deterministas repartidos por biomas, 6
+  tipos con IA de tres líneas cada uno — slime (patrulla), seta (escupe
+  esporas que puedes batear con la espada, +5), goblin y esqueleto
+  (patrullan y te persiguen de cerca; el esqueleto aguanta 3 tajos),
+  murciélago (vuelo en seno + persecución) y lobo (carga rápida al verte).
+  **Combate**: la espada tiene hitbox solo en el tramo central del barrido
+  y golpea a cada enemigo como mucho una vez por tajo (swingId); matar suma
+  puntos y **sube el combo → N** (la música converge al encadenar); el
+  contacto enemigo te quita una vida por `hitShip()` (mismo contrato
+  sonoro que el resto del juego) con knockback e **invulnerabilidad breve
+  con parpadeo**.
+  **Pipeline de hojas de sprites**: al cargar `sprites/hero.png` /
+  `sprites/enemies.png` (opcionales), (1) el fondo negro y las líneas de
+  rejilla se hacen **transparentes** con un flood-fill desde los bordes —
+  los píxeles oscuros DE los sprites no tocan el borde y sobreviven — y
+  (2) el **atlas se detecta solo** midiendo la tinta real: bandas
+  horizontales = filas de animación, grupos de columnas = frames con bbox
+  fino (los rótulos del margen se descartan por posición). Los frames se
+  dibujan anclados a los pies y escalados a un cuerpo de referencia
+  constante (los frames de ataque, más grandes por la espada extendida, se
+  dibujan más grandes sin encoger el cuerpo). Sin PNG, placeholders
+  dibujados a mano (héroe y los 6 enemigos) mantienen el nivel jugable.
+  Pendiente (fase 3): orco miniboss, mago jefe, pickups, sample de audio
+  propio y entrada en el flujo principal.
   **Controles del pinball**: flechas ← →, **botón izquierdo/derecho del
   ratón**, o en táctil **tocar la mitad izquierda/derecha de la mesa**
   (multi-touch: cada dedo cuenta por separado — dos dedos = los dos
