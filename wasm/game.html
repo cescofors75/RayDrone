@@ -2910,29 +2910,60 @@
         { name: 'CRIPTA DEL JEFE', tint: [255, 110, 110], top: [26, 15, 28], bot: [58, 29, 51], silh: '#0d0812' },
     ];
     // ── Pipeline de hojas de sprites ─────────────────────────────────────────
-    // processSheet(img): fondo→transparente + detección automática del atlas.
-    function processSheet(img) {
+    // En vez de adivinar filas/columnas píxel a píxel (fràgil con arte
+    // generado por IA, sin cuadrícula perfecta — y la causa del bug real:
+    // el flood-fill por brillo se colaba por los contornos oscuros y se
+    // comía el sprite entero), cada PNG lleva un ATLAS JSON hermano con
+    // coordenadas por NOMBRE (hero_walk_3, goblin_attack_1…), igual que se
+    // trabaja en un estudio de verdad. Las coordenadas del JSON son
+    // FRACCIONALES (0..1 del ancho/alto real de la imagen): no dependen de a
+    // qué resolución exporte el PNG, solo de las proporciones de la rejilla.
+    //
+    // stripBg(): el fondo se quita por COLOR EXACTO, no por "cualquier pixel
+    // oscuro" — se muestrea el propio color de fondo en las 4 esquinas (una
+    // zona 6×6 en cada una, para no fiarse de un solo pixel con ruido) y el
+    // flood-fill desde los bordes solo entra en píxeles a poca distancia de
+    // ESE color concreto. Los contornos/sombras oscuros del sprite (que con
+    // un umbral de brillo genérico se confundían con el fondo) casi siempre
+    // difieren lo bastante del negro plano de fondo como para sobrevivir.
+    function sampleBgColor(px, W2, H2) {
+        const patch = (cx, cy) => {
+            let r = 0, g = 0, b = 0, n = 0;
+            for (let dy = 0; dy < 6; dy++) for (let dx = 0; dx < 6; dx++) {
+                const i4 = ((cy + dy) * W2 + (cx + dx)) * 4;
+                r += px[i4]; g += px[i4 + 1]; b += px[i4 + 2]; n++;
+            }
+            return [r / n, g / n, b / n];
+        };
+        const corners = [patch(0, 0), patch(W2 - 6, 0), patch(0, H2 - 6), patch(W2 - 6, H2 - 6)];
+        return [0, 1, 2].map((k) => corners.reduce((s, c) => s + c[k], 0) / 4);
+    }
+    function stripBg(img) {
         const c = document.createElement('canvas');
         c.width = img.naturalWidth; c.height = img.naturalHeight;
         const x = c.getContext('2d', { willReadFrequently: true });
         x.drawImage(img, 0, 0);
         const W2 = c.width, H2 = c.height;
         const d = x.getImageData(0, 0, W2, H2), px = d.data;
-        // 1) Fondo → transparente: flood-fill desde los 4 bordes sobre píxeles
-        // oscuros (fondo negro Y líneas de rejilla). Los píxeles oscuros DE los
-        // sprites (ojos, contornos) no están conectados al borde y sobreviven
-        // (como mucho pierden un ribete de 1px de contorno, aceptable).
+        const bg = sampleBgColor(px, W2, H2);
+        const TOL2 = 40 * 40; // distancia de color al cuadrado — solo el fondo real cae dentro
+        const isBg = (i4) => {
+            const dr = px[i4] - bg[0], dg = px[i4 + 1] - bg[1], db = px[i4 + 2] - bg[2];
+            return dr * dr + dg * dg + db * db < TOL2;
+        };
         const seen = new Uint8Array(W2 * H2);
         const stack = [];
         for (let i = 0; i < W2; i++) { stack.push(i, (H2 - 1) * W2 + i); }
         for (let j = 0; j < H2; j++) { stack.push(j * W2, j * W2 + W2 - 1); }
+        let removed = 0;
         while (stack.length) {
             const p = stack.pop();
             if (seen[p]) continue;
             seen[p] = 1;
             const i4 = p * 4;
-            if (px[i4] + px[i4 + 1] + px[i4 + 2] >= 110) continue; // no es fondo/rejilla
+            if (!isBg(i4)) continue; // color distinto del fondo → no se propaga (frena la fuga)
             px[i4 + 3] = 0;
+            removed++;
             const xx = p % W2, yy = (p / W2) | 0;
             if (xx > 0) stack.push(p - 1);
             if (xx < W2 - 1) stack.push(p + 1);
@@ -2940,107 +2971,88 @@
             if (yy < H2 - 1) stack.push(p + W2);
         }
         x.putImageData(d, 0, 0);
-        // 2) Atlas automático: bandas horizontales con tinta = filas de
-        // animación; dentro de cada banda, grupos de columnas = frames (con
-        // bbox vertical fino). Solo el bloque izquierdo (74% del ancho): los
-        // paneles laterales (DIRECTIONS/EXTRAS/PALETTE) quedan fuera, y los
-        // rótulos de texto del margen izquierdo se descartan por posición.
-        const maxX = Math.floor(W2 * 0.74);
-        const ink = (xx, yy) => px[(yy * W2 + xx) * 4 + 3] > 0;
-        const rowInk = new Uint8Array(H2);
-        for (let yy = 0; yy < H2; yy++) for (let xx = 0; xx < maxX; xx++) if (ink(xx, yy)) { rowInk[yy] = 1; break; }
-        const bands = [];
-        let y0 = -1, gapY = 0;
-        for (let yy = 0; yy <= H2; yy++) {
-            if (yy < H2 && rowInk[yy]) { if (y0 < 0) y0 = yy; gapY = 0; }
-            else if (y0 >= 0 && ++gapY > 9) { // huecos de <10px no parten la banda
-                const y1 = yy - gapY + 1;
-                if (y1 - y0 > 14) bands.push({ y0, y1 });
-                y0 = -1; gapY = 0;
-            }
-        }
-        for (const b of bands) {
-            b.frames = [];
-            const colInk = new Uint8Array(maxX);
-            for (let xx = 0; xx < maxX; xx++) for (let yy = b.y0; yy < b.y1; yy++) if (ink(xx, yy)) { colInk[xx] = 1; break; }
-            let x0 = -1, gapX = 0;
-            for (let xx = 0; xx <= maxX; xx++) {
-                if (xx < maxX && colInk[xx]) { if (x0 < 0) x0 = xx; gapX = 0; }
-                else if (x0 >= 0 && ++gapX > 7) {
-                    const x1 = xx - gapX + 1;
-                    // descarta rótulos ("IDLE", "WALK"...) pegados al margen y motas
-                    if (x1 - x0 > 12 && x0 > W2 * 0.05) {
-                        let fy0 = b.y1, fy1 = b.y0;
-                        for (let yy = b.y0; yy < b.y1; yy++) {
-                            for (let xk = x0; xk < x1; xk++) if (ink(xk, yy)) { if (yy < fy0) fy0 = yy; if (yy > fy1) fy1 = yy; break; }
-                        }
-                        b.frames.push({ x: x0, y: fy0, w: x1 - x0, h: fy1 - fy0 + 1 });
-                    }
-                    x0 = -1; gapX = 0;
-                }
-            }
-        }
-        return { canvas: c, bands: bands.filter((b) => b.frames.length >= 1) };
+        return { canvas: c, w: W2, h: H2, bg, removedFrac: removed / (W2 * H2) };
     }
-    // Héroe: filas en el orden de la hoja. FACE dice hacia dónde mira cada fila
-    // dibujada (1 = derecha, -1 = izquierda) — ajustable si el PNG real difiere.
-    const HERO_STATES = ['idle', 'walk', 'run', 'jump', 'fall', 'attack', 'damage', 'die'];
+    // Héroe: FPS/dirección por estado — ajustables si el PNG real difiere.
     const HERO_FPS = { idle: 5, walk: 9, run: 12, jump: 8, fall: 8, attack: 26, damage: 12, die: 10 };
     const HERO_FACE = { idle: 1, walk: 1, run: 1, jump: 1, fall: 1, attack: 1, damage: 1, die: 1 };
     let heroSheet = null; // {canvas, rows:{estado:[frames]}, ref} — null = placeholder
-    function buildHeroSheet(img) {
-        const p = processSheet(img);
-        if (p.bands.length < HERO_STATES.length) {
-            heroSheet = null;
-            console.warn(`RayRunner: sprites/hero.png cargó pero solo se detectaron ${p.bands.length} filas de animación (hacen falta ${HERO_STATES.length}: ${HERO_STATES.join('/')}). Usando héroe placeholder. Revisa que el fondo tenga suficiente contraste con los sprites y que cada fila esté claramente separada.`);
-            return;
-        }
+    function framesFromAtlas(atlas, prefix, w, h) {
+        // Agrupa las claves "prefix_estado_N" del atlas en {estado: [frame,...]}
+        // ordenadas por N, convirtiendo las fracciones a píxeles reales.
         const rows = {};
-        HERO_STATES.forEach((s2, i) => { rows[s2] = p.bands[i].frames; });
-        // Escala de referencia: la altura mediana de los frames de idle = el
-        // "cuerpo" del héroe → 78 unidades de mundo. Los frames de ataque son
-        // más anchos/altos (espada extendida) y se dibujan más grandes SIN
-        // encoger el cuerpo — justo lo que se veía mal con el recorte a ojo.
-        const hs = rows.idle.map((f) => f.h).sort((a, b) => a - b);
-        heroSheet = { canvas: p.canvas, rows, ref: hs[hs.length >> 1] || 90 };
+        for (const key in atlas) {
+            if (!key.startsWith(prefix + '_')) continue;
+            const m = key.slice(prefix.length + 1).match(/^(.+)_(\d+)$/);
+            if (!m) continue;
+            const [, state, nStr] = m, n = +nStr, f = atlas[key];
+            (rows[state] || (rows[state] = []))[n] = { x: f.x * w, y: f.y * h, w: f.w * w, h: f.h * h };
+        }
+        for (const s2 in rows) rows[s2] = rows[s2].filter(Boolean); // por si algún índice quedó hueco
+        return rows;
     }
-    // Enemigos: filas de la hoja en su orden; columnas = idle, walk1, walk2,
-    // attack1, attack2, hit, die (como la hoja de referencia).
-    const ENEMY_ROWS = ['slime', 'goblin', 'skeleton', 'bat', 'orc', 'wolf', 'shroom', 'ghost', 'eye', 'mage'];
-    let enemySheet = null; // {canvas, rows:{tipo:[frames]}}
-    function buildEnemySheet(img) {
-        const p = processSheet(img);
-        if (p.bands.length < 6) {
-            enemySheet = null;
-            console.warn(`RayRunner: sprites/enemies.png cargó pero solo se detectaron ${p.bands.length} filas de animación (hacen falta al menos 6, orden esperado: ${ENEMY_ROWS.join('/')}). Usando placeholders.`);
+    function buildHeroSheet(img, atlas) {
+        const p = stripBg(img);
+        if (p.removedFrac < 0.03 || p.removedFrac > 0.85) {
+            console.warn(`RayRunner: sprites/hero.png — la limpieza de fondo quitó un ${(p.removedFrac * 100).toFixed(0)}% de la imagen (color de fondo detectado ≈ rgb(${p.bg.map((v) => v | 0).join(',')})); esto suele indicar que el fondo no es uniforme. Revisando igualmente.`);
+        }
+        const rows = framesFromAtlas(atlas, 'hero', p.w, p.h);
+        const need = ['idle', 'walk', 'run', 'jump', 'fall', 'attack', 'damage', 'die'];
+        const missing = need.filter((s2) => !rows[s2] || !rows[s2].length);
+        if (missing.length) {
+            heroSheet = null;
+            console.warn(`RayRunner: sprites/hero.json no define frames para: ${missing.join(', ')}. Usando héroe placeholder.`);
             return;
         }
+        // Escala de referencia: alto del primer frame de idle = el "cuerpo" del
+        // héroe → 78 unidades de mundo. Los frames de ataque (más anchos/altos
+        // por la espada extendida) se dibujan más grandes SIN encoger el cuerpo.
+        heroSheet = { canvas: p.canvas, rows, ref: rows.idle[0].h };
+    }
+    let enemySheet = null; // {canvas, rows:{tipo:[7 frames: idle,walk×2,attack×2,hit,die]}}
+    function buildEnemySheet(img, atlas) {
+        const p = stripBg(img);
+        if (p.removedFrac < 0.03 || p.removedFrac > 0.85) {
+            console.warn(`RayRunner: sprites/enemies.png — la limpieza de fondo quitó un ${(p.removedFrac * 100).toFixed(0)}% de la imagen (color de fondo detectado ≈ rgb(${p.bg.map((v) => v | 0).join(',')})); esto suele indicar que el fondo no es uniforme. Revisando igualmente.`);
+        }
+        const types = ['slime', 'goblin', 'skeleton', 'bat', 'orc', 'wolf', 'shroom', 'ghost', 'eye', 'mage'];
+        const cols = ['idle_0', 'walk_0', 'walk_1', 'attack_0', 'attack_1', 'hit_0', 'die_0'];
         const rows = {};
-        ENEMY_ROWS.forEach((t2, i) => { if (p.bands[i]) rows[t2] = p.bands[i].frames; });
+        for (const t2 of types) {
+            const frames = cols.map((c) => { const f = atlas[`${t2}_${c}`]; return f ? { x: f.x * p.w, y: f.y * p.h, w: f.w * p.w, h: f.h * p.h } : null; });
+            if (frames.every(Boolean)) rows[t2] = frames;
+        }
+        if (Object.keys(rows).length < 6) {
+            enemySheet = null;
+            console.warn(`RayRunner: sprites/enemies.json solo define ${Object.keys(rows).length} criaturas completas (hacen falta ≥6, de: ${types.join('/')}). Usando placeholders.`);
+            return;
+        }
         enemySheet = { canvas: p.canvas, rows };
     }
-    // fetch({cache:'no-store'}) en vez de <img src>: evita que el navegador
-    // sirva una versión CACHEADA del PNG si lo reemplazaste sin cambiar el
+    // fetch({cache:'no-store'}) para el PNG y el JSON: evita que el navegador
+    // sirva una versión CACHEADA si reemplazas el archivo sin cambiar el
     // nombre (por eso "antes cargaba y ahora no" — el 304 de la consola del
     // servidor era justo eso: el navegador ni pidió los bytes nuevos).
-    function loadSheet(src, build) {
-        fetch(src, { cache: 'no-store' })
-            .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
-            .then((blob) => new Promise((resolve, reject) => {
+    function loadSheet(pngSrc, jsonSrc, build) {
+        Promise.all([
+            fetch(pngSrc, { cache: 'no-store' }).then((r) => { if (!r.ok) throw new Error(`${pngSrc}: HTTP ${r.status}`); return r.blob(); }),
+            fetch(jsonSrc, { cache: 'no-store' }).then((r) => { if (!r.ok) throw new Error(`${jsonSrc}: HTTP ${r.status}`); return r.json(); }),
+        ])
+            .then(([blob, atlas]) => new Promise((resolve, reject) => {
                 const img = new Image();
-                img.onload = () => resolve(img);
-                img.onerror = () => reject(new Error('imagen corrupta o formato no soportado'));
+                img.onload = () => resolve({ img, atlas });
+                img.onerror = () => reject(new Error(`${pngSrc}: imagen corrupta o formato no soportado`));
                 img.src = URL.createObjectURL(blob);
             }))
-            .then((img) => { try { build(img); } catch (err) { console.warn(`RayRunner: no se pudo procesar ${src}:`, err); } })
-            .catch((err) => console.warn(`RayRunner: ${src} no se pudo cargar (usando placeholder) —`, err.message || err));
+            .then(({ img, atlas }) => { try { build(img, atlas); } catch (err) { console.warn(`RayRunner: no se pudo procesar ${pngSrc}:`, err); } })
+            .catch((err) => console.warn(`RayRunner: ${pngSrc}/${jsonSrc} no se pudieron cargar (usando placeholder) —`, err.message || err));
     }
     let dunAssetsLoaded = false;
     function ensureDungeonAssets() {
         if (dunAssetsLoaded) return;
         dunAssetsLoaded = true;
-        loadSheet('sprites/hero.png', buildHeroSheet);       // sin PNG: un warn en consola (dev-only) + placeholder
-        loadSheet('sprites/enemies.png', buildEnemySheet);
+        loadSheet('sprites/hero.png', 'sprites/hero.json', buildHeroSheet);       // sin ellos: un warn en consola (dev-only) + placeholder
+        loadSheet('sprites/enemies.png', 'sprites/enemies.json', buildEnemySheet);
     }
     // ── Enemigos: tipos, spawns fijos (deterministas) y proyectiles ─────────
     // r = radio de contacto, h = altura, spd = velocidad de persecución,
@@ -4834,8 +4846,9 @@
         get shots() { return dunShots; },
         get heroSheet() { return heroSheet; },
         get enemySheet() { return enemySheet; },
-        setHeroSheet(url) { loadSheet(url, buildHeroSheet); },     // tests: hoja sintética por dataURL
-        setEnemySheet(url) { loadSheet(url, buildEnemySheet); },
+        // tests: hoja + atlas sintéticos (dataURL + objeto JS), sin pasar por fetch()
+        setHeroSheet(url, atlas) { const img = new Image(); img.onload = () => buildHeroSheet(img, atlas); img.src = url; },
+        setEnemySheet(url, atlas) { const img = new Image(); img.onload = () => buildEnemySheet(img, atlas); img.src = url; },
         heroAttack, heroJump,
         dunLen: DUN_LEN,
         pinLayout,

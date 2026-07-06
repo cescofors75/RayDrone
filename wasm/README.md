@@ -336,17 +336,29 @@ Motor con paridad casi completa con la versión JS:
   contacto enemigo te quita una vida por `hitShip()` (mismo contrato
   sonoro que el resto del juego) con knockback e **invulnerabilidad breve
   con parpadeo**.
-  **Pipeline de hojas de sprites**: al cargar `sprites/hero.png` /
-  `sprites/enemies.png` (opcionales), (1) el fondo negro y las líneas de
-  rejilla se hacen **transparentes** con un flood-fill desde los bordes —
-  los píxeles oscuros DE los sprites no tocan el borde y sobreviven — y
-  (2) el **atlas se detecta solo** midiendo la tinta real: bandas
-  horizontales = filas de animación, grupos de columnas = frames con bbox
-  fino (los rótulos del margen se descartan por posición). Los frames se
-  dibujan anclados a los pies y escalados a un cuerpo de referencia
-  constante (los frames de ataque, más grandes por la espada extendida, se
-  dibujan más grandes sin encoger el cuerpo). Sin PNG, placeholders
-  dibujados a mano (héroe y los 6 enemigos) mantienen el nivel jugable.
+  **Pipeline de hojas de sprites (atlas JSON, no auto-detección)**: cada
+  `sprites/*.png` opcional lleva un `sprites/*.json` hermano con las
+  coordenadas de cada frame **por nombre** (`hero_walk_3`, `goblin_attack_1`…
+  — el estándar de cualquier estudio: los compañeros usan nombres, no
+  coordenadas a ojo). Detectar la rejilla píxel a píxel sobre arte generado
+  por IA es frágil (sin cuadrícula perfecta) y fue la causa de un bug real:
+  un flood-fill por brillo se colaba por los contornos oscuros del sprite y
+  se comía la imagen entera. Ahora: (1) el **fondo se quita por color EXACTO**
+  — se muestrea el propio color de fondo en las 4 esquinas y solo se hace
+  transparente lo que cae dentro de esa tolerancia de color (no "cualquier
+  pixel oscuro"), así que contornos/sombras oscuros pero DISTINTOS del fondo
+  sobreviven; y (2) las coordenadas del atlas son **fraccionales** (0..1 del
+  ancho/alto real de la imagen), así no dependen de a qué resolución exporte
+  el PNG. `wasm/sprites/hero.json` (8 filas × frames variables: idle/walk/
+  run=9, jump/fall=7, attack/damage=8, die=6) y `enemies.json` (10 criaturas
+  × 7 columnas fijas: idle/walk1/walk2/attack1/attack2/hit/die) vienen
+  generados con esta rejilla-por-proporción — ajustables a mano si el PNG
+  real difiere. `fetch(..., {cache:'no-store'})` para el PNG y el JSON
+  (no `<img src>`): si reemplazas el archivo sin cambiar el nombre, el
+  navegador no sirve una copia cacheada. Si el atlas no cubre todos los
+  estados/columnas necesarios, un `console.warn` explica qué falta (no un
+  fallo silencioso). Sin PNG/JSON, placeholders dibujados a mano (héroe y
+  los 6 enemigos) mantienen el nivel jugable.
   Pendiente (fase 3): orco miniboss, mago jefe, pickups, sample de audio
   propio y entrada en el flujo principal.
   **Controles del pinball**: flechas ← →, **botón izquierdo/derecho del
