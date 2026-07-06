@@ -3311,21 +3311,35 @@
         // Parallax LEJOS (0.22×). Con el sheet de extras: el FONDO PIXEL-ART del
         // bioma (bosque/montañas/ruinas/cueva), en mosaico horizontal, con
         // fundido al del bioma siguiente. Sin sheet: la cordillera procedural.
+        const hasBgArt = !!(extrasSheet && extrasSheet.bg[BIOME_BG[bi]]);
         const drawBgTiles = (rect, alpha) => {
             if (!rect) return;
-            const scale2 = (H * 0.9) / rect.h;      // el fondo cubre hasta la línea de suelo
-            const dw = rect.w * scale2, dy0 = H * 0.87 - H * 0.9;
+            // Recorte 1.5% hacia dentro: los bordes de la miniatura arrastran
+            // píxeles vecinos del sheet y dejaban una COSTURA vertical visible
+            // en cada repetición del mosaico.
+            const ix = rect.w * 0.015, iy = rect.h * 0.015;
+            const sw = rect.w - 2 * ix, sh = rect.h - 2 * iy;
+            const scale2 = (H * 0.9) / sh;           // el fondo cubre hasta la línea de suelo
+            const dw = Math.round(sw * scale2), dy0 = H * 0.87 - H * 0.9;
             g.globalAlpha = alpha;
             g.imageSmoothingEnabled = false;         // píxel art chunky, a juego con los sprites
-            const off = (st.camX * 0.22 * sc) % dw;
+            const off = Math.round(st.camX * 0.22 * sc) % dw;
             for (let dx0 = -off - dw; dx0 < W + dw; dx0 += dw) {
-                g.drawImage(extrasSheet.canvas, rect.x, rect.y, rect.w, rect.h, dx0, dy0, dw + 1, H * 0.9);
+                g.drawImage(extrasSheet.canvas, rect.x + ix, rect.y + iy, sw, sh, dx0, dy0, dw + 1, H * 0.9);
             }
             g.globalAlpha = 1;
         };
-        if (extrasSheet && extrasSheet.bg[BIOME_BG[bi]]) {
+        if (hasBgArt) {
             drawBgTiles(extrasSheet.bg[BIOME_BG[bi]], 1);
             if (bf > 0) drawBgTiles(extrasSheet.bg[BIOME_BG[Math.min(3, bi + 1)]], bf);
+            // Velo de profundidad: oscurece un punto el fondo (más arriba, más)
+            // para que el héroe y los enemigos DESTAQUEN sobre el arte.
+            const veil = g.createLinearGradient(0, 0, 0, H * 0.87);
+            veil.addColorStop(0, 'rgba(6,8,14,0.34)');
+            veil.addColorStop(0.65, 'rgba(6,8,14,0.16)');
+            veil.addColorStop(1, 'rgba(6,8,14,0.24)');
+            g.fillStyle = veil;
+            g.fillRect(-20, -20, W + 40, H * 0.87 + 20);
         } else {
             g.fillStyle = B0.silh;
             g.beginPath();
@@ -3337,27 +3351,29 @@
                 g.lineTo(px, y);
             }
             g.lineTo(W + 20, H); g.closePath(); g.fill();
-        }
-        // Parallax MEDIO (0.5×): árboles/torres alternados, también deterministas
-        g.fillStyle = 'rgba(6,8,10,0.55)';
-        const midOff = st.camX * 0.5 * sc, midStep = 150 * sc;
-        for (let px = -midStep; px <= W + midStep; px += midStep) {
-            const i = Math.round((px + midOff) / midStep);
-            const bx = px - (midOff % midStep);
-            const hgt = (0.16 + ((i * 37) % 13) / 13 * 0.14) * H;
-            if (i % 3 === 2) { // torre con almenas
-                g.fillRect(bx, H * 0.87 - hgt, 34 * sc, hgt);
-                for (let m = 0; m < 3; m++) g.fillRect(bx + m * 12 * sc, H * 0.87 - hgt - 7 * sc, 8 * sc, 7 * sc);
-            } else { // árbol triangular
-                g.beginPath();
-                g.moveTo(bx, H * 0.87); g.lineTo(bx + 17 * sc, H * 0.87 - hgt); g.lineTo(bx + 34 * sc, H * 0.87);
-                g.closePath(); g.fill();
+            // Parallax MEDIO (0.5×): árboles/torres — SOLO en el modo procedural
+            // (sobre el arte real quedaban como triángulos negros flotando).
+            g.fillStyle = 'rgba(6,8,10,0.55)';
+            const midOff = st.camX * 0.5 * sc, midStep = 150 * sc;
+            for (let px = -midStep; px <= W + midStep; px += midStep) {
+                const i = Math.round((px + midOff) / midStep);
+                const bx = px - (midOff % midStep);
+                const hgt = (0.16 + ((i * 37) % 13) / 13 * 0.14) * H;
+                if (i % 3 === 2) { // torre con almenas
+                    g.fillRect(bx, H * 0.87 - hgt, 34 * sc, hgt);
+                    for (let m = 0; m < 3; m++) g.fillRect(bx + m * 12 * sc, H * 0.87 - hgt - 7 * sc, 8 * sc, 7 * sc);
+                } else { // árbol triangular
+                    g.beginPath();
+                    g.moveTo(bx, H * 0.87); g.lineTo(bx + 17 * sc, H * 0.87 - hgt); g.lineTo(bx + 34 * sc, H * 0.87);
+                    g.closePath(); g.fill();
+                }
             }
         }
         // Suelo: losa oscura con juntas de ladrillo desplazándose con la cámara
+        // (tierra cálida cuando hay arte de fondo, violeta neón si no)
         const gy = DUN_GROUND * sc;
-        g.fillStyle = '#191521'; g.fillRect(-20, gy, W + 40, H - gy + 20);
-        g.strokeStyle = 'rgba(255,255,255,0.07)'; g.lineWidth = Math.max(1, sc);
+        g.fillStyle = hasBgArt ? '#171009' : '#191521'; g.fillRect(-20, gy, W + 40, H - gy + 20);
+        g.strokeStyle = hasBgArt ? 'rgba(255,224,180,0.10)' : 'rgba(255,255,255,0.07)'; g.lineWidth = Math.max(1, sc);
         const bw = 52 * sc, bh = 20 * sc, gOff = (st.camX * sc) % (bw * 2);
         for (let row = 0; row < 3; row++) {
             const yy = gy + 6 * sc + row * bh;
@@ -3376,12 +3392,10 @@
                 const wx = i * 210 + 80 + Math.sin(i * 13.7) * 55;
                 if (wx < 60 || wx > DUN_LEN - 120) continue; // deja limpio el arranque y la puerta
                 const f = extrasSheet.deco[(i * 31 + 7) % extrasSheet.deco.length];
-                const hU = clamp(f.h * 0.9, 16, 46);         // alto en unidades de mundo
+                const hU = clamp(f.h * 1.3, 22, 54);         // alto en unidades de mundo
                 const wU = hU * (f.w / f.h);
-                g.globalAlpha = 0.92;
                 g.drawImage(extrasSheet.canvas, f.x, f.y, f.w, f.h,
                             (wx - st.camX - wU / 2) * sc, (DUN_GROUND - hU) * sc, wU * sc, hU * sc);
-                g.globalAlpha = 1;
             }
             // La puerta al final de la mazmorra (el objetivo se VE al llegar)
             const door = extrasSheet.inter.interactable_object_001 || extrasSheet.deco[0];
@@ -3391,13 +3405,20 @@
                             (DUN_LEN - 52 - st.camX - dw2 / 2) * sc, (DUN_GROUND - dh2) * sc, dw2 * sc, dh2 * sc);
             }
         }
-        // Plataformas
+        // Plataformas: con arte real, madera/piedra cálida (el morado neón del
+        // placeholder chirriaba contra el bosque); sin él, el look de siempre.
         for (const p of DUN_PLATS) {
             const px = (p.x - st.camX) * sc, pw = p.w * sc;
             if (px + pw < -30 || px > W + 30) continue;
             const py = p.y * sc;
-            g.fillStyle = '#241e30'; g.fillRect(px, py, pw, 12 * sc);
-            g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(px, py, pw, 2.5 * sc);
+            g.fillStyle = hasBgArt ? '#3a2c1c' : '#241e30';
+            g.fillRect(px, py, pw, 12 * sc);
+            g.fillStyle = hasBgArt ? 'rgba(255,214,150,0.30)' : 'rgba(255,255,255,0.12)';
+            g.fillRect(px, py, pw, 2.5 * sc);
+            if (hasBgArt) { // vetas de tablones
+                g.fillStyle = 'rgba(0,0,0,0.25)';
+                for (let vx = px + 18 * sc; vx < px + pw - 4; vx += 26 * sc) g.fillRect(vx, py + 2.5 * sc, Math.max(1, sc), 9.5 * sc);
+            }
         }
         // Esporas de las setas
         g.fillStyle = 'rgba(235,90,90,0.95)';
