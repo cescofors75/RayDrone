@@ -2919,13 +2919,17 @@
     // FRACCIONALES (0..1 del ancho/alto real de la imagen): no dependen de a
     // qué resolución exporte el PNG, solo de las proporciones de la rejilla.
     //
-    // stripBg(): el fondo se quita por COLOR EXACTO, no por "cualquier pixel
-    // oscuro" — se muestrea el propio color de fondo en las 4 esquinas (una
-    // zona 6×6 en cada una, para no fiarse de un solo pixel con ruido) y el
-    // flood-fill desde los bordes solo entra en píxeles a poca distancia de
-    // ESE color concreto. Los contornos/sombras oscuros del sprite (que con
-    // un umbral de brillo genérico se confundían con el fondo) casi siempre
-    // difieren lo bastante del negro plano de fondo como para sobrevivir.
+    // stripBg(): el fondo se quita por COLOR EXACTO con una clave GLOBAL, no
+    // con flood-fill — se muestrea el propio color de fondo en las 4 esquinas
+    // (una zona 6×6 en cada una, para no fiarse de un pixel con ruido) y
+    // CUALQUIER pixel de la imagen a poca distancia de ese color pasa a
+    // transparente. El flood-fill anterior fallaba en las hojas con líneas de
+    // rejilla entre celdas: la línea (gris ≠ fondo) frenaba la propagación y
+    // el negro ENCERRADO dentro de cada celda quedaba opaco — las "cajas
+    // negras" detrás de los enemigos. Como el fondo es un color uniforme, la
+    // conectividad da igual: la clave global lo elimina también dentro de las
+    // celdas. La tolerancia es TIGHT (26) para que los contornos oscuros del
+    // sprite (#1c1c24 vs fondo #000 ≈ distancia 45) sobrevivan.
     function sampleBgColor(px, W2, H2) {
         const patch = (cx, cy) => {
             let r = 0, g = 0, b = 0, n = 0;
@@ -2946,47 +2950,51 @@
         const W2 = c.width, H2 = c.height;
         const d = x.getImageData(0, 0, W2, H2), px = d.data;
         const bg = sampleBgColor(px, W2, H2);
-        const TOL2 = 40 * 40; // distancia de color al cuadrado — solo el fondo real cae dentro
-        const isBg = (i4) => {
-            const dr = px[i4] - bg[0], dg = px[i4 + 1] - bg[1], db = px[i4 + 2] - bg[2];
-            return dr * dr + dg * dg + db * db < TOL2;
-        };
-        const seen = new Uint8Array(W2 * H2);
-        const stack = [];
-        for (let i = 0; i < W2; i++) { stack.push(i, (H2 - 1) * W2 + i); }
-        for (let j = 0; j < H2; j++) { stack.push(j * W2, j * W2 + W2 - 1); }
+        const TOL2 = 26 * 26;
         let removed = 0;
-        while (stack.length) {
-            const p = stack.pop();
-            if (seen[p]) continue;
-            seen[p] = 1;
-            const i4 = p * 4;
-            if (!isBg(i4)) continue; // color distinto del fondo → no se propaga (frena la fuga)
-            px[i4 + 3] = 0;
-            removed++;
-            const xx = p % W2, yy = (p / W2) | 0;
-            if (xx > 0) stack.push(p - 1);
-            if (xx < W2 - 1) stack.push(p + 1);
-            if (yy > 0) stack.push(p - W2);
-            if (yy < H2 - 1) stack.push(p + W2);
+        for (let i4 = 0; i4 < px.length; i4 += 4) {
+            const dr = px[i4] - bg[0], dg = px[i4 + 1] - bg[1], db = px[i4 + 2] - bg[2];
+            if (dr * dr + dg * dg + db * db < TOL2) { px[i4 + 3] = 0; removed++; }
         }
         x.putImageData(d, 0, 0);
-        return { canvas: c, w: W2, h: H2, bg, removedFrac: removed / (W2 * H2) };
+        return { canvas: c, px, w: W2, h: H2, bg, removedFrac: removed / (W2 * H2) };
+    }
+    // Recorte fino por frame: mete el rect del atlas unos píxeles hacia dentro
+    // (las líneas de rejilla viven en los bordes de celda) y lo encoge a la
+    // caja mínima con píxeles opacos — así una rejilla estimada con ±unos px
+    // de error no deja ni líneas ni márgenes en el sprite dibujado.
+    function trimFrame(p, fx, fy, fw, fh, inset) {
+        let x0 = Math.max(0, Math.round(fx + inset)), y0 = Math.max(0, Math.round(fy + inset));
+        let x1 = Math.min(p.w, Math.round(fx + fw - inset)), y1 = Math.min(p.h, Math.round(fy + fh - inset));
+        let tx0 = x1, ty0 = y1, tx1 = x0, ty1 = y0, any = false;
+        for (let yy = y0; yy < y1; yy++) {
+            for (let xx = x0; xx < x1; xx++) {
+                if (p.px[(yy * p.w + xx) * 4 + 3] > 0) {
+                    any = true;
+                    if (xx < tx0) tx0 = xx; if (xx > tx1) tx1 = xx;
+                    if (yy < ty0) ty0 = yy; if (yy > ty1) ty1 = yy;
+                }
+            }
+        }
+        if (!any) return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+        return { x: tx0, y: ty0, w: tx1 - tx0 + 1, h: ty1 - ty0 + 1 };
     }
     // Héroe: FPS/dirección por estado — ajustables si el PNG real difiere.
     const HERO_FPS = { idle: 5, walk: 9, run: 12, jump: 8, fall: 8, attack: 26, damage: 12, die: 10 };
     const HERO_FACE = { idle: 1, walk: 1, run: 1, jump: 1, fall: 1, attack: 1, damage: 1, die: 1 };
     let heroSheet = null; // {canvas, rows:{estado:[frames]}, ref} — null = placeholder
-    function framesFromAtlas(atlas, prefix, w, h) {
+    function framesFromAtlas(atlas, prefix, p) {
         // Agrupa las claves "prefix_estado_N" del atlas en {estado: [frame,...]}
-        // ordenadas por N, convirtiendo las fracciones a píxeles reales.
+        // ordenadas por N, convirtiendo las fracciones a píxeles reales y
+        // RECORTANDO cada frame a su caja opaca (rejilla/márgenes fuera).
+        const inset = Math.max(2, p.w * 0.004);
         const rows = {};
         for (const key in atlas) {
             if (!key.startsWith(prefix + '_')) continue;
             const m = key.slice(prefix.length + 1).match(/^(.+)_(\d+)$/);
             if (!m) continue;
             const [, state, nStr] = m, n = +nStr, f = atlas[key];
-            (rows[state] || (rows[state] = []))[n] = { x: f.x * w, y: f.y * h, w: f.w * w, h: f.h * h };
+            (rows[state] || (rows[state] = []))[n] = trimFrame(p, f.x * p.w, f.y * p.h, f.w * p.w, f.h * p.h, inset);
         }
         for (const s2 in rows) rows[s2] = rows[s2].filter(Boolean); // por si algún índice quedó hueco
         return rows;
@@ -2996,7 +3004,7 @@
         if (p.removedFrac < 0.03 || p.removedFrac > 0.85) {
             console.warn(`RayRunner: sprites/hero.png — la limpieza de fondo quitó un ${(p.removedFrac * 100).toFixed(0)}% de la imagen (color de fondo detectado ≈ rgb(${p.bg.map((v) => v | 0).join(',')})); esto suele indicar que el fondo no es uniforme. Revisando igualmente.`);
         }
-        const rows = framesFromAtlas(atlas, 'hero', p.w, p.h);
+        const rows = framesFromAtlas(atlas, 'hero', p);
         const need = ['idle', 'walk', 'run', 'jump', 'fall', 'attack', 'damage', 'die'];
         const missing = need.filter((s2) => !rows[s2] || !rows[s2].length);
         if (missing.length) {
@@ -3017,9 +3025,10 @@
         }
         const types = ['slime', 'goblin', 'skeleton', 'bat', 'orc', 'wolf', 'shroom', 'ghost', 'eye', 'mage'];
         const cols = ['idle_0', 'walk_0', 'walk_1', 'attack_0', 'attack_1', 'hit_0', 'die_0'];
+        const inset = Math.max(2, p.w * 0.004);
         const rows = {};
         for (const t2 of types) {
-            const frames = cols.map((c) => { const f = atlas[`${t2}_${c}`]; return f ? { x: f.x * p.w, y: f.y * p.h, w: f.w * p.w, h: f.h * p.h } : null; });
+            const frames = cols.map((c) => { const f = atlas[`${t2}_${c}`]; return f ? trimFrame(p, f.x * p.w, f.y * p.h, f.w * p.w, f.h * p.h, inset) : null; });
             if (frames.every(Boolean)) rows[t2] = frames;
         }
         if (Object.keys(rows).length < 6) {
@@ -3029,6 +3038,32 @@
         }
         enemySheet = { canvas: p.canvas, rows };
     }
+    // Extras (fondos parallax + decoraciones + interactuables): su JSON usa
+    // coordenadas en PÍXEL con origen arriba-izquierda relativas a
+    // meta.atlasSize — se escalan al tamaño real de la imagen cargada, así el
+    // atlas sigue valiendo si el PNG se exporta a otra resolución.
+    let extrasSheet = null; // {canvas, bg:{id:rect}, deco:[rects], inter:{id:rect}}
+    function buildExtrasSheet(img, atlas) {
+        const p = stripBg(img);
+        const ms = (atlas.meta && atlas.meta.atlasSize) || { w: p.w, h: p.h };
+        const kx = p.w / ms.w, ky = p.h / ms.h;
+        const px2 = (r) => ({ x: r.x * kx, y: r.y * ky, w: r.w * kx, h: r.h * ky });
+        const bg = {};
+        for (const b of atlas.backgrounds || []) bg[b.id] = px2(b);
+        const deco = [], inter = {};
+        for (const o of atlas.objects || []) {
+            if (o.group === 'environment_decorations') deco.push(px2(o.frame));
+            else if (o.group === 'interactable_objects') inter[o.id] = px2(o.frame);
+        }
+        if (!Object.keys(bg).length && !deco.length) {
+            extrasSheet = null;
+            console.warn('RayRunner: sprites/extras.json no trae backgrounds ni objects utilizables. Ignorando.');
+            return;
+        }
+        extrasSheet = { canvas: p.canvas, bg, deco, inter };
+    }
+    // Bioma → fondo del sheet de extras (el desierto queda de reserva)
+    const BIOME_BG = ['bg_forest', 'bg_mountains', 'bg_ruins', 'bg_cave'];
     // fetch({cache:'no-store'}) para el PNG y el JSON: evita que el navegador
     // sirva una versión CACHEADA si reemplazas el archivo sin cambiar el
     // nombre (por eso "antes cargaba y ahora no" — el 304 de la consola del
@@ -3053,6 +3088,7 @@
         dunAssetsLoaded = true;
         loadSheet('sprites/hero.png', 'sprites/hero.json', buildHeroSheet);       // sin ellos: un warn en consola (dev-only) + placeholder
         loadSheet('sprites/enemies.png', 'sprites/enemies.json', buildEnemySheet);
+        loadSheet('sprites/extras.png', 'sprites/extras.json', buildExtrasSheet); // fondos parallax + decoraciones + puerta
     }
     // ── Enemigos: tipos, spawns fijos (deterministas) y proyectiles ─────────
     // r = radio de contacto, h = altura, spd = velocidad de persecución,
@@ -3272,17 +3308,36 @@
         const sky = g.createLinearGradient(0, 0, 0, H * 0.87);
         sky.addColorStop(0, cssC(top)); sky.addColorStop(1, cssC(bot));
         g.fillStyle = sky; g.fillRect(-20, -20, W + 40, H + 40);
-        // Parallax LEJOS (0.22×): cordillera de picos determinista (sin en vez de RNG → estable)
-        g.fillStyle = B0.silh;
-        g.beginPath();
-        const farOff = st.camX * 0.22 * sc, seg = 56 * sc;
-        g.moveTo(-20, H);
-        for (let px = -20; px <= W + seg; px += seg) {
-            const i = (px + farOff) / seg;
-            const y = H * 0.62 - (Math.sin(i * 0.7) * 0.5 + Math.sin(i * 0.23 + 2) * 0.5) * H * 0.2;
-            g.lineTo(px, y);
+        // Parallax LEJOS (0.22×). Con el sheet de extras: el FONDO PIXEL-ART del
+        // bioma (bosque/montañas/ruinas/cueva), en mosaico horizontal, con
+        // fundido al del bioma siguiente. Sin sheet: la cordillera procedural.
+        const drawBgTiles = (rect, alpha) => {
+            if (!rect) return;
+            const scale2 = (H * 0.9) / rect.h;      // el fondo cubre hasta la línea de suelo
+            const dw = rect.w * scale2, dy0 = H * 0.87 - H * 0.9;
+            g.globalAlpha = alpha;
+            g.imageSmoothingEnabled = false;         // píxel art chunky, a juego con los sprites
+            const off = (st.camX * 0.22 * sc) % dw;
+            for (let dx0 = -off - dw; dx0 < W + dw; dx0 += dw) {
+                g.drawImage(extrasSheet.canvas, rect.x, rect.y, rect.w, rect.h, dx0, dy0, dw + 1, H * 0.9);
+            }
+            g.globalAlpha = 1;
+        };
+        if (extrasSheet && extrasSheet.bg[BIOME_BG[bi]]) {
+            drawBgTiles(extrasSheet.bg[BIOME_BG[bi]], 1);
+            if (bf > 0) drawBgTiles(extrasSheet.bg[BIOME_BG[Math.min(3, bi + 1)]], bf);
+        } else {
+            g.fillStyle = B0.silh;
+            g.beginPath();
+            const farOff = st.camX * 0.22 * sc, seg = 56 * sc;
+            g.moveTo(-20, H);
+            for (let px = -20; px <= W + seg; px += seg) {
+                const i = (px + farOff) / seg;
+                const y = H * 0.62 - (Math.sin(i * 0.7) * 0.5 + Math.sin(i * 0.23 + 2) * 0.5) * H * 0.2;
+                g.lineTo(px, y);
+            }
+            g.lineTo(W + 20, H); g.closePath(); g.fill();
         }
-        g.lineTo(W + 20, H); g.closePath(); g.fill();
         // Parallax MEDIO (0.5×): árboles/torres alternados, también deterministas
         g.fillStyle = 'rgba(6,8,10,0.55)';
         const midOff = st.camX * 0.5 * sc, midStep = 150 * sc;
@@ -3311,6 +3366,31 @@
         }
         g.fillStyle = cssC(lerpC(B0.tint, B1.tint, bf), 0.22); // borde superior teñido por bioma
         g.fillRect(-20, gy - 2 * sc, W + 40, 3 * sc);
+        // Decoraciones de suelo del sheet de extras: props deterministas cada
+        // ~210u (posición y frame por índice, sin RNG → mismas siempre), a
+        // escala del mundo, pegadas a la línea de suelo, DETRÁS del juego.
+        if (extrasSheet && extrasSheet.deco.length) {
+            g.imageSmoothingEnabled = false;
+            const first = Math.max(0, Math.floor((st.camX - 60) / 210)), last = Math.ceil((st.camX + W / sc + 60) / 210);
+            for (let i = first; i <= last; i++) {
+                const wx = i * 210 + 80 + Math.sin(i * 13.7) * 55;
+                if (wx < 60 || wx > DUN_LEN - 120) continue; // deja limpio el arranque y la puerta
+                const f = extrasSheet.deco[(i * 31 + 7) % extrasSheet.deco.length];
+                const hU = clamp(f.h * 0.9, 16, 46);         // alto en unidades de mundo
+                const wU = hU * (f.w / f.h);
+                g.globalAlpha = 0.92;
+                g.drawImage(extrasSheet.canvas, f.x, f.y, f.w, f.h,
+                            (wx - st.camX - wU / 2) * sc, (DUN_GROUND - hU) * sc, wU * sc, hU * sc);
+                g.globalAlpha = 1;
+            }
+            // La puerta al final de la mazmorra (el objetivo se VE al llegar)
+            const door = extrasSheet.inter.interactable_object_001 || extrasSheet.deco[0];
+            if (door) {
+                const dh2 = 84, dw2 = dh2 * (door.w / door.h);
+                g.drawImage(extrasSheet.canvas, door.x, door.y, door.w, door.h,
+                            (DUN_LEN - 52 - st.camX - dw2 / 2) * sc, (DUN_GROUND - dh2) * sc, dw2 * sc, dh2 * sc);
+            }
+        }
         // Plataformas
         for (const p of DUN_PLATS) {
             const px = (p.x - st.camX) * sc, pw = p.w * sc;
@@ -4849,6 +4929,8 @@
         // tests: hoja + atlas sintéticos (dataURL + objeto JS), sin pasar por fetch()
         setHeroSheet(url, atlas) { const img = new Image(); img.onload = () => buildHeroSheet(img, atlas); img.src = url; },
         setEnemySheet(url, atlas) { const img = new Image(); img.onload = () => buildEnemySheet(img, atlas); img.src = url; },
+        setExtrasSheet(url, atlas) { const img = new Image(); img.onload = () => buildExtrasSheet(img, atlas); img.src = url; },
+        get extrasSheet() { return extrasSheet; },
         heroAttack, heroJump,
         dunLen: DUN_LEN,
         pinLayout,

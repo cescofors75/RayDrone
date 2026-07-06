@@ -359,6 +359,25 @@ Motor con paridad casi completa con la versión JS:
   estados/columnas necesarios, un `console.warn` explica qué falta (no un
   fallo silencioso). Sin PNG/JSON, placeholders dibujados a mano (héroe y
   los 6 enemigos) mantienen el nivel jugable.
+  Además del recorte por atlas, cada frame pasa por un **auto-trim**: el
+  rect declarado se mete unos píxeles hacia dentro (las líneas de rejilla
+  viven en los bordes de celda) y se encoge a la caja mínima con píxeles
+  opacos — una rejilla estimada con ±unos px de error no deja ni líneas ni
+  márgenes en el sprite dibujado. Y la clave de fondo es **GLOBAL** (no
+  flood-fill): el flood se frenaba en las líneas de rejilla y el negro
+  encerrado dentro de cada celda quedaba opaco — las "cajas negras" detrás
+  de los enemigos; como el fondo es un color uniforme, la clave global por
+  color exacto lo elimina también dentro de las celdas.
+  **Extras (`sprites/extras.png` + `extras.json`)**: el tercer sheet usa
+  coordenadas en píxel (origen arriba-izquierda) relativas a
+  `meta.atlasSize`, escaladas al tamaño real de la imagen al cargar. De él
+  salen: los **fondos parallax pixel-art por bioma** (bosque → montañas →
+  ruinas → cueva, en mosaico horizontal a 0.22× con fundido al bioma
+  siguiente; sin el sheet, la cordillera procedural de siempre), las
+  **decoraciones de suelo** (props deterministas cada ~210u, posición y
+  frame por índice — sin RNG, los tests saben qué hay), y la **puerta** al
+  final de la mazmorra (interactable_object_001), que hace visible el
+  objetivo del nivel.
   Pendiente (fase 3): orco miniboss, mago jefe, pickups, sample de audio
   propio y entrada en el flujo principal.
   **Controles del pinball**: flechas ← →, **botón izquierdo/derecho del
