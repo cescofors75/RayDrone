@@ -142,12 +142,11 @@ Motor con paridad casi completa con la versión JS:
   El estimador JS se conserva solo para el A/B audible.
 - ✅ **RayRunner (`game.html`)**: arcade cuya banda sonora la renderiza
   RayDrone en vivo — la demo de "audio adaptativo para videojuegos". El flujo
-  es Nivel 1 (espacio) → Nivel 2 (circuito neón, de noche) → **Nivel 3 (el
-  mismo circuito, pero de día y en sentido inverso)** → Nivel 4 (pinball 3D).
-  El antiguo pinball 2D que ocupaba el nivel 3 se retiró; su física de bola
-  (`stepLevel3`, `pinLayout`…) sigue viva — ahora la usa en exclusiva el nivel
-  4 — pero su *render* 2D (`drawPinball` y ayudantes de proyección) ya no
-  está en el flujo y queda sin usar en el código.
+  es Nivel 1 (espacio, estilo R-Type) → Nivel 2 (circuito neón, de noche) →
+  **Nivel 3 (el mismo circuito, pero de día y en sentido inverso)** →
+  **Nivel 4 (Mazmorra, el nivel final)**. El pinball que ocupaba antes el
+  nivel 4 se retiró por completo (física, mesa 3D y render 2D muerto): la
+  mazmorra con sprites lo sustituye en el flujo principal.
   Nivel 1 (nave espacial, lateral), Nivel 2 (**Circuito Neón**: un circuito
   cerrado **3D de verdad** — WebGL con **Three.js vendorizado** en
   `vendor/` (sin CDN, sigue funcionando offline; el motor de audio continúa
@@ -167,7 +166,10 @@ Motor con paridad casi completa con la versión JS:
   cristal enciende un destello de shimmer. **Power-ups** en ambos niveles:
   🛡 escudo (absorbe un golpe — y la música ni se entera), 🚀 misil (X),
   💣 bomba (C), más un **bláster ilimitado** con cadencia que se dispara con
-  **clic de ratón, Z/espacio o un toque corto**. **Enemigos fantasma** en los
+  **clic de ratón, Z/espacio o un toque corto**. **Escuadrones drone**
+  (R-Type): cada ~10 s entra una cadena de 5 naves en formación de onda
+  senoidal — derribar el escuadrón entero antes de que escape paga +150 y
+  sube el combo. **Enemigos fantasma** en los
   dos niveles: naves translúcidas que persiguen tu altura en el espacio y
   tres coches GT espectrales (material aditivo parpadeante) que dan vueltas
   solos al circuito — alcanzarlos es un golpe (si te adelantan ellos, te
@@ -262,7 +264,7 @@ Motor con paridad casi completa con la versión JS:
   panel semi-transparente (50% de opacidad, no tapa el juego) con todos
   los controles de los tres niveles.
   **Nivel 3 (circuito de día, sentido inverso)**: tras completar 2 vueltas
-  al circuito neón nocturno, la partida no salta al pinball todavía — antes
+  al circuito neón nocturno, la partida no salta a la mazmorra todavía — antes
   hay una segunda vuelta por la MISMA escena 3D (ni un solo mesh se
   reconstruye: asfalto, edificios, pilones, túnel, carteles… todo se reutiliza
   tal cual), pero recorrida **en sentido inverso** y bajo un **cielo de día**.
@@ -286,45 +288,23 @@ Motor con paridad casi completa con la versión JS:
   0.82** — con el umbral nocturno (0.4) el cielo claro entero "bloomeaba" y
   lavaba la escena; de día solo brillan los neones de verdad. Los cheurones
   de los **turbo pads giran 180°** para apuntar en el sentido de marcha real.
-  **Nivel 4 (Pinball 3D)**: al completar 2 vueltas del nivel 3 se pasa al
-  pinball, ahora **en 3D de verdad** (WebGL/Three.js). La jugada clave:
-  **reutiliza exactamente la física 2D** que tenía el pinball original (la
-  bola se mueve en un plano → ya es 2D) y solo cambia el *render* a 3D —
-  `stepLevel3` (nombre heredado de cuando el pinball vivía en el nivel 3) es
-  hoy la física exclusiva del nivel 4.
-  La escena (`ensurePinball3D`/`T4`) **reutiliza el mismo renderer WebGL** que
-  el nivel 2 (un único contexto): tapete con rejilla, muros y rampas como
-  tubos neón (magenta/cian), 4 bumpers con volumen (cilindro + cúpula
-  emisiva que pulsa al golpear), flippers 3D que giran sobre su pivote, y una
-  **bola esférica metálica con reflejos** (envMap PMREM de un canvas neón
-  procedural — reflejos de verdad sin cargar ningún HDR), luces + sombra +
-  bloom. El mapeo es directo: `world.x=(tx-PW/2)·s`, `world.z=(ty-PH/2)·s`,
-  con la cámara en 3/4 clásica de pinball. **Cámara "ojo de la bola"**: de vez
-  en cuando, si la bola está lejos de los flippers, la cámara salta a montarse
-  en la bola 2 s (con cooldown) — un subidón de velocidad divertido. El HUD
-  (banner, combo, BONUS) se dibuja en el canvas 2D transparente por encima.
-  **Reflejos reales en la bola**: una `CubeCamera` captura la escena (bumpers,
-  rieles, mesa) desde la posición de la bola y alimenta su `envMap` cada 2
-  frames — se ven los bumpers reflejados de verdad en el metal. **Rampas 3D
-  con altura**: el tubo arquea hacia arriba y la bola sube y baja al
-  recorrerlo (misma curva de altura para tubo y bola).
-  **FX por RayDrone**: los golpes (bumper, slingshot, rampa, diana, banco) no
-  usan samples ni osciladores aparte — disparan un pulso de reflexiones en el
-  motor granular del worklet (la misma vía que misiles/bombas), así **toda la
-  música Y los efectos salen del mismo motor RayDrone**.
-  **Botón "🎯 Entrenar"** en la portada: un modal con los 5 niveles para
+  **Botón "🎯 Entrenar"** en la portada: un modal con los 4 niveles para
   saltar directo a cualquiera y practicarlo — en modo entreno la **puntuación
   NO se guarda** en el ranking (saltarse niveles sería trampa).
-  **Nivel 5 (Mazmorra, BETA — solo desde Entrenar)**: hack & slash de scroll
-  lateral en el canvas 2D. Fases 1+2 listas: héroe de plataformas con los 8
+  **Nivel 4 (Mazmorra)**: el nivel final — se entra al completar 2 vueltas
+  del nivel 3, y cruzar la **puerta de la cripta** completa el juego (+1000,
+  fin de ronda como victoria 🏆). Hack & slash de scroll lateral en el
+  canvas 2D. Fases 1+2 listas: héroe de plataformas con los 8
   estados de la hoja de sprites (idle/walk/run/jump/fall/attack/damage/die),
   salto (↑/espacio o toque corto), tajo de espada con arco de luz (Z o clic),
   andar/correr (←→, botones, o el dedo apoyado a un lado), suelo + 14
   plataformas one-way, cámara lateral con suavizado y **parallax por biomas**
   (bosque oscuro → paso de montaña → patio del castillo → cripta del jefe),
   donde cada bioma = una zona musical (worldT sigue tu avance). El mundo
-  vive en unidades fijas (DUN_H) como la mesa de pinball: un resize no
-  desincroniza nada.
+  vive en unidades fijas (DUN_H): un resize no desincroniza nada. Tiene su
+  propio sample de 24 s (quintas de bosque → viento y campana de montaña →
+  órgano del castillo → coro grave y tambor de la cripta), y en táctil los
+  botones centrales pasan a ser **⚔ (tajo) y ⬆ (salto)**.
   **Enemigos (fase 2)**: 21 spawns deterministas repartidos por biomas, 6
   tipos con IA de tres líneas cada uno — slime (patrulla), seta (escupe
   esporas que puedes batear con la espada, +5), goblin y esqueleto
@@ -378,71 +358,14 @@ Motor con paridad casi completa con la versión JS:
   frame por índice — sin RNG, los tests saben qué hay), y la **puerta** al
   final de la mazmorra (interactable_object_001), que hace visible el
   objetivo del nivel.
-  Pendiente (fase 3): orco miniboss, mago jefe, pickups, sample de audio
-  propio y entrada en el flujo principal.
-  **Controles del pinball**: flechas ← →, **botón izquierdo/derecho del
-  ratón**, o en táctil **tocar la mitad izquierda/derecha de la mesa**
-  (multi-touch: cada dedo cuenta por separado — dos dedos = los dos
-  flippers). **Tecla T = tilt**: empuja la mesa (impulso a
-  la bola hacia arriba + sacudida) para salvarla — pero cada empujón sube el
-  medidor de tilt; si te pasas, **¡TILT!** y los flippers quedan muertos hasta
-  que la bola drene, como en una máquina real (el medidor baja solo con el
-  tiempo). En el pinball no hay armas: X/C/bláster quedan desactivados (y al
-  entrar se limpian los restos del circuito — sin ello, un misil podía
-  "matar" un fantasma invisible sobrante y regalar puntos).
+  Pendiente: orco miniboss, mago jefe y pickups.
+  En la mazmorra no hay armas a distancia: X/C/bláster quedan desactivados
+  (el héroe pelea con la espada) y al entrar se limpian los restos del
+  circuito — sin ello, un misil podía "matar" un fantasma invisible sobrante
+  y regalar puntos.
   **Récords "leyenda"**: unas marcas base (p. ej. BRUZOS, THOR) se fusionan
   siempre en el ranking (cliente y servidor, ordenadas y sin duplicar) como
   marca a batir.
-  **2 rampas** (izquierda/derecha): la trayectoria es un *path* de puntos en
-  fracciones del tapete (sobrevive a un resize); al capturar la bola con
-  velocidad ascendente suficiente cerca de la boca, viaja por el path a
-  velocidad constante — sin gravedad ni colisiones, como dentro de un tubo —
-  y sale disparada en la dirección del último tramo. Cada rampa completada
-  suma puntos y combo; cada 3 rampas sube el **multiplicador de bonus**
-  (x1→x2→x3, con HUD propio "BONUS xN") que se aplica a bumpers, dianas y
-  rampas, y se resetea a x1 al perder la bola (es por bola, no acumulado
-  toda la partida). **Banco de 3 dianas** (drop targets) arriba de la mesa:
-  cada una se "tumba" al golpearla (dejan de colisionar, se apagan
-  visualmente) y suman combo/puntos; tumbar las 3 da un bonus grande y, la
-  **primera vez en la partida**, una **bola extra** (vida +1) — repetir el
-  banco después ya no la vuelve a dar, solo el bonus; las dianas se
-  reinician solas tras un par de segundos. **Flippers largos** (geometría
-  proporcional al ancho de la mesa, con barrido simétrico de ±20° en vez de
-  un giro de ~90° para que quepan sin salirse del lienzo por arriba al
-  levantarse): se juntan cerca del centro, dejando solo un hueco de desagüe
-  razonable — antes eran cortos y dejaban casi toda la mesa sin guardia.
-  **Rieles guía** cierran el hueco entre cada muro lateral y el pivote de su
-  flipper (sin ellos la bola se colaba por fuera del alcance del flipper sin
-  tocar nada), y **2 slingshots** (cuñas encima de cada flipper) rebotan con
-  un impulso extra al golpearlas, como en una mesa real. Toda colisión que
-  puede repetirse frame a frame (bumpers, rieles, slingshots) solo aplica su
-  reflejo/impulso cuando la bola realmente se acerca (`vn<0`) — aplicarlo
-  siempre que hay solape (p.ej. la bola apoyada encima) inyectaba energía sin
-  límite y podía disparar la velocidad lo bastante como para atravesar un
-  muro en un solo paso de física — además, a alta velocidad la bola avanza
-  en **subpasos** de como mucho un radio, así ninguna colisión se "salta".
-  **Render en perspectiva + lienzo vertical** (lo que la hace parecer una
-  mesa de verdad y no un dibujo plano): el pinball 2D original ponía el
-  lienzo en **retrato** (clase `mode-pin`, `aspect-ratio 2/3`, hoy sin usar
-  tras el cambio de nivel — el nivel 4 usa su propio retrato en 3D,
-  `mode-pin3d`) para que la mesa llenase el marco como una máquina real. La
-  física corre en un **espacio de mesa**
-  propio, vertical y de resolución fija (PW×PH unidades), y el dibujo la
-  **proyecta** en un trapecio que se estrecha arriba (lejos) y se ensancha
-  abajo (cerca), con cabinet magenta/cian a los lados, arco superior,
-  bumpers "pop" con disco-base de doble aro e icono de seta que brilla,
-  rieles habitrail magenta/cian, slingshots rosas, flippers blancos con
-  glow y rieles de inlane — estética a juego con el póster synthwave que
-  inspiró el rediseño — con rejilla que converge en
-  el fondo, arco superior redondeado, y tamaños (bola, bumpers, grosores)
-  que escalan con la profundidad. Separar física de render también hace la
-  jugabilidad idéntica en cualquier tamaño de lienzo. **Estilo neón** (a
-  juego con el póster de referencia): cabinet oscuro a los lados, rayos
-  láser de ambiente aditivos, suelo de rejilla tipo Tron, muros y rieles con
-  brillo de neón, rampas como tubos de luz, **bumpers tipo "seta"** cada uno
-  con su propio color (verde/amarillo/azul/magenta), flippers de caucho rojo
-  con brillo y tapa de pivote cromada, y bola cromada con estela que se
-  desvanece.
   **Modal "Cómo jugar"**: la portada queda limpia (título, tagline y
   botones); las instrucciones completas viven en un modal aparte que se
   abre solo, una vez, en la primera visita (recordado en localStorage) y

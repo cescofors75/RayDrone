@@ -24,25 +24,6 @@
         #game { position:relative; z-index:1; }
         #stage.mode3d #game3d { display:block; }
         #stage.mode3d #game { background:transparent; border-color:transparent; }
-        /* .mode-pin: pinball 2D en perspectiva (lienzo retrato). El nivel 3 ya no
-           usa esta clase (ahora es el circuito de día invertido, con mode3d) —
-           queda sin usar tras el cambio, tal como drawPinball()/pinLayout() 2D. */
-        #stage.mode-pin #game { width:auto; height:min(82vh, 720px); aspect-ratio:2 / 3;
-                                margin-inline:auto; background:#04030a; }
-        /* Nivel 4 (pinball 3D): lienzo VERTICAL (retrato), igual que el 2D, para
-           que la mesa llene la pantalla y los flippers se vean — si no, la mesa
-           (que es alta) queda como una tira estrecha e injugable. El WebGL
-           (#game3d) y el overlay 2D (#game) se apilan centrados al mismo tamaño. */
-        /* Retrato 2:3, acotado por el ancho de pantalla (92vw, móvil), el alto
-           (54.6vh = 2/3 de 82vh) y un máximo de 480px. Medidas EXPLÍCITas
-           (width + height con calc, sin aspect-ratio ni auto): el #game3d es
-           absoluto y ahí auto/aspect-ratio no calcula bien → WebGL en negro. */
-        #stage.mode-pin3d #game { position:relative; width:min(92vw, 54.6vh, 480px);
-                                  height:calc(min(92vw, 54.6vh, 480px) * 1.5);
-                                  margin-inline:auto; background:transparent; }
-        #stage.mode-pin3d #game3d { position:absolute; left:50%; top:0; transform:translateX(-50%);
-                                    width:min(92vw, 54.6vh, 480px);
-                                    height:calc(min(92vw, 54.6vh, 480px) * 1.5); }
         .hud { display:flex; justify-content:space-between; gap:10px; font-family:monospace;
                font-size:0.88rem; margin:10px 0; flex-wrap:wrap; }
         .hud b { color:var(--accent); }
@@ -150,7 +131,7 @@
 <body>
 <div class="container">
     <h1>◢ RayRunner</h1>
-    <p class="sub">Dos niveles, power-ups y ranking — y toda la música <b>renderizada en vivo</b> por RayDrone</p>
+    <p class="sub">Cuatro niveles, power-ups y ranking — y toda la música <b>renderizada en vivo</b> por RayDrone</p>
 
     <div class="hud">
         <span>Nivel: <b id="hud-level">1</b></span>
@@ -190,17 +171,10 @@
                 <div><kbd>V</kbd> 📷 cámara (persec./dentro/frontal)</div>
             </div>
             <div class="grp">
-                <b>Nivel 4 · Pinball 3D</b>
-                <div><kbd>←</kbd> <kbd>→</kbd> flippers (o clic izq/der del ratón)</div>
-                <div>táctil: toca la mitad izq/der de la mesa</div>
-                <div><kbd>T</kbd> tilt (empuja la mesa — ¡sin pasarte!)</div>
-                <div>cámara "ojo de la bola" aleatoria</div>
-            </div>
-            <div class="grp">
-                <b>Nivel 5 · Mazmorra (beta, en Entrenar)</b>
+                <b>Nivel 4 · Mazmorra</b>
                 <div><kbd>←</kbd> <kbd>→</kbd> andar/correr</div>
-                <div><kbd>↑</kbd> <kbd>espacio</kbd> saltar (táctil: toque corto)</div>
-                <div><kbd>Z</kbd> clic — tajo de espada</div>
+                <div><kbd>↑</kbd> <kbd>espacio</kbd> saltar (táctil: toque corto o ⬆)</div>
+                <div><kbd>Z</kbd> clic — tajo de espada (táctil: ⚔)</div>
             </div>
         </div>
         <div class="overlay" id="start-overlay">
@@ -222,7 +196,7 @@
             <button class="btn" id="resume-btn">▶ Seguir</button>
         </div>
         <div class="overlay" id="end-overlay" style="display:none;">
-            <div style="font-size:1.3rem;">💥 Fin de la partida</div>
+            <div style="font-size:1.3rem;" id="end-title">💥 Fin de la partida</div>
             <div>Puntuación: <b id="end-score" style="color:var(--accent); font-size:1.5rem;">0</b>
                  · Nivel <b id="end-level">1</b></div>
             <div id="nick-form" style="display:none;">
@@ -246,11 +220,11 @@
     <div class="how">
         <b>Qué está pasando por debajo</b> — el motor granular real (el mismo Rust→wasm del demo) suena todo el
         rato y cada nivel es un sample distinto de 24 s con 4 zonas: el espacio (pad → campanas → tormenta → coro),
-        el circuito neón (amanecer → calipso → niebla → faro 2077) y el pinball (arranque arcade → bumper blitz →
-        tilt eléctrico → jackpot neón), todos en tono mayor y luminoso —
+        el circuito neón (amanecer → calipso → niebla → faro 2077) y la mazmorra (bosque → montaña →
+        castillo → cripta) —
         cada <b>sector de la pista</b> es una zona musical: la recta de salida suena a amanecer, el túnel a
-        niebla estática, el tramo de tierra a faro 2077; una vuelta = una pasada entera por el sample (en el
-        pinball, el combo acelera el paso por las zonas). El scroll mueve el <i>foco</i>
+        niebla estática, el tramo de tierra a faro 2077; una vuelta = una pasada entera por el sample (en la
+        mazmorra, cada bioma es una zona). El scroll mueve el <i>foco</i>
         — por donde pasas, eso suena — y tu combo controla <b>N</b> (rayos/s) y la <i>apertura</i>: combo alto =
         la textura converge limpia (error ∝ 1/√N); un impacto la rompe en polvo granular y hunde el tono
         (con 🛡 el escudo absorbe el golpe… y la música ni se entera). El ranking es global (Vercel + Upstash),
@@ -268,7 +242,9 @@
             <b>Nivel 1 · Espacio</b> — pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides y
             <b style="color:#7bdcff">fantasmas</b> 👻, recoge cristales <b style="color:var(--cyan)">◆</b> y power-ups
             (🛡 escudo · 🚀 misil con <b>X</b> · 💣 bomba con <b>C</b>). Dispara el <b>bláster</b> —ilimitado— con
-            <b>clic de ratón</b>, <b>Z</b>/<b>espacio</b> o un <b>toque corto</b>.
+            <b>clic de ratón</b>, <b>Z</b>/<b>espacio</b> o un <b>toque corto</b>. De vez en cuando entra un
+            <b style="color:#ff9a50">escuadrón drone</b> en formación de onda: derríbalo <b>entero</b> antes de
+            que escape y te llevas un bonus (+150).
             <br><br>
             <b>Nivel 2 · Circuito Neón</b> — un circuito 3D de verdad (WebGL) sobre una moto Tron:
             ← → giras, <b>↑ aceleras, ↓ frenas</b> (en móvil el dedo hace las dos cosas), pisa las
@@ -279,17 +255,14 @@
             <br><br>
             <b>Nivel 3 · Circuito de día (sentido inverso)</b> — el mismo circuito, pero a plena luz
             y recorrido <b>al revés</b>: las curvas que conocías ahora vienen del otro lado. Mismos
-            controles, armas y cámaras que el nivel 2. Otras 2 vueltas y pasas al pinball.
+            controles, armas y cámaras que el nivel 2. Otras 2 vueltas y llegas a la mazmorra.
             <br><br>
-            <b>Nivel 4 · Pinball 3D</b> — una mesa en <b>3D de verdad</b> (WebGL): bumpers con volumen,
-            bola metálica con reflejos, luces y bloom. Mueve los flippers con <b>←</b> / <b>→</b>, los
-            <b>botones izq/der del ratón</b> o, en táctil, <b>tocando la mitad izquierda/derecha</b> de la
-            mesa (dos dedos = los dos flippers). Golpea los <b>bumpers</b> para sumar combo y puntos, lanza la
-            bola por las <b>rampas</b> (suben en 3D) para un bonus mayor — completar 3 rampas sube el
-            <b>multiplicador BONUS</b> (x2, x3) — y tumba las <b>3 dianas</b> de arriba: el banco completo da
-            una <b>bola extra</b>. <b>Tecla T</b> = tilt: empuja la mesa para salvar la bola… pero si te
-            pasas, ¡TILT! y pierdes el control. De vez en cuando la cámara salta a "ojo de la bola".
-            No dejes que la bola caiga por el hueco central o pierdes una vida.
+            <b>Nivel 4 · Mazmorra</b> — hack &amp; slash de scroll lateral con sprites: camina y corre
+            con <b>← →</b> (o el dedo apoyado a un lado), salta con <b>↑</b>/<b>espacio</b> (táctil:
+            toque corto o el botón <b>⬆</b>) y reparte tajos de espada con <b>Z</b> o <b>clic</b>
+            (táctil: el botón <b>⚔</b>). Cruza los cuatro biomas — bosque, montaña, castillo y
+            cripta — sube a las plataformas, esquiva las esporas de las setas y a los lobos en
+            carga, y alcanza la <b>puerta del final</b> para completar el juego (+1000).
             <br><br>
             Cada nivel tiene su propia música de 24s, generada en vivo: tu <b>combo</b> controla N (la densidad
             de rayos) — juega bien y la textura converge limpia; recibe un golpe y se rompe en polvo granular.
@@ -311,8 +284,7 @@
             <button class="btn sec train-lvl" data-lvl="1">🚀 <b>Nivel 1</b><span>Espacio</span></button>
             <button class="btn sec train-lvl" data-lvl="2">🏍 <b>Nivel 2</b><span>Circuito neón (noche)</span></button>
             <button class="btn sec train-lvl" data-lvl="3">☀️ <b>Nivel 3</b><span>Mismo circuito, de día e inverso</span></button>
-            <button class="btn sec train-lvl" data-lvl="4">🪩 <b>Nivel 4</b><span>Pinball 3D</span></button>
-            <button class="btn sec train-lvl" data-lvl="5">🗡 <b>Nivel 5</b><span>Mazmorra (beta)</span></button>
+            <button class="btn sec train-lvl" data-lvl="4">🗡 <b>Nivel 4</b><span>Mazmorra</span></button>
         </div>
     </div>
 </div>
@@ -344,12 +316,6 @@
         { name: 'BARRIO CALIPSO', tint: [255, 200, 60] },
         { name: 'NIEBLA ESTÁTICA', tint: [170, 220, 255] },
         { name: 'FARO 2077',      tint: [255, 140, 90] },
-    ];
-    const ZONES_PINBALL = [
-        { name: 'ARRANQUE ARCADE', tint: [255, 210, 60] },
-        { name: 'BUMPER BLITZ',    tint: [255, 53, 94] },
-        { name: 'TILT ELÉCTRICO',  tint: [120, 200, 255] },
-        { name: 'JACKPOT NEÓN',    tint: [255, 240, 140] },
     ];
     // Peso de crossfade equal-power de la zona s en la muestra i (compartido).
     function zoneWeight(i, s, seg, fade) {
@@ -484,70 +450,82 @@
         return normalize(buf);
     }
 
-    function makeTerrainPinball() {
+    function makeTerrainDungeon() {
         const n = SR * TERRAIN_SECS, buf = new Float32Array(n);
         const seg = n / 4, fade = SR * 0.5, tau = 2 * Math.PI;
-        const square = (f, t, duty) => (((f * t) % 1) < duty ? 1 : -1);
-        // Zona 0 · ARRANQUE ARCADE: acorde de pulso 8-bit (chiptune) a ritmo alegre.
+        // Zona 0 · BOSQUE OSCURO: quintas huecas graves que "respiran" + gotas
+        // pentatónicas brillantes cayendo entre los árboles.
         {
-            const chord = [220.0, 277.18, 329.63]; // A3-C#4-E4
+            const chord = [82.41, 123.47, 164.81, 246.94]; // E2-B2-E3-B3
+            const drops = [659.25, 739.99, 987.77];
             for (let i = 0; i < n; i++) {
                 const gn = zoneWeight(i, 0, seg, fade);
                 if (gn <= 0) continue;
                 const t = i / SR;
-                const beat = 0.75 + 0.25 * square(2, t, 0.5); // pulso al ritmo
+                const breath = 0.6 + 0.4 * Math.sin(tau * 0.22 * t);
                 let s = 0;
-                for (const f of chord) s += 0.22 * square(f, t, 0.5);
-                buf[i] += gn * s * beat;
+                for (let c = 0; c < chord.length; c++) s += 0.27 * Math.sin(tau * chord[c] * (1 + 0.0011 * c) * t);
+                const tl = t % 1.37, dropF = drops[Math.floor(t / 1.37) % 3];
+                s += 0.24 * Math.exp(-tl / 0.09) * Math.sin(tau * dropF * t);
+                buf[i] += gn * s * breath;
             }
         }
-        // Zona 1 · BUMPER BLITZ: staccato rápido de corcheas, como golpes de bumper.
+        // Zona 1 · PASO DE MONTAÑA: viento (ruido filtrado en ráfagas) + una
+        // campana fría y lejana cada dos segundos.
         {
-            const notes = [392.0, 466.16, 523.25, 587.33, 659.25]; // pentatónica brillante
-            const stepDur = 60 / 190 / 2;
-            let prng = 0xb00b1e5 >>> 0;
-            const nextNote = () => { prng ^= prng << 13; prng >>>= 0; prng ^= prng >>> 17; prng ^= prng << 5; prng >>>= 0; return notes[prng % notes.length]; };
+            let rng = 0xdead5eed >>> 0, lp = 0;
             const i0 = Math.max(0, Math.floor(seg - fade)), i1 = Math.min(n, Math.floor(2 * seg + fade));
-            let noteF = nextNote(), noteStart = i0 / SR;
-            for (let i = i0; i < i1; i++) {
-                const t = i / SR;
-                if (t - noteStart >= stepDur) { noteF = nextNote(); noteStart += stepDur; }
-                const gn = zoneWeight(i, 1, seg, fade);
-                if (gn <= 0) continue;
-                const tl = t - noteStart;
-                const hit = Math.exp(-tl / 0.06) * (0.75 * square(noteF, t, 0.35) + 0.2 * Math.sin(tau * noteF * 2 * t));
-                buf[i] += gn * hit;
-            }
-        }
-        // Zona 2 · TILT ELÉCTRICO: zumbido/chispazo, tensión de "vas a perder la bola".
-        {
-            let rng = 0x7ee1ec7c >>> 0, lp = 0;
-            const i0 = Math.max(0, Math.floor(2 * seg - fade)), i1 = Math.min(n, Math.floor(3 * seg + fade));
             for (let i = i0; i < i1; i++) {
                 rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0;
                 const white = rng / 2147483648 - 1;
-                lp += 0.09 * (white - lp);
+                lp += 0.04 * (white - lp);
+                const gn = zoneWeight(i, 1, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR;
+                const gust = 0.4 + 0.6 * Math.pow(0.5 + 0.5 * Math.sin(tau * 0.11 * t + Math.sin(tau * 0.043 * t) * 2), 2);
+                const tb = t % 2.1;
+                const bell = Math.exp(-tb / 0.9) * (0.5 * Math.sin(tau * 440 * t) + 0.18 * Math.sin(tau * 440 * 2.76 * t));
+                buf[i] += gn * (lp * 2.8 * gust + bell * 0.55);
+            }
+        }
+        // Zona 2 · PATIO DEL CASTILLO: órgano en La menor (arpegio de cuadrada
+        // suave con octava) a 90 BPM, solemne pero con pulso.
+        {
+            const square = (f, t, duty) => (((f * t) % 1) < duty ? 1 : -1);
+            const arp = [220.0, 261.63, 329.63, 440.0, 329.63, 261.63]; // Am
+            const stepDur = 60 / 90 / 2;
+            const i0 = Math.max(0, Math.floor(2 * seg - fade)), i1 = Math.min(n, Math.floor(3 * seg + fade));
+            for (let i = i0; i < i1; i++) {
                 const t = i / SR;
                 const gn = zoneWeight(i, 2, seg, fade);
                 if (gn <= 0) continue;
-                const buzz = 0.5 * square(90, t, 0.5) * (0.5 + 0.5 * Math.sin(tau * 6 * t));
-                buf[i] += gn * (lp * 2.1 + buzz);
-            }
-        }
-        // Zona 3 · JACKPOT NEÓN: arpegio triunfal Cmaj9 campanado, como el bonus del jackpot.
-        {
-            const arp = [523.25, 659.25, 783.99, 987.77, 1046.5, 987.77, 783.99, 659.25];
-            const stepDur = 60 / 132 / 2;
-            const i0 = Math.max(0, Math.floor(3 * seg - fade));
-            for (let i = i0; i < n; i++) {
-                const t = i / SR;
                 const idx = Math.floor(t / stepDur) % arp.length;
                 const tl = t % stepDur;
+                const f = arp[idx];
+                const env = Math.min(1, tl / 0.03) * Math.exp(-tl / 0.5);
+                const organ = env * (0.4 * square(f, t, 0.5) + 0.22 * square(f * 2, t, 0.5) + 0.12 * Math.sin(tau * f * 3 * t));
+                const pedal = 0.16 * Math.sin(tau * 110 * t);
+                buf[i] += gn * (organ + pedal);
+            }
+        }
+        // Zona 3 · CRIPTA DEL JEFE: coro grave con formantes + tambor de
+        // procesión lento — la tensión antes de la puerta final.
+        {
+            const i0 = Math.max(0, Math.floor(3 * seg - fade));
+            for (let i = i0; i < n; i++) {
                 const gn = zoneWeight(i, 3, seg, fade);
                 if (gn <= 0) continue;
-                const f = arp[idx];
-                const bell = Math.exp(-tl / 0.3) * (0.7 * Math.sin(tau * f * t) + 0.25 * Math.sin(tau * f * 2.01 * t));
-                buf[i] += gn * bell;
+                const t = i / SR;
+                const vib = 1 + 0.005 * Math.sin(tau * 4.5 * t);
+                let s = 0;
+                for (let kk = 1; kk <= 7; kk++) {
+                    const f = 98.0 * kk; // sol1 y armónicos
+                    const form = 0.3 + 1 / (1 + Math.pow((f - 520) / 240, 2));
+                    s += (0.42 * form / Math.sqrt(kk)) * Math.sin(tau * f * vib * t);
+                }
+                const td = t % 1.6; // tambor: golpe sordo cada 1.6 s
+                const drum = Math.exp(-td / 0.13) * Math.sin(tau * (52 - td * 26) * td) * 1.4;
+                buf[i] += gn * (s * 0.8 + drum);
             }
         }
         return normalize(buf);
@@ -555,7 +533,7 @@
 
     // ── Motor (mismo patrón que index.html: worklet + wasm cache-busted) ─────
     let actx = null, node = null, gainNode = null;
-    let terrainSpace = null, terrainNeon = null, terrainPinball = null;
+    let terrainSpace = null, terrainNeon = null, terrainDungeon = null;
     async function ensureEngine() {
         if (node) return;
         actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -587,21 +565,20 @@
         node.port.postMessage({ type: 'pitch', mult: 1 });
         terrainSpace = makeTerrainSpace();
         terrainNeon = makeTerrainNeon();
-        terrainPinball = makeTerrainPinball();
+        terrainDungeon = makeTerrainDungeon();
         loadTerrain('space');
     }
     let terrainLoaded = '';
     function loadTerrain(which) {
         if (!node || terrainLoaded === which) return;
         terrainLoaded = which;
-        const data = which === 'neon' ? terrainNeon : which === 'pinball' ? terrainPinball : terrainSpace;
+        const data = which === 'neon' ? terrainNeon : which === 'dungeon' ? terrainDungeon : terrainSpace;
         node.port.postMessage({ type: 'sample', data, sampleRate: SR });
     }
 
     // Estado 3D (declarado aquí arriba: resizeCanvas() corre al cargar la página
     // y llama a resize3D(), que consulta T3 — evita la zona muerta temporal).
     let THREE = null, T3 = null;  // módulo + escena {renderer,scene,camera,curve,...}
-    let T4 = null;                // nivel 4: escena 3D del pinball (Three.js)
     let LAP_LEN = 1;              // longitud real de la vuelta (curve.getLength())
     let curvK = null;             // curvatura firmada muestreada (para la centrífuga)
     const objs2 = [];             // {s, lane, type, mesh}
@@ -610,37 +587,6 @@
     const pads2 = [];             // turbo pads fijos de la pista: {s, lane, mesh, cd}
     const frags2 = [];            // escombros 3D de un golpe: {mesh, vel, rot, ttl}
     let miniPts = null;           // contorno del circuito normalizado (minimapa)
-    // ── Nivel 3 (pinball) ──────────────────────────────────────────────────
-    // La física corre en un ESPACIO DE MESA propio, vertical y de resolución
-    // fija (PW×PH unidades), NO en píxeles de pantalla. El render la proyecta
-    // en perspectiva (trapecio que se estrecha arriba, como una mesa real
-    // vista desde el jugador). Así la jugabilidad es idéntica en cualquier
-    // tamaño de lienzo y el look deja de ser "plano visto desde arriba".
-    const PW = 560, PH = 1000; // ancho/alto de la mesa en unidades de mesa
-    const BALL_R = 15;         // radio de la bola en unidades de mesa
-    // Bumpers en posición fraccional de la mesa (fx,fy en [0,1]). `flash` es
-    // visual (destello al golpear), no afecta a la física.
-    const pinBumpers = [
-        { fx: 0.30, fy: 0.42, flash: 0, color: [80, 230, 120] },
-        { fx: 0.50, fy: 0.34, flash: 0, color: [255, 210, 60] },
-        { fx: 0.70, fy: 0.42, flash: 0, color: [90, 180, 255] },
-        { fx: 0.50, fy: 0.58, flash: 0, color: [255, 80, 180] },
-    ];
-    // Banco de dianas (drop targets): tumbarlas todas da un bonus grande y,
-    // la primera vez en la partida, una bola extra — se reinician solas tras
-    // un rato (pinTargetResetTtl en stepLevel3).
-    const pinTargets = [
-        { fx: 0.40, fy: 0.09, alive: true, flash: 0 },
-        { fx: 0.50, fy: 0.09, alive: true, flash: 0 },
-        { fx: 0.60, fy: 0.09, alive: true, flash: 0 },
-    ];
-    // Slingshots: cuñas encima de cada flipper que rebotan con un impulso
-    // extra al golpearlas (posición relativa a su pivote, recalculada cada
-    // frame; solo `flash` persiste para el destello y el cooldown).
-    const pinSlings = [
-        { side: 'L', flash: 0 },
-        { side: 'R', flash: 0 },
-    ];
 
     // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
     let W = 0, H = 0, k = 1, SHIP_X = 0;
@@ -665,10 +611,8 @@
         for (const m of st.shots) { m.x *= sx; m.y *= sy; }
         for (const p of st.particles) { p.x *= sx; p.y *= sy; }
         for (const s of st.stars) { s.x *= sx; s.y *= sy; }
-        // La bola de pinball vive en espacio de mesa (independiente de la
-        // resolución, ver PW/PH): no se reescala aquí, solo la proyección.
+        for (const d of st.drones) { d.x *= sx; d.y *= sy; d.y0 *= sy; d.amp *= sy; }
         resize3D();
-        resize4();
     }
 
     // ── Estado ────────────────────────────────────────────────────────────────
@@ -691,26 +635,18 @@
         camMode: 0, // 0 = persecución · 1 = dentro de la moto · 2 = frontal
         spawnAst: 0, spawnCry: 0, spawnPick: 0, spawnObj: 0,
         touchTarget: null, touchTargetX: null, touchThrottle: 0,
-        // Nivel 3 (pinball): bola en juego + ángulo actual de cada flipper (para
-        // el impulso por velocidad angular al golpear). pinMult/pinRampCount son
-        // el multiplicador de bonus (sube cada 3 rampas, se resetea al perder la
-        // bola); extraBallUsed asegura que la bola extra solo se da una vez por
-        // partida (si no, completar el banco de dianas repetidas veces la daría
-        // gratis cada vez).
-        ball: null, flipLAng: 0, flipRAng: 0, ballLive: false, serveTtl: 0,
-        pinMult: 1, pinRampCount: 0, extraBallUsed: false, pinTargetResetTtl: 0,
-        ballCamTtl: 0, ballCamCd: 3, // nivel 4: cámara "ojo de la bola" temporal
-        tilt: 0, tiltLock: 0,       // nivel 4: medidor de tilt (T) y bloqueo si te pasas
         training: false, // modo entreno (saltar a un nivel): la puntuación NO cuenta
         trackRev: false, // nivel 3: mismo circuito que el 2, recorrido en sentido inverso
-        hero: null, camX: 0, // nivel 5 (mazmorra): héroe de plataformas + cámara lateral
+        hero: null, camX: 0, // nivel 4 (mazmorra): héroe de plataformas + cámara lateral
+        victory: false,      // se completó la mazmorra: el fin de partida es un triunfo
+        drones: [], spawnSq: 0, sqAlive: {}, sqNext: 0, // nivel 1: escuadrones en onda (R-Type)
     };
     resizeCanvas();
     for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
-    const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (nivel 2); a/b = flippers en nivel 3
+    const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (niveles 2-3)
 
     const zones = () => st.level === 1 ? ZONES_SPACE : (st.level === 2 || st.level === 3) ? ZONES_NEON
-                      : st.level === 5 ? ZONES_DUNGEON : ZONES_PINBALL;
+                      : ZONES_DUNGEON;
 
     // Nivel 3 = el mismo circuito del nivel 2, recorrido en sentido inverso.
     // La geometría (asfalto, edificios, pilones...) no cambia — solo la MANERA
@@ -745,16 +681,13 @@
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
         st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
         st.camMode = 0;
-        st.ball = null; st.flipLAng = 0; st.flipRAng = 0; st.ballLive = false; st.serveTtl = 0;
-        st.pinMult = 1; st.pinRampCount = 0; st.extraBallUsed = false; st.pinTargetResetTtl = 0;
-        st.ballCamTtl = 0; st.ballCamCd = 3; st.training = false; st.tilt = 0; st.tiltLock = 0;
+        st.training = false;
         st.trackRev = false;
         st.hero = null; st.camX = 0;
-        for (const t of pinTargets) t.alive = true;
+        st.victory = false;
+        st.drones = []; st.spawnSq = 5; st.sqAlive = {}; st.sqNext = 0;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
-        $('stage').classList.remove('mode-pin');
-        $('stage').classList.remove('mode-pin3d');
         st.spawnAst = 1.2; st.spawnCry = 0.8; st.spawnPick = 6; st.spawnObj = 1.0;
         loadTerrain('space');
         relabelButtons();
@@ -771,8 +704,12 @@
         hudBombs.innerText = st.bombs;
     }
     function relabelButtons() {
-        $('btn-a').innerText = st.level === 1 ? '▲' : st.level === 4 ? 'L' : '◀';
-        $('btn-b').innerText = st.level === 1 ? '▼' : st.level === 4 ? 'R' : '▶';
+        $('btn-a').innerText = st.level === 1 ? '▲' : '◀';
+        $('btn-b').innerText = st.level === 1 ? '▼' : '▶';
+        // En la mazmorra los botones centrales pasan a ser espada y salto (en
+        // táctil no hay teclado): los handlers miran st.level para redirigir.
+        $('btn-fire').innerText = st.level === 4 ? '⚔' : '🚀';
+        $('btn-bomb').innerText = st.level === 4 ? '⬆' : '💣';
     }
     const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
     function banner(text) { st.banner = text; st.bannerTtl = 1; }
@@ -809,8 +746,7 @@
         st.training = true;                 // modo entreno: la puntuación no se guarda
         if (n === 2) switchToLevel2();
         else if (n === 3) switchToLevel3();
-        else if (n === 4) switchToLevel4();
-        else if (n === 5) switchToLevel5(); // mazmorra: aún fuera del flujo principal (beta)
+        else if (n === 4) switchToLevel4(); // mazmorra
     }
     $('train-btn').addEventListener('click', showTrain);
     $('train-close').addEventListener('click', hideTrain);
@@ -928,9 +864,9 @@
         updateHud();
     }
     function fireMissile() {
-        // st.level >= 4: en el pinball no hay armas — sin el guard, X (o el botón
-        // 🚀) gastaba un misil sin efecto visible… o PEOR: mataba un fantasma
-        // sobrante del circuito (invisible en N4) y regalaba +80 puntos.
+        // st.level >= 4: en la mazmorra el héroe pelea con la espada — sin el
+        // guard, X gastaba un misil sin efecto visible… o PEOR: mataba un
+        // fantasma sobrante del circuito (invisible) y regalaba +80 puntos.
         if (!st.playing || st.paused || st.missiles <= 0 || st.level >= 4) return;
         st.missiles -= 1;
         st.shimmer = Math.max(st.shimmer, 0.6); // el disparo enciende un destello shimmer
@@ -964,7 +900,7 @@
     }
     // Bláster: arma básica ilimitada con cadencia — clic de ratón, toque corto o Z
     function fireBlaster() {
-        if (!st.playing || st.paused || st.blastCd > 0 || st.level >= 4) return; // sin armas en el pinball (N4)
+        if (!st.playing || st.paused || st.blastCd > 0 || st.level >= 4) return; // en la mazmorra el arma es la espada
         st.blastCd = 0.22;
         st.shimmer = Math.max(st.shimmer, 0.25); // cada disparo, un chispazo shimmer
         if (st.level === 1) {
@@ -980,7 +916,7 @@
         vibrate(8);
     }
     function useBomb() {
-        if (!st.playing || st.paused || st.bombs <= 0 || st.level >= 4) return; // sin armas en el pinball
+        if (!st.playing || st.paused || st.bombs <= 0 || st.level >= 4) return; // sin bombas en la mazmorra
         st.bombs -= 1;
         st.shake = 1.4;
         // La bomba deja una cola recursiva grande (rebotes) — impacto sónico sin castigo
@@ -991,6 +927,10 @@
             st.asteroids = [];
             for (const gh of st.ghosts) { burst(gh.x, gh.y, [150, 200, 255], 14); st.score += 30; }
             st.ghosts = [];
+            // La bomba también barre los drones — pero sin el bonus de escuadrón
+            // (ese premia la puntería con el bláster, no el botón del pánico).
+            for (const d of st.drones) { burst(d.x, d.y, [255, 170, 90], 10); st.score += 15; st.sqAlive[d.sq] = -999; }
+            st.drones = [];
         } else {
             for (let i = objs2.length - 1; i >= 0; i--) {
                 const o = objs2[i];
@@ -1063,6 +1003,7 @@
     function endRound() {
         st.playing = false;
         sendAudio();
+        $('end-title').innerText = st.victory ? '🏆 ¡Juego completado!' : '💥 Fin de la partida';
         $('end-score').innerText = Math.round(st.score);
         $('end-level').innerText = st.level;
         $('end-overlay').style.display = '';
@@ -1112,7 +1053,6 @@
             statusEl.innerText = `Error al iniciar el motor: ${(err && err.message) || err}`;
             return;
         }
-        $('stage').classList.remove('mode-pin'); $('stage').classList.remove('mode-pin3d'); // por si venimos de un game over en el pinball
         resizeCanvas();
         resetRound();
         ensureThree().catch((err) => { statusEl.innerText = `3D no disponible: ${(err && err.message) || err}`; });
@@ -1134,8 +1074,8 @@
         st.pos = 0; st.lap = 0; st.inTunnel = false; st.bgShift = 0;
         st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
         st.camMode = 1; // por defecto, cámara "dentro" (primera persona) al entrar al circuito
+        st.drones = []; st.sqAlive = {};
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
-        $('stage').classList.remove('mode-pin'); $('stage').classList.remove('mode-pin3d');
         $('stage').classList.add('mode3d');
         resize3D();
         applyTrackTheme(false); // noche neón
@@ -1146,87 +1086,6 @@
         updateHud();
     }
 
-    // ── Mesa de pinball (nivel 4 · física compartida con el render 3D) ──────
-    // pinLayout()/serveBall() ya no los usa un pinball 2D (el nivel 3 pasó a
-    // ser el circuito de día invertido) — hoy sirven a la física del nivel 4;
-    // solo drawPinball() y sus ayudantes de proyección (PP, pinProj...), más
-    // abajo, quedan del pinball 2D original y ya no se usan.
-    // Geometría de la mesa en unidades de mesa (0..PW, 0..PH). No depende del
-    // tamaño del lienzo — la perspectiva la aplica el render.
-    function pinLayout() {
-        const left = 0, right = PW, top = 0;
-        // Flippers largos (30% del ancho) con barrido de ±22°; se juntan cerca
-        // del centro dejando solo el hueco de desagüe, como una mesa real.
-        const restA = 0.38, activeA = -0.38;
-        const flipLen = PW * 0.30;
-        const pivotY = PH - 118;
-        const outlane = PW * 0.135;
-        const fx = (f) => left + f * (right - left);
-        const fy = (f) => top + f * (pivotY - top);
-        const pivotL = { x: left + outlane, y: pivotY };
-        const pivotR = { x: right - outlane, y: pivotY };
-        return {
-            top, flipLen, pivotY, left, right, fx, fy,
-            pivotL, pivotR,
-            restL: restA, activeL: activeA,
-            restR: Math.PI - restA, activeR: Math.PI - activeA,
-            // Rieles guía: cierran el hueco entre cada muro lateral y el pivote de
-            // su flipper — sin esto, la bola que cae fuera del arco del flipper se
-            // cuela sin tocar nada. Corren del muro directamente al pivote.
-            guideL: { p1: { x: left, y: pivotY + 22 }, p2: pivotL },
-            guideR: { p1: { x: right, y: pivotY + 22 }, p2: pivotR },
-            // Rampas: trayectoria de puntos (boca abajo → salida arriba). Al
-            // capturar la bola viaja por el path a velocidad constante (sin
-            // gravedad ni colisiones) y sale en la dirección del último tramo.
-            rampL: {
-                entryR: 34,
-                path: [
-                    { x: fx(0.07), y: fy(0.93) }, { x: fx(0.045), y: fy(0.62) },
-                    { x: fx(0.06), y: fy(0.33) }, { x: fx(0.14), y: fy(0.13) },
-                    { x: fx(0.28), y: fy(0.09) },
-                ],
-            },
-            rampR: {
-                entryR: 34,
-                path: [
-                    { x: fx(0.93), y: fy(0.93) }, { x: fx(0.955), y: fy(0.62) },
-                    { x: fx(0.94), y: fy(0.33) }, { x: fx(0.86), y: fy(0.13) },
-                    { x: fx(0.72), y: fy(0.09) },
-                ],
-            },
-        };
-    }
-    function serveBall() {
-        // Se sirve arriba, cayendo hacia la mesa (en unidades de mesa).
-        st.ball = { x: PW * 0.5 + (Math.random() - 0.5) * 60, y: 70, vx: (Math.random() - 0.5) * 40, vy: 60, onRamp: null };
-        st.ballLive = true;
-    }
-    // ── Proyección en perspectiva (espacio de mesa → píxeles de pantalla) ────
-    // La mesa se dibuja como un trapecio centrado y vertical: más estrecho
-    // arriba (lejos) que abajo (cerca). Se recalcula cada frame por si cambia
-    // el tamaño del lienzo. Los tamaños (radios, grosores) escalan con el
-    // ancho local del trapecio, así lo cercano se ve mayor.
-    let pinProj = null;
-    function computePinProj() {
-        const screenTop = H * 0.045, screenBot = H * 0.985;
-        const hh = screenBot - screenTop;
-        // Con el lienzo en retrato (mode-pin) la mesa llena el marco: se
-        // ensancha hasta ~82% del ancho, dejando el cabinet a los lados.
-        const botHalf = Math.min(W * 0.41, hh * 0.30);
-        const topHalf = botHalf * 0.60;
-        pinProj = { screenTop, screenBot, hh, botHalf, topHalf, cx: W * 0.5 };
-        return pinProj;
-    }
-    function pinHalfW(ny) { return pinProj.topHalf + clamp(ny, 0, 1) * (pinProj.botHalf - pinProj.topHalf); }
-    function pinPPU(ny) { return pinHalfW(ny) / (PW / 2); } // píxeles por unidad de mesa a esa profundidad
-    function PP(x, y) {
-        const ny = y / PH;
-        const halfW = pinHalfW(ny);
-        return {
-            x: pinProj.cx + (x / PW * 2 - 1) * halfW,
-            y: pinProj.screenTop + clamp(ny, -0.02, 1.06) * (pinProj.screenBot - pinProj.screenTop),
-        };
-    }
     // El nivel 3 es el MISMO circuito 3D que el nivel 2 (misma escena, mismos
     // edificios/asfalto/pilones — nada se reconstruye) pero recorrido en
     // SENTIDO INVERSO y de DÍA: st.trackRev invierte cómo se lee la curva
@@ -1246,37 +1105,12 @@
         st.speed2 = 2300; st.boost = 0; st.spin = 0; st.nearMiss = 0; st.touchThrottle = 0;
         st.camMode = 1;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
-        $('stage').classList.remove('mode-pin'); $('stage').classList.remove('mode-pin3d');
         $('stage').classList.add('mode3d');
         resize3D();
         applyTrackTheme(true); // de día
         st.spawnObj = 1.2; st.spawnCry = 1.2; st.spawnPick = 6;
         loadTerrain('neon');
         banner('NIVEL 3 · CIRCUITO DE DÍA (SENTIDO INVERSO)');
-        relabelButtons();
-        updateHud();
-    }
-    function switchToLevel4() {
-        st.level = 4;
-        st.zone = -1;
-        st.worldT = 0;
-        st.flipLAng = pinLayout().restL; st.flipRAng = pinLayout().restR;
-        st.ball = null; st.ballLive = false; st.serveTtl = 1.2;
-        st.pinMult = 1; st.pinRampCount = 0; st.extraBallUsed = false; st.pinTargetResetTtl = 0;
-        st.tilt = 0; st.tiltLock = 0;
-        for (const tg of pinTargets) tg.alive = true;
-        // Limpia los restos del circuito (fantasmas/obstáculos/bolts/escombros):
-        // quedaban en T3.scene invisibles pero vivos — un misil en N4 podía
-        // "matar" un fantasma sobrante y regalar puntos, y los meshes ocupaban
-        // memoria/GPU sin motivo.
-        clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
-        $('stage').classList.remove('mode-pin');
-        $('stage').classList.add('mode3d');
-        $('stage').classList.add('mode-pin3d'); // lienzo más alto para la mesa 3D
-        resizeCanvas();
-        ensurePinball3D().then(resize4).catch((err) => { statusEl.innerText = `Pinball 3D no disponible: ${(err && err.message) || err}`; });
-        loadTerrain('pinball');
-        banner('NIVEL 4 · PINBALL 3D');
         relabelButtons();
         updateHud();
     }
@@ -1305,19 +1139,18 @@
         const kk = keyOf(e);
         const up = kk === 'ArrowUp' || kk === 'w', down = kk === 'ArrowDown' || kk === 's';
         const left = kk === 'ArrowLeft' || kk === 'a', right = kk === 'ArrowRight' || kk === 'd';
-        if ((st.level === 1 && up) || (st.level >= 2 && left)) keys.a = true; // volante izq. en N2/N3/N5, flipper izq. en N4
-        else if ((st.level === 1 && down) || (st.level >= 2 && right)) keys.b = true; // volante der. en N2/N3/N5, flipper der. en N4
+        if ((st.level === 1 && up) || (st.level >= 2 && left)) keys.a = true; // volante/andar izq. en N2-N4
+        else if ((st.level === 1 && down) || (st.level >= 2 && right)) keys.b = true; // volante/andar der. en N2-N4
         else if ((st.level === 2 || st.level === 3) && up) keys.u = true;    // acelerador
         else if ((st.level === 2 || st.level === 3) && down) keys.d = true;  // freno
-        else if (st.level === 5 && up) { if (!e.repeat) heroJump(); }        // mazmorra: saltar
+        else if (st.level === 4 && up) { if (!e.repeat) heroJump(); }        // mazmorra: saltar
         else if (kk === 'x') { if (!e.repeat) fireMissile(); }
         else if (kk === 'c') { if (!e.repeat) useBomb(); }
         else if (kk === 'v') { if (!e.repeat && (st.level === 2 || st.level === 3)) cycleCamera(); }
-        else if (kk === 't') { if (!e.repeat && st.level === 4) nudgeTable(); }
         else if (kk === 'h') { if (!e.repeat) toggleKeysSidebar(); }
         else if (kk === 'z' || kk === ' ') {
             // mazmorra: Z = tajo de espada, espacio = salto; resto: bláster
-            if (st.level === 5) { if (!e.repeat) (kk === ' ' ? heroJump() : heroAttack()); }
+            if (st.level === 4) { if (!e.repeat) (kk === ' ' ? heroJump() : heroAttack()); }
             else fireBlaster(); // mantener = autofuego (con cadencia)
         }
         else if (kk === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
@@ -1341,8 +1174,10 @@
     };
     holdBtn('btn-a', 'a');
     holdBtn('btn-b', 'b');
-    $('btn-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); fireMissile(); });
-    $('btn-bomb').addEventListener('pointerdown', (e) => { e.preventDefault(); useBomb(); });
+    // En la mazmorra (N4) los botones centrales se reetiquetan a ⚔/⬆ y pasan
+    // a ser espada y salto — en táctil no hay teclado (ver relabelButtons).
+    $('btn-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); st.level === 4 ? heroAttack() : fireMissile(); });
+    $('btn-bomb').addEventListener('pointerdown', (e) => { e.preventDefault(); st.level === 4 ? heroJump() : useBomb(); });
     // Arrastre: en nivel 1 la nave sigue la ALTURA del dedo; en nivel 2, su X.
     let dragging = false;
     function dragTo(e) {
@@ -1355,68 +1190,30 @@
             st.touchThrottle = clamp((0.5 - (e.clientY - rect.top) / rect.height) * 2.6, -1, 1);
         }
     }
-    // Pinball táctil (N4): tocar la MITAD izquierda/derecha del lienzo acciona
-    // ese flipper (multi-touch: cada dedo cuenta por separado — dos dedos =
-    // los dos flippers). Antes tocar el lienzo no hacía nada y había que
-    // acertar a los botoncitos L/R bajo el juego.
-    const touchFlips = new Map(); // pointerId → 'a' | 'b'
-    function touchFlipDown(e) {
-        const rect = canvas.getBoundingClientRect();
-        const key = (e.clientX - rect.left) < rect.width / 2 ? 'a' : 'b';
-        touchFlips.set(e.pointerId, key);
-        keys[key] = true;
-    }
-    function touchFlipUp(e) {
-        const key = touchFlips.get(e.pointerId);
-        if (!key) return;
-        touchFlips.delete(e.pointerId);
-        let held = false; // otro dedo puede seguir pisando el mismo flipper
-        for (const v of touchFlips.values()) if (v === key) held = true;
-        if (!held) keys[key] = false;
-    }
     let downT = 0, downX = 0, downY = 0;
     canvas.addEventListener('pointerdown', (e) => {
-        // No preventDefault en ratón: cortaría los eventos mousedown de
-        // compatibilidad (uno por botón) que usan los flippers en el pinball.
         if (e.pointerType !== 'mouse') e.preventDefault();
         dragging = true;
         downT = performance.now(); downX = e.clientX; downY = e.clientY;
         if (e.pointerType === 'mouse') {
-            if (st.level === 5) heroAttack();           // mazmorra: clic = tajo
-            else if (st.level < 4) fireBlaster();       // en pinball (N4) los botones = flippers (mousedown)
+            if (st.level === 4) heroAttack(); // mazmorra: clic = tajo
+            else fireBlaster();
         }
-        else if (st.level === 4) touchFlipDown(e); // táctil: mitades = flippers
-        else dragTo(e); // N5 incluido: dedo apoyado a un lado = andar hacia ahí
+        else dragTo(e); // N4 incluido: dedo apoyado a un lado = andar hacia ahí
         capture(canvas, e);
     });
-    canvas.addEventListener('pointermove', (e) => { if (dragging && e.pointerType !== 'mouse' && st.level !== 4) dragTo(e); });
+    canvas.addEventListener('pointermove', (e) => { if (dragging && e.pointerType !== 'mouse') dragTo(e); });
     const dragEnd = () => { dragging = false; st.touchTarget = null; st.touchTargetX = null; st.touchThrottle = 0; };
     canvas.addEventListener('pointerup', (e) => {
-        touchFlipUp(e);
         // Toque corto (sin arrastre) = bláster en N1-N3, SALTO en la mazmorra
         if (e.pointerType !== 'mouse' && performance.now() - downT < 220 &&
             Math.hypot(e.clientX - downX, e.clientY - downY) < 12) {
-            if (st.level === 5) heroJump(); else fireBlaster();
+            if (st.level === 4) heroJump(); else fireBlaster();
         }
         dragEnd();
     });
-    canvas.addEventListener('pointercancel', (e) => { touchFlipUp(e); dragEnd(); });
+    canvas.addEventListener('pointercancel', () => dragEnd());
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    // Pinball (N4): botón IZQUIERDO del ratón = flipper izquierdo, botón
-    // DERECHO = flipper derecho. (mouseup en window para soltar aunque el
-    // cursor salga del lienzo.) mouseFlip recuerda QUÉ puso el ratón: sin
-    // ello, el mouseup soltaba keys.a/b incondicionalmente — y en N1–N3 un
-    // clic de bláster te "soltaba" la flecha de dirección que tenías pulsada.
-    const mouseFlip = { a: false, b: false };
-    canvas.addEventListener('mousedown', (e) => {
-        if (st.level !== 4) return; // SOLO el pinball usa los botones del ratón como flippers
-        if (e.button === 0) { keys.a = true; mouseFlip.a = true; }
-        else if (e.button === 2) { keys.b = true; mouseFlip.b = true; e.preventDefault(); }
-    });
-    window.addEventListener('mouseup', (e) => {
-        if (e.button === 0 && mouseFlip.a) { keys.a = false; mouseFlip.a = false; }
-        else if (e.button === 2 && mouseFlip.b) { keys.b = false; mouseFlip.b = false; }
-    });
 
     // ── Cámara del circuito: persecución → dentro → frontal ─────────────────
     const CAM_NAMES = ['PERSECUCIÓN', 'DENTRO', 'FRONTAL'];
@@ -2335,279 +2132,6 @@
         T3.composer.setSize(r.width, r.height);
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    // NIVEL 4 · Pinball 3D (Three.js). Reutiliza el MISMO renderer que el nivel
-    // 2 (un solo contexto WebGL) y la MISMA física 2D del nivel 3 (la bola se
-    // mueve en un plano → ya es 2D): aquí solo cambia el render a 3D real —
-    // malla de mesa, bumpers y flippers con volumen, bola esférica metálica con
-    // reflejos (envMap), luces, sombra y bloom. Mapeo espacio de mesa → mundo:
-    //   world.x = (tx - PW/2) * PIN_S ;  world.z = (ty - PH/2) * PIN_S
-    // (la mesa yace en el plano XZ; el extremo de los flippers queda cerca de la
-    // cámara y la cabecera al fondo). El eje Y es la altura sobre el tapete.
-    const PIN_S = 0.05;
-    const RAMP_LIFT = 5.5; // cuánto sube la bola (y el tubo) en 3D al recorrer una rampa
-    const w3x = (tx) => (tx - PW / 2) * PIN_S;
-    const w3z = (ty) => (ty - PH / 2) * PIN_S;
-    function makePinGridTex() {
-        const c = document.createElement('canvas'); c.width = 512; c.height = 512;
-        const x = c.getContext('2d');
-        x.fillStyle = '#090a15'; x.fillRect(0, 0, 512, 512);
-        x.strokeStyle = 'rgba(70,205,235,0.55)'; x.lineWidth = 2;
-        for (let i = 0; i <= 16; i++) { const p = i / 16 * 512; x.beginPath(); x.moveTo(p, 0); x.lineTo(p, 512); x.moveTo(0, p); x.lineTo(512, p); x.stroke(); }
-        const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 2);
-        return t;
-    }
-    function makePinEnv(renderer) {
-        // Entorno neón (equirect procedural) → PMREM: da reflejos de verdad en la
-        // bola metálica sin cargar ningún HDR externo.
-        const c = document.createElement('canvas'); c.width = 256; c.height = 128;
-        const x = c.getContext('2d');
-        const grd = x.createLinearGradient(0, 0, 0, 128);
-        grd.addColorStop(0, '#0e1830'); grd.addColorStop(0.5, '#2a0a30'); grd.addColorStop(1, '#040409');
-        x.fillStyle = grd; x.fillRect(0, 0, 256, 128);
-        for (const [col, bx, by, r] of [['#ff3aa0', 55, 44, 46], ['#3ad0ff', 195, 52, 46], ['#ffe070', 128, 22, 34]]) {
-            const rg = x.createRadialGradient(bx, by, 2, bx, by, r);
-            rg.addColorStop(0, col); rg.addColorStop(1, 'rgba(0,0,0,0)');
-            x.fillStyle = rg; x.fillRect(0, 0, 256, 128);
-        }
-        const tex = new THREE.CanvasTexture(c); tex.mapping = THREE.EquirectangularReflectionMapping;
-        const pmrem = new THREE.PMREMGenerator(renderer); pmrem.compileEquirectangularShader();
-        const env = pmrem.fromEquirectangular(tex).texture;
-        tex.dispose(); pmrem.dispose();
-        return env;
-    }
-    async function ensurePinball3D() {
-        if (T4) return;
-        await ensureThree();               // asegura THREE + renderer (T3)
-        const renderer = T3.renderer;
-        const EC = await import('./vendor/three-addons/postprocessing/EffectComposer.js');
-        const RP = await import('./vendor/three-addons/postprocessing/RenderPass.js');
-        const UBP = await import('./vendor/three-addons/postprocessing/UnrealBloomPass.js');
-        const OP = await import('./vendor/three-addons/postprocessing/OutputPass.js');
-        const Lay = pinLayout();
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x05040d);
-        scene.fog = new THREE.Fog(0x0a0618, 40, 120);
-        scene.environment = makePinEnv(renderer);
-        const camera = new THREE.PerspectiveCamera(40, 2, 0.1, 300);
-        camera.position.set(0, 33, w3z(PH) + 27); // atrás y arriba: cabe toda la mesa
-        camera.lookAt(0, -2, 0);                   // mira al centro (flippers visibles abajo)
-
-        // ── Tapete ──────────────────────────────────────────────────────────
-        const gridTex = makePinGridTex();
-        const floor = new THREE.Mesh(
-            new THREE.PlaneGeometry(PW * PIN_S, PH * PIN_S),
-            new THREE.MeshStandardMaterial({ map: gridTex, emissive: 0x0a1a24, emissiveMap: gridTex, emissiveIntensity: 0.35, roughness: 0.85, metalness: 0.1 }));
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        scene.add(floor);
-
-        // ── Muros (contorno como tubo neón, magenta izq / cian der) ──────────
-        const outline = pinOutline();
-        const mid = Math.floor(outline.length / 2);
-        const toV = (p, yy) => new THREE.Vector3(w3x(p.x), yy, w3z(p.y));
-        for (const [seg, col] of [[outline.slice(0, mid + 1), 0xff3c96], [outline.slice(mid), 0x5ac8ff]]) {
-            const pts = seg.map((p) => toV(p, 0.9));
-            const curveW = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
-            const tube = new THREE.Mesh(
-                new THREE.TubeGeometry(curveW, 80, 0.32, 8, false),
-                new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.95, roughness: 0.4, metalness: 0.3 }));
-            scene.add(tube);
-        }
-
-        // ── Rampas (tubos de luz) ────────────────────────────────────────────
-        const ramps = [];
-        for (const [ramp, col] of [[Lay.rampL, 0xff3c96], [Lay.rampR, 0x5ac8ff]]) {
-            // El tubo ARCA hacia arriba en 3D (sube a un pico a mitad y baja),
-            // igual que la altura que tomará la bola al recorrerlo (render4).
-            const n = ramp.path.length;
-            const pts = ramp.path.map((p, i) => toV(p, 0.9 + RAMP_LIFT * Math.sin(Math.PI * i / (n - 1))));
-            const cW = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
-            const tube = new THREE.Mesh(
-                new THREE.TubeGeometry(cW, 60, 0.34, 8, false),
-                new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.85, roughness: 0.35, metalness: 0.4 }));
-            scene.add(tube); ramps.push(tube);
-        }
-
-        // ── Bumpers 3D (cilindro + cúpula emisiva) ───────────────────────────
-        const bumperMeshes = [];
-        for (const bp of pinBumpers) {
-            const p = bumperPos(bp, Lay), col = (bp.color[0] << 16) | (bp.color[1] << 8) | bp.color[2];
-            const grp = new THREE.Group();
-            grp.position.set(w3x(p.x), 0, w3z(p.y));
-            const base = new THREE.Mesh(
-                new THREE.CylinderGeometry(34 * PIN_S * 1.35, 34 * PIN_S * 1.5, 0.35, 28),
-                new THREE.MeshStandardMaterial({ color: 0x0d2632, emissive: 0x1a5566, emissiveIntensity: 0.7, roughness: 0.5, metalness: 0.4 }));
-            base.position.y = 0.18; base.receiveShadow = true; grp.add(base);
-            const bodyMat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.8, roughness: 0.3, metalness: 0.3 });
-            const body = new THREE.Mesh(new THREE.CylinderGeometry(34 * PIN_S * 0.95, 34 * PIN_S * 1.1, 1.0, 28), bodyMat);
-            body.position.y = 0.85; body.castShadow = true; grp.add(body);
-            const capMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: col, emissiveIntensity: 1.1, roughness: 0.2, metalness: 0.2 });
-            const cap = new THREE.Mesh(new THREE.SphereGeometry(34 * PIN_S * 0.8, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2), capMat);
-            cap.position.y = 1.35; grp.add(cap);
-            scene.add(grp);
-            bumperMeshes.push({ bp, bodyMat, capMat });
-        }
-
-        // ── Dianas (drop targets) ────────────────────────────────────────────
-        const targetMeshes = [];
-        for (const tg of pinTargets) {
-            const p = targetPos(tg, Lay);
-            const mat = new THREE.MeshStandardMaterial({ color: 0x9be3ff, emissive: 0x2aa0ff, emissiveIntensity: 1.0, roughness: 0.3, metalness: 0.3 });
-            const m = new THREE.Mesh(new THREE.BoxGeometry(52 * PIN_S, 1.2, 6 * PIN_S), mat);
-            m.position.set(w3x(p.x), 0.6, w3z(p.y)); m.castShadow = true;
-            scene.add(m); targetMeshes.push({ tg, mesh: m });
-        }
-
-        // ── Flippers 3D (giran sobre su pivote) ──────────────────────────────
-        const flipMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x8ff0ff, emissiveIntensity: 0.7, roughness: 0.25, metalness: 0.3 });
-        function makeFlipper(pivot) {
-            const grp = new THREE.Group();
-            grp.position.set(w3x(pivot.x), 0.7, w3z(pivot.y));
-            const len = Lay.flipLen * PIN_S;
-            const box = new THREE.Mesh(new THREE.BoxGeometry(len, 0.7, 1.3), flipMat);
-            box.position.x = len / 2; box.castShadow = true;
-            grp.add(box); scene.add(grp);
-            return grp;
-        }
-        const flipperL = makeFlipper(Lay.pivotL), flipperR = makeFlipper(Lay.pivotR);
-
-        // ── Bola metálica con reflejos ───────────────────────────────────────
-        const ballMesh = new THREE.Mesh(
-            new THREE.SphereGeometry(BALL_R * PIN_S, 28, 20),
-            new THREE.MeshStandardMaterial({ color: 0xdfe6ef, roughness: 0.1, metalness: 1.0, envMapIntensity: 1.5 }));
-        ballMesh.castShadow = true; scene.add(ballMesh);
-        // Reflejos REALES en la bola: una CubeCamera captura la escena (bumpers,
-        // rieles, mesa) desde la posición de la bola y alimenta su envMap, así se
-        // ven reflejados de verdad — no solo el entorno neón genérico.
-        const cubeRT = new THREE.WebGLCubeRenderTarget(128, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
-        const cubeCam = new THREE.CubeCamera(0.1, 100, cubeRT);
-        scene.add(cubeCam);
-        ballMesh.material.envMap = cubeRT.texture;
-
-        // ── Luces ────────────────────────────────────────────────────────────
-        scene.add(new THREE.AmbientLight(0x404060, 0.8));
-        const pL = new THREE.PointLight(0xff3aa0, 0.9, 80); pL.position.set(w3x(0), 12, w3z(PH * 0.3)); scene.add(pL);
-        const pR = new THREE.PointLight(0x3ad0ff, 0.9, 80); pR.position.set(w3x(PW), 12, w3z(PH * 0.3)); scene.add(pR);
-        const key = new THREE.DirectionalLight(0xffffff, 1.1);
-        key.position.set(6, 30, w3z(PH) + 10); key.castShadow = true;
-        key.shadow.mapSize.set(1024, 1024);
-        key.shadow.camera.left = -20; key.shadow.camera.right = 20;
-        key.shadow.camera.top = 34; key.shadow.camera.bottom = -34;
-        key.shadow.camera.near = 1; key.shadow.camera.far = 90; key.shadow.bias = -0.0015;
-        scene.add(key);
-
-        // ── Composer + bloom ─────────────────────────────────────────────────
-        const composer = new EC.EffectComposer(renderer);
-        composer.addPass(new RP.RenderPass(scene, camera));
-        const bloom = new UBP.UnrealBloomPass(new THREE.Vector2(320, 180), 0.5, 0.35, 0.6);
-        const bloomSetSize = bloom.setSize.bind(bloom);
-        bloom.setSize = () => bloomSetSize(320, 180);
-        composer.addPass(bloom);
-        composer.addPass(new OP.OutputPass());
-
-        T4 = { scene, camera, composer, bloom, ballMesh, flipperL, flipperR, bumperMeshes, targetMeshes, ramps, cubeCam, cubeFrame: 0 };
-        resize4();
-    }
-    function resize4() {
-        if (!T4) return;
-        const r = $('game3d').getBoundingClientRect();
-        if (r.width < 10) return;
-        T3.renderer.setSize(r.width, r.height, false);
-        T4.camera.aspect = r.width / r.height;
-        T4.camera.updateProjectionMatrix();
-        T4.composer.setSize(r.width, r.height);
-    }
-    function render4(t) {
-        if (!T4) return;
-        // Re-sincroniza el renderer con el tamaño REAL del lienzo si cambió (el
-        // primer resize4 puede correr antes de que el CSS de retrato se asiente,
-        // sobre todo en móvil → si no, el WebGL sale en negro).
-        const cv3 = $('game3d');
-        if (cv3.clientWidth > 0 && (Math.abs(cv3.clientWidth - (render4._w || 0)) > 1 || Math.abs(cv3.clientHeight - (render4._h || 0)) > 1)) {
-            render4._w = cv3.clientWidth; render4._h = cv3.clientHeight; resize4();
-        }
-        const Lay = pinLayout();
-        // Bola (o escondida si aún no está en juego). En rampa, SUBE en 3D.
-        if (st.ball) {
-            T4.ballMesh.visible = true;
-            let by = BALL_R * PIN_S;
-            if (st.ball.onRamp) { const f = clamp(st.ball.onRamp.dist / st.ball.onRamp.total, 0, 1); by += RAMP_LIFT * Math.sin(Math.PI * f); }
-            T4.ballMesh.position.set(w3x(st.ball.x), by, w3z(st.ball.y));
-        } else T4.ballMesh.visible = false;
-        // Flippers: el ángulo 2D de la física → rotación Y del pivote.
-        T4.flipperL.rotation.y = -st.flipLAng;
-        T4.flipperR.rotation.y = -st.flipRAng;
-        // Bumpers: la intensidad emisiva pulsa con el flash del golpe.
-        for (const bm of T4.bumperMeshes) {
-            const glow = bm.bp.flash > 0 ? bm.bp.flash / 0.15 : 0;
-            bm.bodyMat.emissiveIntensity = 0.8 + glow * 1.8;
-            bm.capMat.emissiveIntensity = 1.1 + glow * 2.2;
-        }
-        // Dianas: visibles solo si están en pie.
-        for (const tm of T4.targetMeshes) tm.mesh.visible = tm.tg.alive;
-        // Temporizadores de la cámara "ojo de la bola" (dt derivado de t).
-        if (!render4._last) render4._last = t;
-        let dt4 = Math.min(Math.max(t - render4._last, 0), 0.1); render4._last = t;
-        st.ballCamCd = Math.max(0, st.ballCamCd - dt4);
-        st.ballCamTtl = Math.max(0, st.ballCamTtl - dt4);
-        // Disparo aleatorio: solo si la bola está viva, LEJOS de los flippers
-        // (mitad superior de la mesa) y ha pasado el cooldown. ~0.5/s de media.
-        if (st.ballLive && st.ball && st.ballCamTtl <= 0 && st.ballCamCd <= 0 &&
-            st.ball.y < PH * 0.48 && Math.random() < 0.5 * dt4) {
-            st.ballCamTtl = 2.0; st.ballCamCd = 9;
-        }
-        if (st.ballCamTtl > 0 && st.ball) {
-            // Cámara pegada a la bola, mirando en su dirección de avance: subidón
-            // de velocidad como si viajaras montado en ella (2 s, luego vuelve).
-            const b = st.ball, sp = Math.hypot(b.vx, b.vy) || 1;
-            const dx = b.vx / sp, dy = b.vy / sp; // dirección en espacio de mesa
-            const bx = w3x(b.x), bz = w3z(b.y), by = BALL_R * PIN_S;
-            T4.camera.position.set(bx - dx * 4.5, by + 3.2, bz - dy * 4.5);
-            T4.camera.lookAt(bx + dx * 8, by + 0.5, bz + dy * 8);
-        } else {
-            // Vista 3/4 clásica con leve vaivén + sacudida al golpear.
-            const sway = Math.sin(t * 0.5) * 0.5;
-            T4.camera.position.set(sway, 33 + Math.cos(t * 0.4) * 0.3, w3z(PH) + 27);
-            if (st.shake > 0) { T4.camera.position.x += (Math.random() - 0.5) * st.shake * 2; T4.camera.position.y += (Math.random() - 0.5) * st.shake * 2; }
-            T4.camera.lookAt(0, -2, 0);
-        }
-        // Reflejos de la bola: recapturamos la escena con la CubeCamera en su
-        // posición (cada 2 frames, y escondiéndola para que no se refleje a sí
-        // misma). Es lo que hace que se vean los bumpers reflejados en el metal.
-        T4.cubeFrame++;
-        if (st.ball && T4.ballMesh.visible && (T4.cubeFrame & 1) === 0) {
-            T4.cubeCam.position.copy(T4.ballMesh.position);
-            T4.ballMesh.visible = false;
-            T4.cubeCam.update(T3.renderer, T4.scene);
-            T4.ballMesh.visible = true;
-        }
-        T4.composer.render();
-    }
-    // Overlay 2D del nivel 4 (HUD/banner sobre el render 3D, canvas transparente).
-    function drawPinball3DOverlay(t) {
-        g.save();
-        g.clearRect(-20, -20, W + 40, H + 40);
-        const tint = ZONES_PINBALL[Math.max(0, st.zone)].tint;
-        if (st.playing) {
-            g.fillStyle = st.pinMult > 1 ? '#ffd75d' : 'rgba(255,255,255,0.55)';
-            g.font = `bold ${Math.round(15 * k)}px monospace`;
-            g.textAlign = 'center';
-            if (st.pinMult > 1) { g.shadowColor = '#ffd75d'; g.shadowBlur = 8 * k; }
-            g.fillText(`BONUS x${st.pinMult}`, W / 2, H - 14 * k);
-            g.shadowBlur = 0;
-            // Medidor de TILT (tecla T): sube al empujar, rojo si te pasas.
-            const bw = 120 * k, bx = W / 2 - bw / 2, by = 14 * k;
-            g.fillStyle = 'rgba(18,14,38,0.55)'; g.fillRect(bx, by, bw, 6 * k);
-            g.fillStyle = st.tiltLock > 0 ? '#ff466e' : (st.tilt > 0.7 ? '#ffb020' : '#5dffc8');
-            g.fillRect(bx, by, bw * (st.tiltLock > 0 ? 1 : st.tilt), 6 * k);
-            g.fillStyle = st.tiltLock > 0 ? '#ff8098' : 'rgba(180,200,220,0.7)';
-            g.font = `${Math.round(9 * k)}px monospace`;
-            g.fillText(st.tiltLock > 0 ? 'TILT' : 'T · tilt', W / 2, by + 16 * k);
-        }
-        drawFxOverlays(t, tint);
-        g.restore();
-    }
 
     // Moto Tron del jugador: lightcycle azul neón — casco bajo y estrecho
     // extruido desde el perfil lateral, aleta dorsal luminosa, visor, piloto
@@ -2877,13 +2401,13 @@
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // NIVEL 5 · MAZMORRA (beta, solo desde Entrenar) — hack & slash de scroll
-    // lateral en el canvas 2D. FASE 1: héroe + mundo. FASE 2: enemigos con IA
-    // y combate (espada con hitbox, daño al héroe con invulnerabilidad).
+    // NIVEL 4 · MAZMORRA — hack & slash de scroll lateral en el canvas 2D:
+    // héroe + mundo, enemigos con IA y combate (espada con hitbox, daño al
+    // héroe con invulnerabilidad). Es el nivel final: cruzar la puerta de la
+    // cripta completa el juego.
     //
-    // El mundo vive en UNIDADES DE MAZMORRA fijas (DUN_H de alto), igual que
-    // el pinball vive en unidades de mesa: la proyección a pantalla es
-    // sc = H/DUN_H y un resize no desincroniza nada.
+    // El mundo vive en UNIDADES DE MAZMORRA fijas (DUN_H de alto): la
+    // proyección a pantalla es sc = H/DUN_H y un resize no desincroniza nada.
     //
     // SPRITES: si existe `sprites/hero.png` (y `sprites/enemies.png`), la hoja
     // se procesa al cargar: (1) el FONDO NEGRO se hace transparente con un
@@ -3108,13 +2632,13 @@
         { x: 4960, t: 'wolf' }, { x: 5210, t: 'skeleton' }, { x: 5460, t: 'bat' }, { x: 5710, t: 'goblin' }, { x: 5960, t: 'wolf' }, { x: 6160, t: 'skeleton' },
     ];
     let dunEnemies = [], dunShots = []; // enemigos vivos + esporas de las setas
-    function switchToLevel5() {
-        st.level = 5;
+    function switchToLevel4() {
+        st.level = 4;
         st.zone = -1;
         st.worldT = 0;
         st.touchTarget = null; st.touchTargetX = null; st.touchThrottle = 0;
         st.hero = { x: 60, y: DUN_GROUND, vx: 0, vy: 0, dir: 1, state: 'idle', animT: 0, attackT: 0,
-                    onGround: true, maxX: 60, done: false, invulnT: 0, hurtT: 0, swingId: 0 };
+                    onGround: true, maxX: 60, done: false, doneT: 0, invulnT: 0, hurtT: 0, swingId: 0 };
         st.camX = 0;
         // Enemigos frescos desde la tabla de spawns (determinista: los tests
         // saben qué hay y dónde). Los voladores guardan su altura de crucero.
@@ -3125,30 +2649,30 @@
             charge: 0, chargeT: 0, attackT: 0, dying: 0, gone: false, lastSwing: -1,
         }));
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
-        $('stage').classList.remove('mode3d'); $('stage').classList.remove('mode-pin'); $('stage').classList.remove('mode-pin3d');
+        $('stage').classList.remove('mode3d');
         resizeCanvas();
         ensureDungeonAssets();
-        loadTerrain('pinball'); // sample provisional (chiptune) — la fase 3 traerá el suyo
-        banner('NIVEL 5 · MAZMORRA (BETA)');
+        loadTerrain('dungeon');
+        banner('NIVEL 4 · MAZMORRA');
         relabelButtons();
         updateHud();
     }
     function heroJump() {
         const h = st.hero;
-        if (st.level !== 5 || !st.playing || st.paused || !h || !h.onGround || h.attackT > 0) return;
+        if (st.level !== 4 || !st.playing || st.paused || !h || !h.onGround || h.attackT > 0) return;
         h.vy = -980;
         h.onGround = false;
-        pinHitFx(1);
+        hitFx(1);
         vibrate(8);
     }
     function heroAttack() {
         const h = st.hero;
-        if (st.level !== 5 || !st.playing || st.paused || !h || h.attackT > 0 || h.hurtT > 0) return;
+        if (st.level !== 4 || !st.playing || st.paused || !h || h.attackT > 0 || h.hurtT > 0) return;
         h.attackT = 0.28;
         h.animT = 0;
         h.swingId++; // cada tajo golpea a cada enemigo COMO MUCHO una vez
         st.shimmer = Math.max(st.shimmer, 0.3);
-        pinHitFx(2);
+        hitFx(2);
         const sc = H / DUN_H;
         burst((h.x - st.camX + h.dir * 34) * sc, (h.y - 40) * sc, [120, 220, 255], 6);
         vibrate(10);
@@ -3167,7 +2691,7 @@
         h.onGround = false;
         hitShip();
     }
-    function stepLevel5(dt) {
+    function stepLevel4(dt) {
         const h = st.hero;
         if (!h) return;
         const prevY = h.y;
@@ -3255,7 +2779,7 @@
                 e.hp -= 1;
                 e.hitT = 0.22;
                 e.x += h.dir * 16; // retroceso del impacto
-                pinHitFx(2);
+                hitFx(2);
                 burst((e.x - st.camX) * sc, (e.y - T.h * 0.6) * sc, T.col, 8);
                 if (e.hp <= 0) {
                     e.dying = 0.45; e.animT = 0;
@@ -3286,14 +2810,27 @@
         // Progreso: avanzar hacia la derecha puntúa; el fondo (y la música) siguen tu posición
         if (h.x > h.maxX) { st.score += (h.x - h.maxX) * 0.08; h.maxX = h.x; }
         st.worldT = clamp(h.x / DUN_LEN, 0, 0.999) * TERRAIN_SECS;
-        if (!h.done && h.x > DUN_LEN - 60) { h.done = true; st.score += 500; banner('¡MAZMORRA COMPLETADA (BETA)!'); pinHitFx(4); }
+        // Puerta del final: completa el JUEGO. Se celebra un momento (banner +
+        // fanfarria de reflexiones) y se cierra la ronda como victoria.
+        if (!h.done && h.x > DUN_LEN - 60) {
+            h.done = true; h.doneT = 2.6;
+            st.victory = true;
+            st.score += 1000;
+            banner('¡MAZMORRA COMPLETADA! +1000');
+            hitFx(4);
+            vibrate([40, 30, 40, 30, 90]);
+        }
+        if (h.done) {
+            h.doneT -= dt;
+            if (h.doneT <= 0) { endRound(); return; }
+        }
         // Cámara con suavizado, acotada a los bordes del mundo
         const viewW = W / (H / DUN_H);
         st.camX += (clamp(h.x - viewW * 0.42, 0, Math.max(0, DUN_LEN - viewW)) - st.camX) * Math.min(1, 8 * dt);
     }
     const lerpC = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
     const cssC = (c, al = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${al})`;
-    function draw5(t) {
+    function draw4(t) {
         const h = st.hero;
         if (!h) return;
         const sc = H / DUN_H;
@@ -3432,14 +2969,14 @@
             if (e.gone) continue;
             const ex = (e.x - st.camX) * sc;
             if (ex < -80 || ex > W + 80) continue;
-            drawEnemy5(e, ex, e.y * sc, sc, t);
+            drawEnemy4(e, ex, e.y * sc, sc, t);
         }
         // Héroe (parpadea mientras es invulnerable tras un golpe)
-        if (!(h.invulnT > 0 && (t * 14 | 0) % 2)) drawHero5((h.x - st.camX) * sc, h.y * sc, sc, h, t);
+        if (!(h.invulnT > 0 && (t * 14 | 0) % 2)) drawHero4((h.x - st.camX) * sc, h.y * sc, sc, h, t);
         drawFxOverlays(t, ZONES_DUNGEON[Math.max(0, st.zone)].tint);
         g.restore();
     }
-    function drawHero5(px, py, sc, h, t) {
+    function drawHero4(px, py, sc, h, t) {
         // Con la hoja real (procesada: fondo transparente + atlas automático):
         // frame de la fila del estado, anclado a los PIES y escalado a un
         // cuerpo de referencia constante — los frames de ataque son más
@@ -3502,7 +3039,7 @@
         if (h.state === 'damage') { g.fillStyle = 'rgba(255,60,60,0.35)'; g.fillRect(-10, -62, 20, 62); }
         g.restore();
     }
-    function drawEnemy5(e, ex, ey, sc, t) {
+    function drawEnemy4(e, ex, ey, sc, t) {
         const T = ETYPES[e.type];
         const fade = e.dying > 0 ? e.dying / 0.45 : 1;
         // Con la hoja real: columnas idle/walk1/walk2/attack1/attack2/hit/die
@@ -3606,11 +3143,8 @@
         } else if (st.level === 2 || st.level === 3) {
             render3D(t / 1000);
             drawOverlay2D(t / 1000);
-        } else if (st.level === 5) {
-            draw5(t / 1000);
         } else {
-            render4(t / 1000);
-            drawPinball3DOverlay(t / 1000);
+            draw4(t / 1000); // mazmorra
         }
         requestAnimationFrame(frame);
     }
@@ -3645,8 +3179,7 @@
     function step(dt) {
         if (st.level === 1) stepLevel1(dt);
         else if (st.level === 2 || st.level === 3) stepLevel2(dt);
-        else if (st.level === 5) stepLevel5(dt); // mazmorra (plataformas)
-        else stepLevel3(dt); // nivel 4: física de la mesa de pinball
+        else stepLevel4(dt); // mazmorra (plataformas)
         stepCommon(dt);
     }
 
@@ -3696,6 +3229,30 @@
             const rr = (15 + SHIP_R) * k;
             if (dx * dx + dy * dy < rr * rr) { st.ghosts.splice(i, 1); hitShip(); }
         }
+        // Escuadrones drone (R-Type): 5 naves en cadena siguiendo una onda
+        // senoidal, cada una con un desfase — la serpiente clásica. Derribar
+        // el escuadrón ENTERO antes de que escape paga un bonus (+150).
+        st.spawnSq -= dt;
+        if (st.spawnSq <= 0 && st.worldT > 1.5) {
+            st.spawnSq = 8 + Math.random() * 5;
+            const sq = st.sqNext++;
+            const y0 = (80 + Math.random() * 180) / 340 * H;
+            const amp = (28 + Math.random() * 42) * k;
+            st.sqAlive[sq] = 5;
+            for (let q = 0; q < 5; q++) {
+                st.drones.push({ x: W + (40 + q * 46) * k, y: y0, y0, amp, ph: q * 0.55, t: 0, sq });
+            }
+        }
+        for (let i = st.drones.length - 1; i >= 0; i--) {
+            const d = st.drones[i];
+            d.t += dt;
+            d.x -= vx * 0.8 * dt;
+            d.y = d.y0 + Math.sin(d.t * 3.2 + d.ph) * d.amp;
+            if (d.x < -40 * k) { st.sqAlive[d.sq] = -999; st.drones.splice(i, 1); continue; } // escapó: sin bonus
+            const dx = d.x - SHIP_X, dy = d.y - st.shipY;
+            const rr = (13 + SHIP_R) * k;
+            if (dx * dx + dy * dy < rr * rr) { st.sqAlive[d.sq] = -999; st.drones.splice(i, 1); hitShip(); }
+        }
         // Proyectiles (misiles 'm' y bláster 'b')
         for (let i = st.shots.length - 1; i >= 0; i--) {
             const m = st.shots[i];
@@ -3722,6 +3279,26 @@
                     st.ghosts.splice(j, 1);
                     st.score += 80;
                     st.shimmer = 1;
+                    used = true;
+                    updateHud();
+                    break;
+                }
+            }
+            if (!used) for (let j = st.drones.length - 1; j >= 0; j--) {
+                const d = st.drones[j];
+                const dx = d.x - m.x, dy = d.y - m.y;
+                if (dx * dx + dy * dy < (14 * k) * (14 * k)) {
+                    burst(d.x, d.y, [255, 170, 90], 12);
+                    st.drones.splice(j, 1);
+                    st.score += 25;
+                    st.shimmer = Math.max(st.shimmer, 0.35);
+                    if (--st.sqAlive[d.sq] === 0) { // escuadrón completo derribado
+                        st.score += 150;
+                        st.combo = Math.min(10, st.combo + 2);
+                        st.shimmer = 1;
+                        banner('¡ESCUADRÓN! +150');
+                        vibrate(20);
+                    }
                     used = true;
                     updateHud();
                     break;
@@ -3787,7 +3364,7 @@
             st.score += 250;
             if (st.lap >= 2) {
                 if (st.level === 2) { switchToLevel3(); return; } // circuito de noche completado → circuito de día invertido
-                switchToLevel4(); return; // circuito de día completado → pinball 3D
+                switchToLevel4(); return; // circuito de día completado → mazmorra (nivel final)
             }
             banner(`VUELTA ${st.lap + 1}`);
         }
@@ -3978,305 +3555,16 @@
         }
     }
 
-    // ── Nivel 3: física de la mesa (bola, flippers, muros, bumpers) ─────────
-    const moveToward = (cur, target, maxStep) => cur + clamp(target - cur, -maxStep, maxStep);
-    // Mismo sistema fx/fy (rango completo top→pivotY) que rampas y dianas —
-    // antes usaba su propio rango recortado y eso ocultó que el bumper
-    // superior quedaba a menos de un diámetro de bola del muro de arriba
-    // (la bola se quedaba rebotando en bucle en ese hueco, sin caer nunca).
-    function bumperPos(bp, Lay) {
-        return { x: Lay.fx(bp.fx), y: Lay.fy(bp.fy) };
-    }
-    function collideFlipper(b, R, pivot, angle, angVel, flipLen) {
-        const dx = Math.cos(angle) * flipLen, dy = Math.sin(angle) * flipLen;
-        const segLen2 = dx * dx + dy * dy;
-        let tp = ((b.x - pivot.x) * dx + (b.y - pivot.y) * dy) / segLen2;
-        tp = clamp(tp, 0, 1);
-        const cx = pivot.x + dx * tp, cy = pivot.y + dy * tp;
-        const ddx = b.x - cx, ddy = b.y - cy;
-        const dist = Math.hypot(ddx, ddy);
-        const thick = 14, minDist = R + thick;
-        if (dist >= minDist || dist < 1e-6) return;
-        const nx = ddx / dist, ny = ddy / dist;
-        b.x += nx * (minDist - dist); b.y += ny * (minDist - dist);
-        const rx = cx - pivot.x, ry = cy - pivot.y;
-        const pvx = -angVel * ry, pvy = angVel * rx; // v = ω × r, r = (rx,ry)
-        const vn = (b.vx - pvx) * nx + (b.vy - pvy) * ny;
-        if (vn < 0) { const e = 0.4; b.vx -= (1 + e) * vn * nx; b.vy -= (1 + e) * vn * ny; }
-    }
-    // Riel estático (guías de las bandas laterales): mismo cierre por punto más
-    // cercano que el flipper, pero sin rotación — solo rebota si la bola se
-    // ACERCA (vn<0), nunca si ya se separa, para no inyectar energía de la nada.
-    function collideSegment(b, R, p1, p2, restitution) {
-        const dx = p2.x - p1.x, dy = p2.y - p1.y;
-        const segLen2 = dx * dx + dy * dy;
-        let tp = segLen2 > 0 ? ((b.x - p1.x) * dx + (b.y - p1.y) * dy) / segLen2 : 0;
-        tp = clamp(tp, 0, 1);
-        const cx = p1.x + dx * tp, cy = p1.y + dy * tp;
-        const ddx = b.x - cx, ddy = b.y - cy, dist = Math.hypot(ddx, ddy);
-        const minDist = R + 5;
-        if (dist >= minDist || dist < 1e-6) return;
-        const nx = ddx / dist, ny = ddy / dist;
-        b.x += nx * (minDist - dist); b.y += ny * (minDist - dist);
-        const vn = b.vx * nx + b.vy * ny;
-        if (vn < 0) { b.vx -= (1 + restitution) * vn * nx; b.vy -= (1 + restitution) * vn * ny; }
-    }
-    // Slingshots: cuña angulada justo encima de cada flipper — como un riel
-    // estático, pero con un impulso propio (y solo cuando vn<0: el mismo
-    // cuidado que en los bumpers para no inyectar energía sin límite).
-    function slingPos(s, Lay) {
-        const pivot = s.side === 'L' ? Lay.pivotL : Lay.pivotR;
-        const sign = s.side === 'L' ? 1 : -1;
-        return {
-            p1: { x: pivot.x - sign * Lay.flipLen * 0.10, y: pivot.y - Lay.flipLen * 0.75 },
-            p2: { x: pivot.x + sign * Lay.flipLen * 0.55, y: pivot.y - Lay.flipLen * 0.25 },
-        };
-    }
-    function collideSlingshot(b, R, s, Lay) {
-        const seg = slingPos(s, Lay), p1 = seg.p1, p2 = seg.p2;
-        const dx = p2.x - p1.x, dy = p2.y - p1.y, segLen2 = dx * dx + dy * dy;
-        let tp = segLen2 > 0 ? ((b.x - p1.x) * dx + (b.y - p1.y) * dy) / segLen2 : 0;
-        tp = clamp(tp, 0, 1);
-        const cx = p1.x + dx * tp, cy = p1.y + dy * tp;
-        const ddx = b.x - cx, ddy = b.y - cy, dist = Math.hypot(ddx, ddy);
-        const minDist = R + 7;
-        if (dist >= minDist || dist < 1e-6) return;
-        const nx = ddx / dist, ny = ddy / dist;
-        b.x += nx * (minDist - dist); b.y += ny * (minDist - dist);
-        const vn = b.vx * nx + b.vy * ny;
-        if (vn < 0) {
-            b.vx -= (1 + 0.6) * vn * nx; b.vy -= (1 + 0.6) * vn * ny;
-            const kick = 300;
-            b.vx += nx * kick; b.vy += ny * kick;
-            if (s.flash <= 0) {
-                st.combo = Math.min(10, st.combo + 1);
-                st.score += 25 * st.pinMult;
-                s.flash = 0.15;
-                pinHitFx(2);
-                vibrate(10);
-                updateHud();
-            }
-        }
-    }
-    // FX sonoro de los golpes del pinball — SALE DE RAYDRONE: no es un sample ni
+    // FX sonoro de los golpes (mazmorra) — SALE DE RAYDRONE: no es un sample ni
     // un oscilador aparte, sino un pulso de reflexiones (bounces) en el motor
     // granular del worklet, la misma vía que usan misiles/bombas en los otros
     // niveles. Así toda la música Y los efectos vienen del mismo motor.
-    let pinFxT = 0;
-    function pinHitFx(strength) {
+    let hitFxT = 0;
+    function hitFx(strength) {
         if (!node) return;
         node.port.postMessage({ type: 'fx', aber: 0, bounces: strength, refl: 0.62, feedback: 0.12 });
-        clearTimeout(pinFxT);
-        pinFxT = setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 170);
-    }
-    // Tilt / nudge (tecla T, solo nivel 4): empuja la mesa para salvar la bola —
-    // un impulso hacia arriba + sacudida. Pero cada empujón sube el medidor de
-    // tilt; si te pasas → ¡TILT! y los flippers quedan muertos hasta que la bola
-    // drene (como en una máquina real). El medidor baja solo con el tiempo.
-    function nudgeTable() {
-        if (st.level !== 4 || !st.playing || st.paused || st.tiltLock > 0 || !st.ballLive || !st.ball) return;
-        const b = st.ball;
-        b.vy -= 320;                          // empujón hacia arriba (salva la bola)
-        b.vx += (Math.random() - 0.5) * 260;  // y una sacudida lateral
-        st.shake = Math.max(st.shake, 0.5);
-        st.tilt = Math.min(1, st.tilt + 0.34);
-        pinHitFx(2);
-        vibrate(18);
-        if (st.tilt >= 1) { st.tiltLock = 1; banner('¡TILT!'); vibrate([60, 40, 120]); }
-        else banner('NUDGE');
-    }
-    function bumperHit(bx, by, bp) {
-        st.combo = Math.min(10, st.combo + 1);
-        st.score += (30 + st.combo * 8) * st.pinMult;
-        st.shimmer = Math.max(st.shimmer, 0.35);
-        st.pitchDip = Math.max(st.pitchDip, 0.18); // un pellizco de tono → "pop" del bumper
-        bp.flash = 0.15;
-        pinHitFx(2);
-        vibrate(12);
-        updateHud();
-    }
-    // ── Rampas: la bola viaja por un path a velocidad constante (sin gravedad
-    // ni colisiones) y sale disparada en la dirección del último tramo.
-    const RAMP_SPEED = 1500, RAMP_EXIT_SPEED = 950; // unidades de mesa / s
-    function pathLength(path) {
-        let s = 0;
-        for (let i = 0; i < path.length - 1; i++) s += Math.hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y);
-        return s;
-    }
-    function pointAtDistance(path, dist) {
-        let acc = 0;
-        for (let i = 0; i < path.length - 1; i++) {
-            const a = path[i], b2 = path[i + 1];
-            const segLen = Math.hypot(b2.x - a.x, b2.y - a.y);
-            if (dist <= acc + segLen || i === path.length - 2) {
-                const t = segLen > 0 ? clamp((dist - acc) / segLen, 0, 1) : 0;
-                return { x: a.x + (b2.x - a.x) * t, y: a.y + (b2.y - a.y) * t };
-            }
-            acc += segLen;
-        }
-        return path[path.length - 1];
-    }
-    function tryEnterRamp(b, ramp, which) {
-        if (b.onRamp) return;
-        const entry = ramp.path[0];
-        const dist = Math.hypot(b.x - entry.x, b.y - entry.y);
-        if (dist < ramp.entryR && b.vy < -120) { // moviéndose hacia arriba con brío
-            b.onRamp = { which, dist: 0, total: pathLength(ramp.path), path: ramp.path };
-        }
-    }
-    function rampComplete(which) {
-        st.pinRampCount++;
-        if (st.pinRampCount % 3 === 0) st.pinMult = Math.min(3, st.pinMult + 1);
-        st.combo = Math.min(10, st.combo + 1);
-        st.score += 150 * st.pinMult;
-        st.shimmer = Math.max(st.shimmer, 0.5);
-        pinHitFx(3);
-        banner(which === 'L' ? '¡RAMPA IZQUIERDA! +150' : '¡RAMPA DERECHA! +150');
-        vibrate(20);
-        updateHud();
-    }
-    // ── Banco de dianas: tumbarlas todas da un bonus grande y, la primera vez
-    // en la partida, una bola extra. Se reinician solas tras un rato.
-    function targetPos(t, Lay) {
-        return { x: Lay.fx(t.fx), y: Lay.fy(t.fy) };
-    }
-    function collideTarget(b, R, t, Lay) {
-        if (!t.alive) return;
-        const p = targetPos(t, Lay), halfW = 26, halfH = 15;
-        const cx = clamp(b.x, p.x - halfW, p.x + halfW), cy = clamp(b.y, p.y - halfH, p.y + halfH);
-        const dx = b.x - cx, dy = b.y - cy, dist = Math.hypot(dx, dy);
-        if (dist >= R) return;
-        const nx = dist > 1e-6 ? dx / dist : 0, ny = dist > 1e-6 ? dy / dist : -1;
-        b.x += nx * (R - dist); b.y += ny * (R - dist);
-        const vn = b.vx * nx + b.vy * ny;
-        b.vx -= 1.6 * vn * nx; b.vy -= 1.6 * vn * ny;
-        t.alive = false; t.flash = 0.2;
-        st.combo = Math.min(10, st.combo + 1);
-        st.score += 80 * st.pinMult;
-        pinHitFx(2);
-        vibrate(10);
-        updateHud();
-        if (pinTargets.every((x) => !x.alive)) bankCleared();
-    }
-    function bankCleared() {
-        st.score += 500 * st.pinMult;
-        pinHitFx(4);
-        if (!st.extraBallUsed) {
-            st.extraBallUsed = true;
-            st.lives += 1;
-            banner('¡BANCO COMPLETO! +500 · ¡BOLA EXTRA!');
-            vibrate([30, 20, 30, 20, 60]);
-        } else {
-            banner('¡BANCO COMPLETO! +500');
-            vibrate(30);
-        }
-        st.pinTargetResetTtl = 2.5;
-        updateHud();
-    }
-    function stepLevel3(dt) {
-        const Lay = pinLayout();
-        for (const bp of pinBumpers) bp.flash = Math.max(0, bp.flash - dt);
-        for (const t of pinTargets) t.flash = Math.max(0, t.flash - dt);
-        for (const s of pinSlings) s.flash = Math.max(0, s.flash - dt);
-        if (st.pinTargetResetTtl > 0) {
-            st.pinTargetResetTtl -= dt;
-            if (st.pinTargetResetTtl <= 0) for (const t of pinTargets) t.alive = true;
-        }
-        st.tilt = Math.max(0, st.tilt - dt * 0.25); // el medidor de tilt baja solo
-        const flipRate = 20; // rad/s tope de giro (subida rápida, bajada por gravedad simulada igual)
-        const prevFlipL = st.flipLAng, prevFlipR = st.flipRAng;
-        // Si has hecho TILT, los flippers quedan muertos (no responden).
-        const aOn = keys.a && st.tiltLock <= 0, bOn = keys.b && st.tiltLock <= 0;
-        st.flipLAng = moveToward(st.flipLAng, aOn ? Lay.activeL : Lay.restL, flipRate * dt);
-        st.flipRAng = moveToward(st.flipRAng, bOn ? Lay.activeR : Lay.restR, flipRate * dt);
-        const angVelL = (st.flipLAng - prevFlipL) / dt, angVelR = (st.flipRAng - prevFlipR) / dt;
-        st.worldT += (1 + st.combo * 0.15) * dt; // combo alto = zonas musicales pasan más rápido
-
-        if (!st.ballLive) {
-            st.serveTtl -= dt;
-            if (st.serveTtl <= 0) serveBall();
-            return;
-        }
-        const b = st.ball, R = BALL_R;
-        if (b.onRamp) {
-            b.onRamp.dist += RAMP_SPEED * dt;
-            if (b.onRamp.dist >= b.onRamp.total) {
-                const path = b.onRamp.path, last = path[path.length - 1], prev = path[path.length - 2];
-                const dx = last.x - prev.x, dy = last.y - prev.y, dl = Math.hypot(dx, dy) || 1;
-                b.x = last.x; b.y = last.y;
-                b.vx = (dx / dl) * RAMP_EXIT_SPEED; b.vy = (dy / dl) * RAMP_EXIT_SPEED;
-                rampComplete(b.onRamp.which);
-                b.onRamp = null;
-            } else {
-                const p = pointAtDistance(b.onRamp.path, b.onRamp.dist);
-                b.x = p.x; b.y = p.y;
-            }
-            st.score += 4 * dt;
-            return;
-        }
-        const GRAV = 2400; // unidades de mesa / s²
-        b.vy += GRAV * dt;
-        // Subpaso interno: a alta velocidad, un solo salto de posición podría
-        // atravesar un muro o bumper fino. Se limita el avance por subpaso a un
-        // radio de bola, garantizando que ninguna colisión se "salta".
-        const speed = Math.hypot(b.vx, b.vy);
-        const sub = Math.max(1, Math.ceil(speed * dt / R));
-        const sdt = dt / sub;
-        let drained = false;
-        for (let i = 0; i < sub && !drained && !b.onRamp; i++) {
-            b.x += b.vx * sdt;
-            b.y += b.vy * sdt;
-            tryEnterRamp(b, Lay.rampL, 'L');
-            tryEnterRamp(b, Lay.rampR, 'R');
-            if (b.onRamp) break;
-            // Muros: izquierda/derecha/arriba rebotan; abajo no hay muro salvo
-            // los flippers — ahí está el desagüe (drain), como una mesa real.
-            if (b.x - R < Lay.left) { b.x = Lay.left + R; b.vx = Math.abs(b.vx) * 0.7; }
-            if (b.x + R > Lay.right) { b.x = Lay.right - R; b.vx = -Math.abs(b.vx) * 0.7; }
-            if (b.y - R < Lay.top) { b.y = Lay.top + R; b.vy = Math.abs(b.vy) * 0.7; }
-            for (const bp of pinBumpers) {
-                const p = bumperPos(bp, Lay), rad = 34;
-                const dx = b.x - p.x, dy = b.y - p.y, dist = Math.hypot(dx, dy);
-                if (dist >= R + rad) continue;
-                const nx = dist > 1e-6 ? dx / dist : 0, ny = dist > 1e-6 ? dy / dist : 1;
-                b.x += nx * (R + rad - dist); b.y += ny * (R + rad - dist);
-                // Solo se refleja/empuja si la bola se ACERCA (vn<0): aplicarlo
-                // cada frame que se solapa (bola apoyada) inyectaría energía sin
-                // límite y la dispararía a velocidades absurdas.
-                const vn = b.vx * nx + b.vy * ny;
-                if (vn < 0) {
-                    b.vx -= (1 + 0.9) * vn * nx; b.vy -= (1 + 0.9) * vn * ny;
-                    const kick = 300;
-                    b.vx += nx * kick; b.vy += ny * kick;
-                    if (bp.flash <= 0) bumperHit(p.x, p.y, bp);
-                } else if (Math.hypot(b.vx, b.vy) < 70) {
-                    // Bola casi en reposo apoyada en la cúpula: empujón lateral
-                    // mínimo para que ruede y no se quede encima (acotado por la
-                    // condición de baja velocidad — no inyecta energía sin fin).
-                    b.vx += (b.x >= p.x ? 1 : -1) * 45;
-                }
-            }
-            for (const t of pinTargets) collideTarget(b, R, t, Lay);
-            collideFlipper(b, R, Lay.pivotL, st.flipLAng, angVelL, Lay.flipLen);
-            collideFlipper(b, R, Lay.pivotR, st.flipRAng, angVelR, Lay.flipLen);
-            collideSegment(b, R, Lay.guideL.p1, Lay.guideL.p2, 0.55);
-            collideSegment(b, R, Lay.guideR.p1, Lay.guideR.p2, 0.55);
-            for (const s of pinSlings) collideSlingshot(b, R, s, Lay);
-            if (b.y - R > PH) drained = true;
-        }
-        st.score += 4 * dt; // puntos por tiempo en juego (float, se redondea al mostrar)
-        if (drained) {
-            st.ballLive = false;
-            st.combo = Math.max(0, st.combo - 3);
-            st.lives -= 1;
-            st.pinMult = 1; st.pinRampCount = 0; // el multiplicador es por bola, no acumulado toda la partida
-            st.tilt = 0; st.tiltLock = 0;        // nueva bola → se limpia el tilt
-            vibrate([50, 30, 80]);
-            updateHud();
-            if (st.lives <= 0) { endRound(); return; }
-            banner('¡BOLA!');
-            st.serveTtl = 1.0;
-        }
+        clearTimeout(hitFxT);
+        hitFxT = setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 170);
     }
 
     // ── Dibujo · nivel 1 (espacio, lateral) ──────────────────────────────────
@@ -4324,6 +3612,22 @@
             g.beginPath();
             g.moveTo(-16 * k, 0); g.lineTo(10 * k, -9 * k); g.lineTo(4 * k, 0); g.lineTo(10 * k, 9 * k);
             g.closePath(); g.fill();
+            g.restore();
+        }
+        for (const d of st.drones) {
+            // Drone de escuadrón: flecha angulosa naranja con motor parpadeante
+            g.save();
+            g.translate(d.x, d.y);
+            g.fillStyle = 'rgba(255,150,70,0.35)';
+            g.fillRect(9 * k, -1.4 * k, (7 + 5 * Math.abs(Math.sin(d.t * 9))) * k, 2.8 * k); // estela del motor
+            g.fillStyle = '#1c0f14';
+            g.strokeStyle = '#ff9a50';
+            g.lineWidth = 1.8 * k;
+            g.beginPath();
+            g.moveTo(-13 * k, 0); g.lineTo(6 * k, -8 * k); g.lineTo(11 * k, 0); g.lineTo(6 * k, 8 * k);
+            g.closePath(); g.fill(); g.stroke();
+            g.fillStyle = '#ffd9a8';
+            g.fillRect(-4 * k, -2 * k, 4 * k, 4 * k); // cabina
             g.restore();
         }
         for (const m of st.shots) {
@@ -4538,266 +3842,6 @@
         g.restore();
     }
 
-    // ── Dibujo · nivel 3 (pinball, proyectado en perspectiva) ─────────────────
-    // Estela de la bola (últimas posiciones, se desvanecen) — solo cosmético.
-    const ballTrail = [];
-    // Contorno de la mesa en unidades de mesa (esquinas superiores redondeadas).
-    function pinOutline() {
-        const r = 120, pts = [];
-        pts.push({ x: 0, y: PH });
-        pts.push({ x: 0, y: r });
-        for (let i = 0; i <= 6; i++) { const a = Math.PI + i / 6 * (Math.PI / 2); pts.push({ x: r + Math.cos(a) * r, y: r + Math.sin(a) * r }); }
-        pts.push({ x: PW - r, y: 0 });
-        for (let i = 0; i <= 6; i++) { const a = -Math.PI / 2 + i / 6 * (Math.PI / 2); pts.push({ x: PW - r + Math.cos(a) * r, y: r + Math.sin(a) * r }); }
-        pts.push({ x: PW, y: PH });
-        return pts;
-    }
-    function pinTrace(pts) { // traza un path de puntos-mesa ya proyectados
-        const a = PP(pts[0].x, pts[0].y);
-        g.beginPath(); g.moveTo(a.x, a.y);
-        for (let i = 1; i < pts.length; i++) { const p = PP(pts[i].x, pts[i].y); g.lineTo(p.x, p.y); }
-    }
-    function drawRampTube(path, col) {
-        const midY = path[Math.floor(path.length / 2)].y, ppu = pinPPU(midY / PH);
-        g.save();
-        g.lineJoin = 'round'; g.lineCap = 'round';
-        pinTrace(path);
-        g.strokeStyle = 'rgba(200,215,235,0.28)'; g.lineWidth = 26 * ppu; g.stroke();
-        g.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.9)`; g.lineWidth = 9 * ppu;
-        g.shadowColor = `rgb(${col[0]},${col[1]},${col[2]})`; g.shadowBlur = 16 * k; g.stroke();
-        g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 2.5 * ppu; g.shadowBlur = 0; g.stroke();
-        g.restore();
-    }
-    function drawPinball(t) {
-        const Lay = pinLayout();
-        computePinProj();
-        g.save();
-        if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
-        g.clearRect(-20, -20, W + 40, H + 40);
-        const tint = ZONES_PINBALL[Math.max(0, st.zone)].tint;
-        // Cabinet: paneles laterales magenta (izq) y cian (der) como el póster.
-        // El tapete oscuro encima solo deja ver el color a los lados del trapecio.
-        const cab = g.createLinearGradient(0, 0, W, 0);
-        cab.addColorStop(0.00, '#43104a'); cab.addColorStop(0.22, '#13061c');
-        cab.addColorStop(0.5, '#05040e'); cab.addColorStop(0.78, '#08202f');
-        cab.addColorStop(1.00, '#0b3a50');
-        g.fillStyle = cab; g.fillRect(-20, -20, W + 40, H + 40);
-        const cabV = g.createLinearGradient(0, 0, 0, H);
-        cabV.addColorStop(0, 'rgba(0,0,0,0.28)'); cabV.addColorStop(0.5, 'rgba(0,0,0,0)'); cabV.addColorStop(1, 'rgba(0,0,0,0.5)');
-        g.fillStyle = cabV; g.fillRect(-20, -20, W + 40, H + 40);
-        // Rayos láser cruzados (cian + magenta + teal), aditivos, como el póster.
-        g.save();
-        g.globalCompositeOperation = 'lighter';
-        const lasers = [[90, 210, 255], [255, 70, 160], [120, 255, 220]];
-        for (let i = 0; i < lasers.length; i++) {
-            const a = (t * 0.1 + i * 2.4) % 6.283, lc = lasers[i];
-            const lcx = W * (0.32 + 0.36 * ((i * 0.41) % 1)), lcy = H * 0.42;
-            g.strokeStyle = `rgba(${lc[0]},${lc[1]},${lc[2]},0.06)`;
-            g.lineWidth = 3 * k;
-            g.beginPath(); g.moveTo(lcx - Math.cos(a) * W, lcy - Math.sin(a) * W); g.lineTo(lcx + Math.cos(a) * W, lcy + Math.sin(a) * W); g.stroke();
-        }
-        g.restore();
-        // Playfield (trapecio con esquinas redondeadas), recortado para el tapete.
-        const outline = pinOutline();
-        g.save();
-        pinTrace(outline); g.closePath(); g.clip();
-        const topS = PP(PW / 2, 0), botS = PP(PW / 2, PH);
-        const bg = g.createLinearGradient(0, topS.y, 0, botS.y);
-        bg.addColorStop(0, '#0c0a1e'); bg.addColorStop(0.5, '#080714'); bg.addColorStop(1, '#0a0918');
-        g.fillStyle = bg; g.fillRect(-20, -20, W + 40, H + 40);
-        // Rejilla en perspectiva (teal), que se desvanece hacia abajo → sensación
-        // de plano que se aleja al fondo, como el suelo del póster.
-        g.lineWidth = 1 * k;
-        for (let gx = 0; gx <= PW + 1; gx += PW / 12) {
-            const a = PP(gx, 0), b2 = PP(gx, PH);
-            g.strokeStyle = 'rgba(70,205,235,0.14)';
-            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke();
-        }
-        for (let gy = 0; gy <= PH + 1; gy += PH / 18) {
-            const a = PP(0, gy), b2 = PP(PW, gy), fade = 0.17 * (1 - gy / PH * 0.65);
-            g.strokeStyle = `rgba(70,205,235,${fade})`;
-            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke();
-        }
-        g.restore(); // fin del clip
-        // Rieles laterales tipo habitrail (magenta izq · cian der) — las curvas
-        // protagonistas del póster (son las mismas rampas funcionales).
-        drawRampTube(Lay.rampL.path, [255, 60, 150]);
-        drawRampTube(Lay.rampR.path, [90, 200, 255]);
-        // Marco/contorno con neón en degradado magenta→cian (a juego con el
-        // cabinet): base blanca + núcleo de color + glow.
-        const frameGrad = g.createLinearGradient(0, 0, W, 0);
-        frameGrad.addColorStop(0, 'rgb(255,60,150)'); frameGrad.addColorStop(1, 'rgb(90,200,255)');
-        g.lineJoin = 'round'; g.lineCap = 'round';
-        pinTrace(outline); g.closePath();
-        g.strokeStyle = 'rgba(235,240,250,0.7)'; g.lineWidth = 6 * pinPPU(0.5); g.stroke();
-        g.strokeStyle = frameGrad; g.lineWidth = 3.2 * pinPPU(0.5);
-        g.shadowColor = 'rgba(200,90,200,0.9)'; g.shadowBlur = 15 * k; g.stroke();
-        g.shadowBlur = 0;
-        // Arco superior interior (cian): sugiere el carril de lanzamiento, como
-        // la cabecera curva del póster. Sampleado y proyectado.
-        {
-            const arc = [];
-            for (let i = 0; i <= 14; i++) {
-                const a = Math.PI * (0.14 + 0.72 * i / 14); // de izq a der por arriba
-                arc.push({ x: PW / 2 - Math.cos(a) * PW * 0.40, y: 78 - Math.sin(a) * 46 });
-            }
-            g.lineCap = 'round'; g.lineJoin = 'round';
-            pinTrace(arc);
-            g.strokeStyle = 'rgba(120,240,255,0.7)'; g.lineWidth = 4 * pinPPU(0.08);
-            g.shadowColor = 'rgba(120,240,255,0.9)'; g.shadowBlur = 9 * k; g.stroke();
-            g.shadowBlur = 0;
-        }
-        // Rieles guía (cierran el hueco muro↔flipper): magenta izq · cian der.
-        for (const [guide, gc] of [[Lay.guideL, [255, 60, 150]], [Lay.guideR, [90, 200, 255]]]) {
-            const ppu = pinPPU((guide.p1.y + guide.p2.y) / 2 / PH);
-            const a = PP(guide.p1.x, guide.p1.y), b2 = PP(guide.p2.x, guide.p2.y);
-            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y);
-            g.strokeStyle = 'rgba(235,240,250,0.6)'; g.lineWidth = 8 * ppu; g.stroke();
-            g.strokeStyle = `rgba(${gc[0]},${gc[1]},${gc[2]},0.8)`; g.lineWidth = 3 * ppu;
-            g.shadowColor = `rgb(${gc[0]},${gc[1]},${gc[2]})`; g.shadowBlur = 8 * k; g.stroke();
-            g.shadowBlur = 0;
-        }
-        // Rieles de inlane (blancos): un carril corto interior justo sobre cada
-        // flipper que guía la bola de vuelta, como el apron del póster.
-        for (const side of [-1, 1]) {
-            const px = side < 0 ? Lay.pivotL.x : Lay.pivotR.x;
-            const inTop = { x: px + side * 74, y: Lay.pivotY - 128 };
-            const inBot = { x: px + side * 30, y: Lay.pivotY - 8 };
-            const a = PP(inTop.x, inTop.y), b2 = PP(inBot.x, inBot.y);
-            const ppu = pinPPU((inTop.y + inBot.y) / 2 / PH);
-            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y);
-            g.lineCap = 'round';
-            g.strokeStyle = 'rgba(200,245,255,0.8)'; g.lineWidth = 3.5 * ppu;
-            g.shadowColor = 'rgba(120,240,255,0.85)'; g.shadowBlur = 7 * k; g.stroke();
-            g.shadowBlur = 0;
-        }
-        // Slingshots: triángulo relleno magenta con banda de rebote brillante en
-        // la cara interior (hacia el centro), como el póster. El vértice se
-        // empuja hacia el muro para que la cara plana mire a la bola.
-        for (const s of pinSlings) {
-            const seg = slingPos(s, Lay), glow = s.flash > 0 ? s.flash / 0.15 : 0;
-            const ppu = pinPPU((seg.p1.y + seg.p2.y) / 2 / PH);
-            const mid = { x: (seg.p1.x + seg.p2.x) / 2, y: (seg.p1.y + seg.p2.y) / 2 };
-            const ox = mid.x < PW / 2 ? -1 : 1; // hacia el muro más cercano
-            const apex = { x: mid.x + ox * 46, y: mid.y - 16 };
-            const A = PP(seg.p1.x, seg.p1.y), B = PP(seg.p2.x, seg.p2.y), C = PP(apex.x, apex.y);
-            g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(B.x, B.y); g.lineTo(C.x, C.y); g.closePath();
-            g.fillStyle = glow > 0 ? 'rgba(255,150,210,0.95)' : 'rgba(225,55,140,0.92)';
-            g.shadowColor = 'rgba(255,70,165,1)'; g.shadowBlur = (8 + glow * 16) * k;
-            g.fill(); g.shadowBlur = 0;
-            g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(B.x, B.y);
-            g.lineCap = 'round';
-            g.strokeStyle = glow > 0 ? '#ffffff' : 'rgba(255,205,240,0.95)';
-            g.lineWidth = (5 + glow * 4) * ppu;
-            g.stroke();
-        }
-        // Dianas (drop targets): iluminadas si están en pie, apagadas si caídas.
-        for (const tg of pinTargets) {
-            const p0 = targetPos(tg, Lay), sp = PP(p0.x, p0.y), ppu = pinPPU(p0.y / PH);
-            const hw = 26 * ppu, hh = 15 * ppu, glow = tg.flash > 0 ? tg.flash / 0.2 : 0;
-            g.fillStyle = tg.alive ? `rgba(${tint[0]},${tint[1]},${tint[2]},${0.85 + glow * 0.15})` : 'rgba(60,60,72,0.5)';
-            g.strokeStyle = tg.alive ? 'rgba(255,255,255,0.85)' : 'rgba(120,120,130,0.5)';
-            g.lineWidth = Math.max(1, 2 * ppu);
-            if (tg.alive) { g.shadowColor = `rgb(${tint[0]},${tint[1]},${tint[2]})`; g.shadowBlur = (4 + glow * 8) * k; }
-            g.beginPath();
-            if (g.roundRect) g.roundRect(sp.x - hw, sp.y - hh, hw * 2, hh * 2, 4 * ppu);
-            else g.rect(sp.x - hw, sp.y - hh, hw * 2, hh * 2);
-            g.fill(); g.stroke(); g.shadowBlur = 0;
-        }
-        // Bumpers "pop bumper" tipo póster: sombra en el tapete, disco-base teal
-        // con aro cian, halo de color que palpita al golpear, cúpula de color y
-        // un glifo de seta que brilla en el centro.
-        for (const bp of pinBumpers) {
-            const p0 = bumperPos(bp, Lay), sp = PP(p0.x, p0.y), ppu = pinPPU(p0.y / PH);
-            const rad = 34 * ppu, c = bp.color, glow = bp.flash > 0 ? bp.flash / 0.15 : 0;
-            const dim = (v) => Math.round(v * 0.22);
-            // Sombra proyectada en el tapete.
-            g.beginPath(); g.ellipse(sp.x, sp.y + rad * 0.55, rad * 1.3, rad * 0.5, 0, 0, 6.283);
-            g.fillStyle = 'rgba(0,0,0,0.38)'; g.fill();
-            // Disco-base con dos aros cian concéntricos (efecto "plato apilado").
-            g.beginPath(); g.arc(sp.x, sp.y, rad * 1.42, 0, 6.283);
-            g.fillStyle = 'rgba(13,32,42,0.96)'; g.fill();
-            g.strokeStyle = 'rgba(80,222,242,0.75)'; g.lineWidth = 2.6 * ppu;
-            g.shadowColor = 'rgba(80,222,242,0.9)'; g.shadowBlur = 6 * k; g.stroke(); g.shadowBlur = 0;
-            g.beginPath(); g.arc(sp.x, sp.y, rad * 1.18, 0, 6.283);
-            g.strokeStyle = 'rgba(80,222,242,0.45)'; g.lineWidth = 1.6 * ppu; g.stroke();
-            // Halo de color (palpita al golpear).
-            g.beginPath(); g.arc(sp.x, sp.y, rad + (7 + glow * 10) * ppu, 0, 6.283);
-            g.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.5 + glow * 0.5})`;
-            g.lineWidth = (4 + glow * 4) * ppu;
-            g.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`; g.shadowBlur = (12 + glow * 16) * k;
-            g.stroke(); g.shadowBlur = 0;
-            // Cúpula de color.
-            const grad = g.createRadialGradient(sp.x - rad * 0.32, sp.y - rad * 0.32, rad * 0.1, sp.x, sp.y, rad);
-            grad.addColorStop(0, 'rgba(255,255,255,0.98)');
-            grad.addColorStop(0.5, `rgba(${c[0]},${c[1]},${c[2]},0.98)`);
-            grad.addColorStop(1, `rgba(${dim(c[0])},${dim(c[1])},${dim(c[2])},0.98)`);
-            g.beginPath(); g.arc(sp.x, sp.y, rad, 0, 6.283); g.fillStyle = grad; g.fill();
-            // Glifo de seta (sombrero + tallo) brillante en el centro.
-            g.save();
-            g.translate(sp.x, sp.y);
-            g.fillStyle = 'rgba(255,255,255,0.95)';
-            g.shadowColor = 'rgba(255,255,255,0.9)'; g.shadowBlur = 5 * k;
-            g.beginPath(); g.ellipse(0, -rad * 0.06, rad * 0.44, rad * 0.30, 0, Math.PI, 0); g.fill();
-            g.fillRect(-rad * 0.11, -rad * 0.06, rad * 0.22, rad * 0.44);
-            g.restore(); g.shadowBlur = 0;
-            // Aro superior brillante.
-            g.beginPath(); g.arc(sp.x, sp.y, rad, 0, 6.283);
-            g.strokeStyle = `rgba(255,255,255,${0.55 + glow * 0.45})`; g.lineWidth = 2 * ppu; g.stroke();
-        }
-        // Flippers: blancos con glow cian (como el póster) — capa de glow ancha
-        // + núcleo blanco brillante + buje cromado.
-        const drawFlipper = (pivot, angle) => {
-            const tipT = { x: pivot.x + Math.cos(angle) * Lay.flipLen, y: pivot.y + Math.sin(angle) * Lay.flipLen };
-            const a = PP(pivot.x, pivot.y), b2 = PP(tipT.x, tipT.y), ppu = pinPPU(pivot.y / PH);
-            g.lineCap = 'round';
-            g.strokeStyle = 'rgba(120,240,255,0.5)'; g.lineWidth = 27 * ppu;
-            g.shadowColor = 'rgba(120,240,255,0.9)'; g.shadowBlur = 13 * k;
-            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke();
-            g.strokeStyle = 'rgba(255,255,255,0.98)'; g.lineWidth = 18 * ppu; g.shadowBlur = 6 * k;
-            g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke(); g.shadowBlur = 0;
-            g.fillStyle = 'rgba(150,245,255,0.95)'; g.beginPath(); g.arc(a.x, a.y, 8 * ppu, 0, 6.283); g.fill();
-        };
-        drawFlipper(Lay.pivotL, st.flipLAng);
-        drawFlipper(Lay.pivotR, st.flipRAng);
-        // Bola: cromada, con estela que se desvanece.
-        if (st.ball) {
-            const b = st.ball;
-            ballTrail.push({ x: b.x, y: b.y });
-            if (ballTrail.length > 8) ballTrail.shift();
-            for (let i = 0; i < ballTrail.length - 1; i++) {
-                const tp = ballTrail[i], sp = PP(tp.x, tp.y), ppu = pinPPU(tp.y / PH);
-                const al = (i + 1) / ballTrail.length * 0.35;
-                g.beginPath(); g.arc(sp.x, sp.y, BALL_R * 0.7 * ppu, 0, 6.283);
-                g.fillStyle = `rgba(157,246,255,${al})`; g.fill();
-            }
-            const sp = PP(b.x, b.y), ppu = pinPPU(b.y / PH), R = BALL_R * ppu;
-            const grad = g.createRadialGradient(sp.x - R * 0.35, sp.y - R * 0.35, R * 0.1, sp.x, sp.y, R);
-            grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.5, '#cdd9e6'); grad.addColorStop(1, '#5b6472');
-            g.beginPath(); g.arc(sp.x, sp.y, R, 0, 6.283); g.fillStyle = grad;
-            g.shadowColor = '#9df6ff'; g.shadowBlur = 8 * k; g.fill(); g.shadowBlur = 0;
-        } else {
-            ballTrail.length = 0;
-            if (st.serveTtl > 0) {
-                g.fillStyle = 'rgba(255,255,255,0.7)';
-                g.font = `bold ${Math.round(16 * k)}px monospace`;
-                g.textAlign = 'center';
-                g.fillText('¡BOLA!', W / 2, H * 0.4);
-            }
-        }
-        // HUD propio del pinball: multiplicador de bonus (abajo, en el apron,
-        // para no chocar con el mini-HUD de arriba).
-        if (st.playing) {
-            g.fillStyle = st.pinMult > 1 ? '#ffd75d' : 'rgba(255,255,255,0.5)';
-            g.font = `bold ${Math.round(14 * k)}px monospace`;
-            g.textAlign = 'center';
-            if (st.pinMult > 1) { g.shadowColor = '#ffd75d'; g.shadowBlur = 8 * k; }
-            g.fillText(`BONUS x${st.pinMult}`, W / 2, H - 12 * k);
-            g.shadowBlur = 0;
-        }
-        drawFxOverlays(t, tint);
-        g.restore();
-    }
 
     // Minimapa (abajo-izquierda): contorno del circuito coloreado por superficie
     // (asfalto cyan · tierra arena · túnel violeta), meta, rivales y tú (pulso).
@@ -4917,7 +3961,7 @@
             g.font = `${Math.round(12 * k)}px monospace`;
             g.textAlign = 'left';
             g.fillStyle = 'rgba(240,226,230,0.75)';
-            const lapTag = (st.level === 2 || st.level === 3) ? ` · V${st.lap + 1}` : '';
+            const lapTag = (st.level === 2 || st.level === 3) ? ` · V${Math.min(st.lap + 1, 2)}/2` : '';
             g.fillText(`${'♥'.repeat(Math.max(0, st.lives))}  ${Math.round(st.score)} pts${lapTag}  🛡${st.shield} 🚀${st.missiles} 💣${st.bombs}`, 10 * k, 18 * k);
             g.fillStyle = 'rgba(40,230,220,0.75)';
             g.textAlign = 'right';
@@ -4938,8 +3982,6 @@
         setPos(p2) { st.pos = p2; },
         goLevel3: switchToLevel3,
         goLevel4: switchToLevel4,
-        goLevel5: switchToLevel5,
-        get t4() { return T4; },
         get keys() { return keys; },
         get pads() { return pads2; },
         get hero() { return st.hero; },
@@ -4954,10 +3996,6 @@
         get extrasSheet() { return extrasSheet; },
         heroAttack, heroJump,
         dunLen: DUN_LEN,
-        pinLayout,
-        pinBumpers,
-        pinTargets,
-        pinSlings,
         spawnAhead(type) {
             if (st.level === 1) {
                 if (type === 'rock') st.asteroids.push({ x: SHIP_X + 200 * k, y: st.shipY, r: 16 * k, rot: 0, vr: 0 });
