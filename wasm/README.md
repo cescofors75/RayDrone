@@ -288,12 +288,11 @@ Motor con paridad casi completa con la versión JS:
   0.82** — con el umbral nocturno (0.4) el cielo claro entero "bloomeaba" y
   lavaba la escena; de día solo brillan los neones de verdad. Los cheurones
   de los **turbo pads giran 180°** para apuntar en el sentido de marcha real.
-  **Botón "🎯 Entrenar"** en la portada: un modal con los 4 niveles para
+  **Botón "🎯 Entrenar"** en la portada: un modal con los 5 niveles para
   saltar directo a cualquiera y practicarlo — en modo entreno la **puntuación
   NO se guarda** en el ranking (saltarse niveles sería trampa).
-  **Nivel 4 (Mazmorra)**: el nivel final — se entra al completar 2 vueltas
-  del nivel 3, y cruzar la **puerta de la cripta** completa el juego (+1000,
-  fin de ronda como victoria 🏆). Hack & slash de scroll lateral en el
+  **Nivel 4 (Mazmorra)**: se entra al completar 2 vueltas del nivel 3;
+  cruzar la **puerta de la cripta** (+1000) da paso al asalto final. Hack & slash de scroll lateral en el
   canvas 2D. Fases 1+2 listas: héroe de plataformas con los 8
   estados de la hoja de sprites (idle/walk/run/jump/fall/attack/damage/die),
   salto (↑/espacio o toque corto), tajo de espada con arco de luz (Z o clic),
@@ -359,6 +358,27 @@ Motor con paridad casi completa con la versión JS:
   final de la mazmorra (interactable_object_001), que hace visible el
   objetivo del nivel.
   Pendiente: orco miniboss, mago jefe y pickups.
+  **Nivel 5 (Komandos)**: el nivel final — run-and-gun **cenital** estilo
+  Commando/Mercs en el canvas 2D. Movimiento en 8 direcciones (flechas/WASD
+  o el dedo), **uzi** hacia donde miras (Z/espacio/clic; el power-up dualgun
+  dobla el plomo), **bazooka** con X (gasta 🚀, explota en área) y
+  **bombardeo aéreo** con C (gasta 💣). Cuatro biomas = cuatro zonas
+  musicales de un sample propio de 24 s (desembarco → selva → aldea en
+  llamas → base enemiga) y avance de izquierda a derecha con la misma
+  cámara suavizada de la mazmorra. Enemigos por tabla determinista
+  (KOM_SPAWNS): soldados que avanzan y disparan, **motos kamikaze**, jeeps
+  que patrullan y ametrallan en ráfagas y **tanques** con obuses que
+  explotan en área. Atrezzo con semilla fija (mismo mapa siempre):
+  palmeras, rocas, casas, sacos terreros que paran balas, **cajas** que
+  sueltan suministros y **barriles rojos que explotan en cadena**. Llegar
+  al **helipuerto (H)** = extracción: +1500 y fin del juego como victoria 🏆.
+  **Atlas del Komandos**: el nivel funciona entero con placeholders
+  vectoriales, y si existen los PNG (`sprites/backgrounds.png`,
+  `world_tiles.png`, `enemy_units.png`, `commando_weapons.png` — contratos
+  en sus `.json` hermanos) el arte real cae encima sin tocar lógica: los
+  frames se resuelven por id de rejilla (meta.columns × tileWidth) o por
+  nombre, y en cenital los sprites **se rotan por código** al rumbo real
+  (el arte mira arriba) — no hacen falta 8 direcciones dibujadas.
   En la mazmorra no hay armas a distancia: X/C/bláster quedan desactivados
   (el héroe pelea con la espada) y al entrar se limpian los restos del
   circuito — sin ello, un misil podía "matar" un fantasma invisible sobrante

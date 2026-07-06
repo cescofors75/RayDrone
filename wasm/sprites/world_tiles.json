@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "name": "world_tiles_topdown",
+    "image": "world_tiles.png",
+    "version": "1.0",
+    "tileWidth": 128,
+    "tileHeight": 128,
+    "columns": 16,
+    "rows": 12,
+    "spacing": 0,
+    "margin": 0
+  },
+  "layers": {
+    "palms": { "frames": [0,1,2,3,4,5,6,7,8,9,10,11] },
+    "rocks": { "small": [16,17,18,19], "medium": [20,21,22,23], "large": [24,25,26,27], "mountains": [28,29,30,31] },
+    "houses": { "wood": [32,33,34,35], "village": [36,37,38,39], "city": [40,41,42,43], "warehouse": [44,45,46,47] },
+    "housesFire": { "fire1": [48,49], "fire2": [50,51], "fire3": [52,53], "fire4": [54,55] },
+    "housesDestroyed": { "destroy1": [56,57], "destroy2": [58,59], "destroy3": [60,61], "destroy4": [62,63] },
+    "vegetation": { "bushes": [64,65,66,67], "plants": [68,69,70,71], "cactus": [72,73,74,75], "flowers": [76,77,78,79] },
+    "paths": {
+      "straight": [80,81], "horizontal": [82,83],
+      "cornerNE": [84], "cornerNW": [85], "cornerSE": [86], "cornerSW": [87],
+      "cross": [88], "tNorth": [89], "tSouth": [90], "tEast": [91], "tWest": [92],
+      "endNorth": [93], "endSouth": [94], "endEast": [95], "endWest": [96]
+    },
+    "roads": { "straight": [97,98], "corner": [99,100], "intersection": [101], "cross": [102], "bridge": [103,104], "river": [105,106,107] },
+    "props": {
+      "barrels": [108,109,110], "crates": [111,112,113], "sandbags": [114,115], "fences": [116,117],
+      "oilDrums": [118], "campfire": [119], "watchtower": [120], "wire": [121],
+      "logs": [122], "debris": [123], "rocks": [124], "signs": [125], "bridges": [126], "misc": [127]
+    }
+  },
+  "collision": {
+    "solid": ["rocks", "houses", "housesDestroyed", "mountains", "watchtower"],
+    "walkable": ["paths", "roads", "bridge"]
+  }
+}

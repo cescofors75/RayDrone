@@ -131,7 +131,7 @@
 <body>
 <div class="container">
     <h1>◢ RayRunner</h1>
-    <p class="sub">Cuatro niveles, power-ups y ranking — y toda la música <b>renderizada en vivo</b> por RayDrone</p>
+    <p class="sub">Cinco niveles, power-ups y ranking — y toda la música <b>renderizada en vivo</b> por RayDrone</p>
 
     <div class="hud">
         <span>Nivel: <b id="hud-level">1</b></span>
@@ -175,6 +175,12 @@
                 <div><kbd>←</kbd> <kbd>→</kbd> andar/correr</div>
                 <div><kbd>↑</kbd> <kbd>espacio</kbd> saltar (táctil: toque corto o ⬆)</div>
                 <div><kbd>Z</kbd> clic — tajo de espada (táctil: ⚔)</div>
+            </div>
+            <div class="grp">
+                <b>Nivel 5 · Komandos</b>
+                <div><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> moverse (8 direcciones)</div>
+                <div><kbd>Z</kbd> <kbd>espacio</kbd> clic — uzi</div>
+                <div><kbd>X</kbd> bazooka · <kbd>C</kbd> bombardeo</div>
             </div>
         </div>
         <div class="overlay" id="start-overlay">
@@ -220,8 +226,8 @@
     <div class="how">
         <b>Qué está pasando por debajo</b> — el motor granular real (el mismo Rust→wasm del demo) suena todo el
         rato y cada nivel es un sample distinto de 24 s con 4 zonas: el espacio (pad → campanas → tormenta → coro),
-        el circuito neón (amanecer → calipso → niebla → faro 2077) y la mazmorra (bosque → montaña →
-        castillo → cripta) —
+        el circuito neón (amanecer → calipso → niebla → faro 2077), la mazmorra (bosque → montaña →
+        castillo → cripta) y el asalto komando (desembarco → selva → aldea → base) —
         cada <b>sector de la pista</b> es una zona musical: la recta de salida suena a amanecer, el túnel a
         niebla estática, el tramo de tierra a faro 2077; una vuelta = una pasada entera por el sample (en la
         mazmorra, cada bioma es una zona). El scroll mueve el <i>foco</i>
@@ -262,7 +268,17 @@
             toque corto o el botón <b>⬆</b>) y reparte tajos de espada con <b>Z</b> o <b>clic</b>
             (táctil: el botón <b>⚔</b>). Cruza los cuatro biomas — bosque, montaña, castillo y
             cripta — sube a las plataformas, esquiva las esporas de las setas y a los lobos en
-            carga, y alcanza la <b>puerta del final</b> para completar el juego (+1000).
+            carga, y alcanza la <b>puerta del final</b> (+1000): al otro lado te espera la playa
+            del asalto final.
+            <br><br>
+            <b>Nivel 5 · Komandos</b> — run-and-gun <b>cenital</b> estilo Commando/Mercs: muévete en
+            8 direcciones con <b>← → ↑ ↓</b> (o el dedo) y dispara la <b>uzi</b> hacia donde miras con
+            <b>Z</b>/<b>espacio</b>/clic. <b>X</b> dispara la <b>bazooka</b> (gasta 🚀, explota en área)
+            y <b>C</b> pide un <b>bombardeo aéreo</b> (gasta 💣). Ábrete paso por la playa, la selva y
+            la aldea hasta la <b>base enemiga</b>: soldados, motos kamikaze, jeeps y tanques te lo
+            discutirán. Los <b>barriles rojos</b> explotan en cadena, las <b>cajas</b> sueltan
+            suministros y los sacos terreros paran las balas. Llega al <b>helipuerto (H)</b> para la
+            extracción: ahí se completa el juego (+1500).
             <br><br>
             Cada nivel tiene su propia música de 24s, generada en vivo: tu <b>combo</b> controla N (la densidad
             de rayos) — juega bien y la textura converge limpia; recibe un golpe y se rompe en polvo granular.
@@ -285,6 +301,7 @@
             <button class="btn sec train-lvl" data-lvl="2">🏍 <b>Nivel 2</b><span>Circuito neón (noche)</span></button>
             <button class="btn sec train-lvl" data-lvl="3">☀️ <b>Nivel 3</b><span>Mismo circuito, de día e inverso</span></button>
             <button class="btn sec train-lvl" data-lvl="4">🗡 <b>Nivel 4</b><span>Mazmorra</span></button>
+            <button class="btn sec train-lvl" data-lvl="5">🪖 <b>Nivel 5</b><span>Komandos (cenital)</span></button>
         </div>
     </div>
 </div>
@@ -533,7 +550,7 @@
 
     // ── Motor (mismo patrón que index.html: worklet + wasm cache-busted) ─────
     let actx = null, node = null, gainNode = null;
-    let terrainSpace = null, terrainNeon = null, terrainDungeon = null;
+    let terrainSpace = null, terrainNeon = null, terrainDungeon = null, terrainKomandos = null;
     async function ensureEngine() {
         if (node) return;
         actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -566,13 +583,15 @@
         terrainSpace = makeTerrainSpace();
         terrainNeon = makeTerrainNeon();
         terrainDungeon = makeTerrainDungeon();
+        terrainKomandos = makeTerrainKomandos();
         loadTerrain('space');
     }
     let terrainLoaded = '';
     function loadTerrain(which) {
         if (!node || terrainLoaded === which) return;
         terrainLoaded = which;
-        const data = which === 'neon' ? terrainNeon : which === 'dungeon' ? terrainDungeon : terrainSpace;
+        const data = which === 'neon' ? terrainNeon : which === 'dungeon' ? terrainDungeon
+                   : which === 'komandos' ? terrainKomandos : terrainSpace;
         node.port.postMessage({ type: 'sample', data, sampleRate: SR });
     }
 
@@ -638,6 +657,7 @@
         training: false, // modo entreno (saltar a un nivel): la puntuación NO cuenta
         trackRev: false, // nivel 3: mismo circuito que el 2, recorrido en sentido inverso
         hero: null, camX: 0, // nivel 4 (mazmorra): héroe de plataformas + cámara lateral
+        kom: null,           // nivel 5 (komandos): comando cenital {x,y,ang,...}
         victory: false,      // se completó la mazmorra: el fin de partida es un triunfo
         drones: [], spawnSq: 0, sqAlive: {}, sqNext: 0, // nivel 1: escuadrones en onda (R-Type)
     };
@@ -646,7 +666,7 @@
     const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (niveles 2-3)
 
     const zones = () => st.level === 1 ? ZONES_SPACE : (st.level === 2 || st.level === 3) ? ZONES_NEON
-                      : ZONES_DUNGEON;
+                      : st.level === 5 ? ZONES_KOMANDOS : ZONES_DUNGEON;
 
     // Nivel 3 = el mismo circuito del nivel 2, recorrido en sentido inverso.
     // La geometría (asfalto, edificios, pilones...) no cambia — solo la MANERA
@@ -683,7 +703,8 @@
         st.camMode = 0;
         st.training = false;
         st.trackRev = false;
-        st.hero = null; st.camX = 0;
+        st.hero = null; st.camX = 0; st.kom = null;
+        komBullets = []; komEbullets = []; komBooms = []; komEnemies = []; komProps = []; komPickups = [];
         st.victory = false;
         st.drones = []; st.spawnSq = 5; st.sqAlive = {}; st.sqNext = 0;
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
@@ -747,6 +768,7 @@
         if (n === 2) switchToLevel2();
         else if (n === 3) switchToLevel3();
         else if (n === 4) switchToLevel4(); // mazmorra
+        else if (n === 5) switchToLevel5(); // komandos
     }
     $('train-btn').addEventListener('click', showTrain);
     $('train-close').addEventListener('click', hideTrain);
@@ -864,13 +886,15 @@
         updateHud();
     }
     function fireMissile() {
-        // st.level >= 4: en la mazmorra el héroe pelea con la espada — sin el
+        // st.level === 4: en la mazmorra el héroe pelea con la espada — sin el
         // guard, X gastaba un misil sin efecto visible… o PEOR: mataba un
         // fantasma sobrante del circuito (invisible) y regalaba +80 puntos.
-        if (!st.playing || st.paused || st.missiles <= 0 || st.level >= 4) return;
+        if (!st.playing || st.paused || st.missiles <= 0 || st.level === 4) return;
         st.missiles -= 1;
         st.shimmer = Math.max(st.shimmer, 0.6); // el disparo enciende un destello shimmer
-        if (st.level === 1) {
+        if (st.level === 5) {
+            komRocket(); // bazooka: cohete con explosión en área
+        } else if (st.level === 1) {
             st.shots.push({ x: SHIP_X + 18 * k, y: st.shipY, kind: 'm' });
         } else {
             // Circuito: destruye la primera holo-barrera (o fantasma) por delante en tu carril
@@ -900,7 +924,8 @@
     }
     // Bláster: arma básica ilimitada con cadencia — clic de ratón, toque corto o Z
     function fireBlaster() {
-        if (!st.playing || st.paused || st.blastCd > 0 || st.level >= 4) return; // en la mazmorra el arma es la espada
+        if (!st.playing || st.paused || st.blastCd > 0 || st.level === 4) return; // en la mazmorra el arma es la espada
+        if (st.level === 5) { komFire(); vibrate(8); return; } // komandos: uzi (cadencia propia en komFire)
         st.blastCd = 0.22;
         st.shimmer = Math.max(st.shimmer, 0.25); // cada disparo, un chispazo shimmer
         if (st.level === 1) {
@@ -916,13 +941,15 @@
         vibrate(8);
     }
     function useBomb() {
-        if (!st.playing || st.paused || st.bombs <= 0 || st.level >= 4) return; // sin bombas en la mazmorra
+        if (!st.playing || st.paused || st.bombs <= 0 || st.level === 4) return; // sin bombas en la mazmorra
         st.bombs -= 1;
         st.shake = 1.4;
         // La bomba deja una cola recursiva grande (rebotes) — impacto sónico sin castigo
         if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 4, refl: 0.8, feedback: 0.1 });
         setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, 1500);
-        if (st.level === 1) {
+        if (st.level === 5) {
+            komAirstrike(); // bombardeo aéreo sobre lo visible
+        } else if (st.level === 1) {
             for (const a of st.asteroids) { burst(a.x, a.y, [255, 170, 60], 10); st.score += 20; }
             st.asteroids = [];
             for (const gh of st.ghosts) { burst(gh.x, gh.y, [150, 200, 255], 14); st.score += 30; }
@@ -1141,8 +1168,8 @@
         const left = kk === 'ArrowLeft' || kk === 'a', right = kk === 'ArrowRight' || kk === 'd';
         if ((st.level === 1 && up) || (st.level >= 2 && left)) keys.a = true; // volante/andar izq. en N2-N4
         else if ((st.level === 1 && down) || (st.level >= 2 && right)) keys.b = true; // volante/andar der. en N2-N4
-        else if ((st.level === 2 || st.level === 3) && up) keys.u = true;    // acelerador
-        else if ((st.level === 2 || st.level === 3) && down) keys.d = true;  // freno
+        else if ((st.level === 2 || st.level === 3 || st.level === 5) && up) keys.u = true;   // acelerador / andar arriba
+        else if ((st.level === 2 || st.level === 3 || st.level === 5) && down) keys.d = true; // freno / andar abajo
         else if (st.level === 4 && up) { if (!e.repeat) heroJump(); }        // mazmorra: saltar
         else if (kk === 'x') { if (!e.repeat) fireMissile(); }
         else if (kk === 'c') { if (!e.repeat) useBomb(); }
@@ -2814,7 +2841,6 @@
         // fanfarria de reflexiones) y se cierra la ronda como victoria.
         if (!h.done && h.x > DUN_LEN - 60) {
             h.done = true; h.doneT = 2.6;
-            st.victory = true;
             st.score += 1000;
             banner('¡MAZMORRA COMPLETADA! +1000');
             hitFx(4);
@@ -2822,7 +2848,7 @@
         }
         if (h.done) {
             h.doneT -= dt;
-            if (h.doneT <= 0) { endRound(); return; }
+            if (h.doneT <= 0) { switchToLevel5(); return; } // la puerta sale a la playa
         }
         // Cámara con suavizado, acotada a los bordes del mundo
         const viewW = W / (H / DUN_H);
@@ -3111,6 +3137,819 @@
         g.restore();
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    // NIVEL 5 · KOMANDOS — run-and-gun cenital (Commando/Mercs) en el canvas
+    // 2D. Es el asalto final: la puerta de la mazmorra te saca a la playa y
+    // hay que abrirse paso hasta el helipuerto de la base enemiga.
+    //
+    // El mundo vive en UNIDADES fijas (KOM_H de alto, igual que la mazmorra):
+    // avance de izquierda a derecha con cámara suavizada (st.camX), y cada
+    // cuarto del recorrido es un bioma = una zona musical.
+    //
+    // SPRITES: el nivel entero funciona con placeholders vectoriales. Si
+    // existen los PNG de los atlas (sprites/backgrounds.png, world_tiles.png,
+    // enemy_units.png, commando_weapons.png — contratos en sus .json
+    // hermanos), el arte real cae encima sin tocar la lógica: los frames se
+    // resuelven por id de rejilla (meta.columns × tileWidth) o por nombre.
+    // ════════════════════════════════════════════════════════════════════════
+    const KOM_LEN = 7200, KOM_H = 540;
+    const KOM_TOP = 84, KOM_BOT = KOM_H - 26; // franja jugable (arriba queda "horizonte")
+    // Biomas = zonas musicales. ground = [color base, color moteado]; bg = tile
+    // del atlas backgrounds.json para cuando exista el PNG.
+    const ZONES_KOMANDOS = [
+        { name: 'DESEMBARCO',      tint: [240, 205, 120], ground: [[203, 176, 118], [188, 158, 100]], bg: 'beach' },
+        { name: 'SELVA',           tint: [110, 220, 150], ground: [[56, 88, 50],   [46, 74, 42]],     bg: 'jungle' },
+        { name: 'ALDEA EN LLAMAS', tint: [255, 150, 70],  ground: [[99, 82, 60],   [84, 68, 50]],     bg: 'village' },
+        { name: 'BASE ENEMIGA',    tint: [255, 90, 90],   ground: [[76, 79, 88],   [64, 66, 74]],     bg: 'military_base' },
+    ];
+    // Variante de arte por bioma (los nombres del atlas enemy_units.json).
+    const KOM_VAR = {
+        soldier: ['soldier_desert', 'soldier_green', 'soldier_black', 'soldier_red'],
+        tank: ['tank_desert', 'tank_green', 'tank_black', 'tank_camo'],
+        jeep: ['jeep_desert', 'jeep_green', 'jeep_black', 'jeep_camo'],
+        moto: ['motorbike_desert', 'motorbike_green', 'motorbike_desert', 'motorbike_green'],
+    };
+    const KOM_VAR_COL = { // color del placeholder por variante
+        soldier_desert: '#8a7a4a', soldier_green: '#3e5c34', soldier_black: '#23252c', soldier_red: '#7a2a2a',
+        tank_desert: '#93835a', tank_green: '#41563a', tank_black: '#2a2c33', tank_camo: '#4a5c3a',
+        jeep_desert: '#9a8a58', jeep_green: '#44583c', jeep_black: '#2c2e35', jeep_camo: '#4e603e',
+        motorbike_desert: '#7a6c44', motorbike_green: '#3c5236',
+    };
+    // r = radio de contacto/impacto · hp = balas de uzi que aguanta ·
+    // spd = velocidad · pts = puntos al morir.
+    const KOM_ETYPES = {
+        soldier: { r: 16, hp: 1, spd: 88, pts: 30 },
+        moto:    { r: 16, hp: 1, spd: 330, pts: 50 },
+        jeep:    { r: 26, hp: 3, spd: 120, pts: 80 },
+        tank:    { r: 32, hp: 6, spd: 38, pts: 150 },
+    };
+    // Spawns deterministas (x, y, tipo) — densidad creciente por bioma, como
+    // DUN_SPAWNS: los tests saben qué hay y dónde.
+    const KOM_SPAWNS = [
+        // Playa (desembarco): patrulla ligera
+        { x: 520, y: 200, t: 'soldier' }, { x: 760, y: 420, t: 'soldier' }, { x: 1020, y: 150, t: 'soldier' },
+        { x: 1240, y: 360, t: 'jeep' }, { x: 1480, y: 210, t: 'soldier' }, { x: 1650, y: 460, t: 'soldier' },
+        { x: 1760, y: 300, t: 'moto' },
+        // Selva: emboscadas
+        { x: 1980, y: 160, t: 'soldier' }, { x: 2180, y: 430, t: 'soldier' }, { x: 2400, y: 250, t: 'moto' },
+        { x: 2620, y: 380, t: 'soldier' }, { x: 2840, y: 170, t: 'soldier' }, { x: 3080, y: 330, t: 'tank' },
+        { x: 3300, y: 460, t: 'soldier' }, { x: 3480, y: 200, t: 'moto' },
+        // Aldea: resistencia dura
+        { x: 3760, y: 300, t: 'soldier' }, { x: 3940, y: 150, t: 'soldier' }, { x: 4120, y: 440, t: 'jeep' },
+        { x: 4350, y: 250, t: 'soldier' }, { x: 4560, y: 380, t: 'tank' }, { x: 4780, y: 170, t: 'soldier' },
+        { x: 4960, y: 420, t: 'jeep' }, { x: 5140, y: 280, t: 'moto' }, { x: 5300, y: 180, t: 'soldier' },
+        // Base: asalto final
+        { x: 5560, y: 340, t: 'soldier' }, { x: 5720, y: 160, t: 'soldier' }, { x: 5900, y: 430, t: 'tank' },
+        { x: 6080, y: 240, t: 'soldier' }, { x: 6240, y: 400, t: 'moto' }, { x: 6420, y: 170, t: 'jeep' },
+        { x: 6580, y: 330, t: 'soldier' }, { x: 6700, y: 220, t: 'tank' }, { x: 6820, y: 440, t: 'soldier' },
+        { x: 6900, y: 150, t: 'moto' }, { x: 6980, y: 300, t: 'soldier' },
+    ];
+    // Atrezzo: solid = bloquea el paso (y las balas); hp = destruible.
+    const KOM_PTYPES = {
+        palm:    { r: 13, solid: true },
+        rock:    { r: 20, solid: true },
+        house:   { r: 38, solid: true },
+        tower:   { r: 22, solid: true },
+        sandbag: { r: 16, solid: true },
+        crate:   { r: 13, solid: true, hp: 1, drop: true },
+        barrel:  { r: 12, solid: true, hp: 1, explosive: true },
+        bush:    { r: 12, solid: false },
+    };
+    let komProps = [], komEnemies = [], komBullets = [], komEbullets = [], komBooms = [], komPickups = [];
+    // El atrezzo se genera con un xorshift de SEMILLA FIJA: el mapa es idéntico
+    // en cada partida (y en los tests) sin tener que escribir 100 entradas a mano.
+    function komBuildWorld() {
+        let rng = 0xabcd1234 >>> 0; // semilla fija: mismo mapa siempre
+        const rnd = () => { rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0; return rng / 4294967296; };
+        komProps = [];
+        const add = (t, x, y) => komProps.push({ t, x, y, hp: KOM_PTYPES[t].hp || 0, dead: false, fuse: 0, seed: rnd() });
+        for (let x = 260; x < KOM_LEN - 200; x += 66) {
+            const zone = Math.min(3, Math.floor(x / KOM_LEN * 4));
+            const r = rnd();
+            const y = KOM_TOP + 20 + rnd() * (KOM_BOT - KOM_TOP - 50);
+            if (Math.abs(x - 60) < 140) continue; // zona de aparición del héroe, despejada
+            if (zone === 0) { // playa: palmeras, rocas y alguna caja
+                if (r < 0.30) add('palm', x, y);
+                else if (r < 0.44) add('rock', x, y);
+                else if (r < 0.50) add('crate', x, y);
+                else if (r < 0.55) add('bush', x, y);
+            } else if (zone === 1) { // selva: densa
+                if (r < 0.42) add('palm', x, y);
+                else if (r < 0.58) add('bush', x, y);
+                else if (r < 0.68) add('rock', x, y);
+                else if (r < 0.73) add('barrel', x, y);
+            } else if (zone === 2) { // aldea: casas, sacos, barriles
+                if (r < 0.24) add('house', x, y);
+                else if (r < 0.38) add('sandbag', x, y);
+                else if (r < 0.48) add('barrel', x, y);
+                else if (r < 0.56) add('crate', x, y);
+                else if (r < 0.62) add('bush', x, y);
+            } else { // base: defensas
+                if (r < 0.18) add('tower', x, y);
+                else if (r < 0.38) add('sandbag', x, y);
+                else if (r < 0.52) add('barrel', x, y);
+                else if (r < 0.62) add('crate', x, y);
+                else if (r < 0.68) add('rock', x, y);
+            }
+        }
+        // Suministros fijos sobre el terreno (además de los de las cajas)
+        komPickups = [
+            { x: 900, y: 300, kind: 'shield' }, { x: 2300, y: 200, kind: 'missile' },
+            { x: 3600, y: 350, kind: 'bomb' }, { x: 4700, y: 250, kind: 'missile' },
+            { x: 5800, y: 380, kind: 'shield' }, { x: 6500, y: 260, kind: 'missile' },
+        ];
+    }
+    // ── Atlas del Komandos (contratos JSON + PNG opcional) ───────────────────
+    // Cada atlas se resuelve por id de rejilla (meta.columns/tileWidth) o por
+    // nombre (weapons.frames). img === null → el nivel usa sus placeholders.
+    const komAtl = { bg: null, tiles: null, units: null, weapons: null };
+    let komAssetsLoaded = false;
+    function loadKomAtlas(key, jsonFile) {
+        fetch('sprites/' + jsonFile, { cache: 'no-store' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((js) => {
+                if (!js) { console.warn(`Komandos: falta sprites/${jsonFile} — placeholders.`); return; }
+                komAtl[key] = { js, img: null };
+                if (key === 'weapons') { // índice por nombre
+                    komAtl[key].byName = {};
+                    for (const f of js.frames) komAtl[key].byName[f.name] = f;
+                }
+                const img = new Image();
+                img.onload = () => { komAtl[key].img = img; };
+                img.onerror = () => { console.warn(`Komandos: sprites/${js.meta.image} no disponible — placeholders para "${key}".`); };
+                img.src = 'sprites/' + js.meta.image + '?v=' + Date.now();
+            })
+            .catch(() => {});
+    }
+    function ensureKomAssets() {
+        if (komAssetsLoaded) return;
+        komAssetsLoaded = true;
+        loadKomAtlas('bg', 'backgrounds.json');
+        loadKomAtlas('tiles', 'world_tiles.json');
+        loadKomAtlas('units', 'enemy_units.json');
+        loadKomAtlas('weapons', 'commando_weapons.json');
+    }
+    function komFrameRect(atl, id) { // id de rejilla → rect en píxeles del PNG
+        const m = atl.js.meta;
+        const tw = m.tileWidth || m.spriteWidth, th = m.tileHeight || m.spriteHeight;
+        return { x: (id % m.columns) * tw, y: Math.floor(id / m.columns) * th, w: tw, h: th };
+    }
+    // Dibuja un frame del atlas centrado en (px,py) con `size` px de lado,
+    // rotado a `ang` (el arte cenital mira ARRIBA: se corrige +90°).
+    function komDrawFrame(atl, rect, px, py, size, ang) {
+        g.save();
+        g.translate(px, py);
+        g.rotate(ang + Math.PI / 2);
+        g.imageSmoothingEnabled = false;
+        g.drawImage(atl.img, rect.x, rect.y, rect.w, rect.h, -size / 2, -size / 2, size, size);
+        g.restore();
+    }
+    function komUnitFrame(variant, state, animT, fps) { // nombre+estado → rect actual
+        const u = komAtl.units;
+        if (!u || !u.img) return null;
+        const ids = u.js.sprites[variant] && u.js.sprites[variant][state];
+        if (!ids || !ids.length) return null;
+        return komFrameRect(u, ids[Math.floor(animT * fps) % ids.length]);
+    }
+    // ── Música: makeTerrainKomandos — 4 zonas militares en 24 s ─────────────
+    function makeTerrainKomandos() {
+        const n = SR * TERRAIN_SECS, buf = new Float32Array(n);
+        const seg = n / 4, fade = SR * 0.5, tau = 2 * Math.PI;
+        const square = (f, t, duty) => (((f * t) % 1) < duty ? 1 : -1);
+        let rng = 0x501d1e11 >>> 0;
+        const white = () => { rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0; return rng / 2147483648 - 1; };
+        // Zona 0 · DESEMBARCO: oleaje (ruido filtrado en olas) + tambor marcial.
+        {
+            let lp = 0;
+            for (let i = 0; i < Math.min(n, seg + fade); i++) {
+                lp += 0.045 * (white() - lp);
+                const gn = zoneWeight(i, 0, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR;
+                const wave = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(tau * 0.16 * t), 2);
+                const td = t % 0.75; // redoble: negras a 80 BPM
+                const drum = Math.exp(-td / 0.09) * Math.sin(tau * (58 - td * 30) * td) * 1.2;
+                const snareT = (t + 0.375) % 0.75;
+                const snare = Math.exp(-snareT / 0.05) * lp * 5.0;
+                buf[i] += gn * (lp * 2.2 * wave + drum + snare * 0.5);
+            }
+        }
+        // Zona 1 · SELVA: toms tribales (patrón 3+3+2) + fauna aguda.
+        {
+            const i0 = Math.max(0, Math.floor(seg - fade)), i1 = Math.min(n, Math.floor(2 * seg + fade));
+            const pattern = [0, 0.375, 0.75]; // dentro de un compás de 1.5 s
+            for (let i = i0; i < i1; i++) {
+                const gn = zoneWeight(i, 1, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR, tb = t % 1.5;
+                let s = 0;
+                for (let p = 0; p < pattern.length; p++) {
+                    const tl = tb - pattern[p];
+                    if (tl >= 0) s += Math.exp(-tl / 0.11) * Math.sin(tau * (95 + p * 28) * tl) * 0.9;
+                }
+                const tw = t % 2.3; // silbido de pájaro
+                s += 0.16 * Math.exp(-tw / 0.12) * Math.sin(tau * (1180 + 260 * Math.sin(tau * 7 * tw)) * tw);
+                buf[i] += gn * s;
+            }
+        }
+        // Zona 2 · ALDEA EN LLAMAS: drone menor tenso + crepitar + campana rota.
+        {
+            let lp = 0;
+            const i0 = Math.max(0, Math.floor(2 * seg - fade)), i1 = Math.min(n, Math.floor(3 * seg + fade));
+            for (let i = i0; i < i1; i++) {
+                const w = white();
+                lp += 0.5 * (w - lp); // crepitar: ruido casi sin filtrar, a ráfagas
+                const gn = zoneWeight(i, 2, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR;
+                const crackle = (Math.abs(w) > 0.985 ? w * 2.2 : 0) + lp * 0.12;
+                let s = 0.3 * Math.sin(tau * 110 * t) + 0.22 * Math.sin(tau * 130.81 * t) + 0.12 * Math.sin(tau * 220 * t);
+                const tbell = t % 3.1;
+                s += Math.exp(-tbell / 1.1) * 0.4 * (Math.sin(tau * 392 * t) + 0.4 * Math.sin(tau * 392 * 2.7 * t));
+                buf[i] += gn * (s * (0.75 + 0.25 * Math.sin(tau * 0.3 * t)) + crackle * 0.35);
+            }
+        }
+        // Zona 3 · BASE ENEMIGA: marcha de asalto — acordes menores de cuadrada
+        // a 140 BPM + tambor doble. El clímax del juego.
+        {
+            const chords = [[110, 130.81, 164.81], [98, 116.54, 146.83]]; // Am / Gm
+            const i0 = Math.max(0, Math.floor(3 * seg - fade));
+            for (let i = i0; i < n; i++) {
+                const gn = zoneWeight(i, 3, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR;
+                const beat = 60 / 140;
+                const bar = Math.floor(t / (beat * 4)) % 2;
+                const tb = t % beat;
+                const pulse = Math.exp(-tb / 0.16);
+                let s = 0;
+                for (const f of chords[bar]) s += 0.2 * square(f, t, 0.5) * pulse;
+                const td = t % (beat / 2);
+                const drum = Math.exp(-td / 0.05) * Math.sin(tau * (72 - td * 40) * td) * 1.1;
+                s += 0.12 * square(chords[bar][0] * 4, t, 0.25) * pulse; // corneta aguda
+                buf[i] += gn * (s + drum);
+            }
+        }
+        return normalize(buf);
+    }
+    // ── Entrar al nivel ──────────────────────────────────────────────────────
+    function switchToLevel5() {
+        st.level = 5;
+        st.zone = -1;
+        st.worldT = 0;
+        st.touchTarget = null; st.touchTargetX = null; st.touchThrottle = 0;
+        st.kom = { x: 60, y: KOM_H * 0.55, ang: 0, moving: false, animT: 0, fireT: 0,
+                   invulnT: 0, maxX: 60, done: false, doneT: 0, dualT: 0 };
+        st.camX = 0;
+        komBuildWorld();
+        komBullets = []; komEbullets = []; komBooms = [];
+        komEnemies = KOM_SPAWNS.map((s2) => {
+            const zone = Math.min(3, Math.floor(s2.x / KOM_LEN * 4));
+            return { type: s2.t, variant: KOM_VAR[s2.t][zone], x: s2.x, y: s2.y, homeY: s2.y,
+                     ang: Math.PI, hp: KOM_ETYPES[s2.t].hp, animT: Math.random() * 6,
+                     cd: 1 + Math.random(), hitT: 0, fireT: 0, dying: 0, gone: false, awake: false };
+        });
+        clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
+        $('stage').classList.remove('mode3d');
+        resizeCanvas();
+        ensureKomAssets();
+        loadTerrain('komandos');
+        banner('NIVEL 5 · KOMANDOS');
+        relabelButtons();
+        updateHud();
+    }
+    // Daño al héroe: mismo contrato que el resto (hitShip → vidas/escudo/música),
+    // con una ventana de invulnerabilidad para que una ráfaga no te funda.
+    function komHurt() {
+        const kk2 = st.kom;
+        if (!kk2 || kk2.invulnT > 0 || !st.playing) return;
+        kk2.invulnT = 1.1;
+        hitShip();
+    }
+    // Explosión: daño en área UNA vez al nacer (enemigos, barriles en cadena y
+    // el propio héroe si está demasiado cerca), luego solo animación.
+    function komBoom(x, y, r, dmg, hurtsHero) {
+        komBooms.push({ x, y, r, t: 0, ttl: 0.5 });
+        const sc = H / KOM_H;
+        burst((x - st.camX) * sc, y * sc, [255, 170, 60], 16);
+        st.shake = Math.max(st.shake, 0.4);
+        hitFx(3);
+        for (const e of komEnemies) {
+            if (e.gone || e.dying > 0) continue;
+            if (Math.hypot(e.x - x, e.y - y) < r + KOM_ETYPES[e.type].r) komDamage(e, dmg);
+        }
+        for (const p of komProps) {
+            if (p.dead || !KOM_PTYPES[p.t].explosive || p.fuse > 0) continue;
+            if (Math.hypot(p.x - x, p.y - y) < r + 16) p.fuse = 0.14; // cadena con retardo
+        }
+        if (hurtsHero && st.kom && Math.hypot(st.kom.x - x, st.kom.y - y) < r * 0.8) komHurt();
+    }
+    function komDamage(e, dmg) {
+        if (e.dying > 0 || e.gone) return;
+        e.hp -= dmg;
+        e.hitT = 0.18;
+        if (e.hp <= 0) {
+            const T = KOM_ETYPES[e.type];
+            e.dying = 0.5; e.animT = 0;
+            st.score += T.pts;
+            st.combo = Math.min(10, st.combo + 1);
+            st.shimmer = 1;
+            const sc = H / KOM_H;
+            burst((e.x - st.camX) * sc, e.y * sc, [255, 190, 90], e.type === 'soldier' ? 10 : 18);
+            if (e.type !== 'soldier') komBooms.push({ x: e.x, y: e.y, r: T.r * 2.2, t: 0, ttl: 0.5 });
+            hitFx(2);
+            vibrate(14);
+            updateHud();
+        }
+    }
+    // ── Armas del héroe ──────────────────────────────────────────────────────
+    function komFire() { // uzi (o dualgun con el power-up): la llama fireBlaster()
+        const kk2 = st.kom;
+        if (!kk2) return;
+        kk2.fireT = 0.12;
+        const dual = kk2.dualT > 0;
+        st.blastCd = dual ? 0.09 : 0.13;
+        const dirs = dual ? [-0.06, 0.06] : [(Math.random() - 0.5) * 0.05];
+        for (const off of dirs) {
+            const a = kk2.ang + off;
+            komBullets.push({ x: kk2.x + Math.cos(a) * 20, y: kk2.y + Math.sin(a) * 20,
+                              vx: Math.cos(a) * 950, vy: Math.sin(a) * 950, ttl: 0.8, rocket: false });
+        }
+        st.shimmer = Math.max(st.shimmer, 0.2);
+    }
+    function komRocket() { // bazooka (X / botón 🚀): gasta un misil, explota en área
+        const kk2 = st.kom;
+        if (!kk2) return;
+        kk2.fireT = 0.25;
+        komBullets.push({ x: kk2.x + Math.cos(kk2.ang) * 24, y: kk2.y + Math.sin(kk2.ang) * 24,
+                          vx: Math.cos(kk2.ang) * 520, vy: Math.sin(kk2.ang) * 520, ttl: 1.4, rocket: true });
+    }
+    function komAirstrike() { // bombardeo (C / botón 💣): 5 impactos sobre lo visible
+        const kk2 = st.kom;
+        if (!kk2) return;
+        const viewW = W / (H / KOM_H);
+        for (let i = 0; i < 5; i++) {
+            const bx = st.camX + viewW * (0.18 + i * 0.16);
+            const by = KOM_TOP + 40 + ((i * 89) % (KOM_BOT - KOM_TOP - 80));
+            setTimeout(() => { if (st.playing && st.level === 5) komBoom(bx, by, 105, 6, false); }, i * 130);
+        }
+    }
+    // ── Paso de física ──────────────────────────────────────────────────────
+    function stepLevel5(dt) {
+        const kk2 = st.kom;
+        if (!kk2) return;
+        kk2.invulnT = Math.max(0, kk2.invulnT - dt);
+        kk2.fireT = Math.max(0, kk2.fireT - dt);
+        kk2.dualT = Math.max(0, kk2.dualT - dt);
+        // Movimiento en 8 direcciones: flechas/WASD o el dedo (X objetivo +
+        // eje vertical del arrastre). El encaramiento sigue al movimiento.
+        let mx = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
+        let my = (keys.d ? 1 : 0) - (keys.u ? 1 : 0);
+        if (st.touchTargetX !== null) {
+            mx = st.touchTargetX > 0.12 ? 1 : st.touchTargetX < -0.12 ? -1 : 0;
+            my = st.touchThrottle > 0.25 ? -1 : st.touchThrottle < -0.25 ? 1 : 0;
+        }
+        const SPD = 240;
+        const ml = Math.hypot(mx, my);
+        kk2.moving = ml > 0;
+        if (ml > 0) {
+            kk2.x = clamp(kk2.x + (mx / ml) * SPD * dt, 20, KOM_LEN - 20);
+            kk2.y = clamp(kk2.y + (my / ml) * SPD * dt, KOM_TOP, KOM_BOT);
+            kk2.ang = Math.atan2(my, mx);
+            kk2.animT += dt;
+        }
+        // Colisión con el atrezzo sólido: empuje hacia fuera (círculos)
+        for (const p of komProps) {
+            if (p.dead || !KOM_PTYPES[p.t].solid) continue;
+            const pr = KOM_PTYPES[p.t].r + 13;
+            const dx = kk2.x - p.x, dy = kk2.y - p.y, d = Math.hypot(dx, dy);
+            if (d < pr && d > 1e-6) { kk2.x += dx / d * (pr - d); kk2.y += dy / d * (pr - d); }
+        }
+        // Recoger suministros
+        for (let i = komPickups.length - 1; i >= 0; i--) {
+            const pk = komPickups[i];
+            if (Math.hypot(pk.x - kk2.x, pk.y - kk2.y) < 26) { give(pk.kind); komPickups.splice(i, 1); }
+        }
+        // Barriles con la mecha encendida (cadena de komBoom)
+        for (const p of komProps) {
+            if (p.fuse > 0 && !p.dead) {
+                p.fuse -= dt;
+                if (p.fuse <= 0) { p.dead = true; komBoom(p.x, p.y, 85, 3, true); }
+            }
+        }
+        // ── Enemigos ─────────────────────────────────────────────────────────
+        for (const e of komEnemies) {
+            if (e.gone) continue;
+            const T = KOM_ETYPES[e.type];
+            if (e.dying > 0) { e.dying -= dt; e.animT += dt; if (e.dying <= 0) e.gone = true; continue; }
+            e.animT += dt;
+            e.hitT = Math.max(0, e.hitT - dt);
+            e.cd = Math.max(0, e.cd - dt);
+            e.fireT = Math.max(0, e.fireT - dt);
+            const dx = kk2.x - e.x, dy = kk2.y - e.y, dist = Math.hypot(dx, dy);
+            if (!e.awake && Math.abs(dx) < 640) e.awake = true;
+            if (!e.awake) continue;
+            if (e.type === 'soldier') {
+                // Avanza hasta ~260u, se planta y dispara ráfagas sueltas
+                if (dist > 270) { e.x += dx / dist * T.spd * dt; e.y += dy / dist * T.spd * dt; }
+                e.ang = Math.atan2(dy, dx);
+                if (e.cd <= 0 && dist < 560) {
+                    e.cd = 1.5 + Math.random() * 0.7; e.fireT = 0.2;
+                    const aim = e.ang + (Math.random() - 0.5) * 0.14;
+                    komEbullets.push({ x: e.x + Math.cos(aim) * 18, y: e.y + Math.sin(aim) * 18,
+                                       vx: Math.cos(aim) * 330, vy: Math.sin(aim) * 330, ttl: 2.2, big: false });
+                }
+            } else if (e.type === 'moto') {
+                // Kamikaze: te embiste; el contacto lo destruye a él también
+                e.ang = Math.atan2(dy, dx);
+                e.x += Math.cos(e.ang) * T.spd * dt;
+                e.y += clamp(Math.sin(e.ang) * T.spd, -180, 180) * dt;
+                if (dist < T.r + 16) { komHurt(); komDamage(e, 99); }
+            } else if (e.type === 'jeep') {
+                // Patrulla vertical y ametralla en ráfagas de 3
+                e.y += Math.sin(e.animT * 0.8) * 55 * dt;
+                e.y = clamp(e.y, KOM_TOP + 10, KOM_BOT - 10);
+                e.ang = Math.atan2(dy, dx);
+                if (e.cd <= 0 && dist < 600) {
+                    e.cd = 2.6; e.burst = 3; e.burstT = 0;
+                }
+                if (e.burst > 0) {
+                    e.burstT -= dt;
+                    if (e.burstT <= 0) {
+                        e.burstT = 0.14; e.burst--; e.fireT = 0.1;
+                        komEbullets.push({ x: e.x + Math.cos(e.ang) * 24, y: e.y + Math.sin(e.ang) * 24,
+                                           vx: Math.cos(e.ang) * 380, vy: Math.sin(e.ang) * 380, ttl: 2.0, big: false });
+                    }
+                }
+            } else if (e.type === 'tank') {
+                // Avanza lento, se planta a 300u y dispara obuses (explotan)
+                if (dist > 300) { e.x += dx / dist * T.spd * dt; e.y += dy / dist * T.spd * dt; }
+                e.ang = Math.atan2(dy, dx);
+                if (e.cd <= 0 && dist < 640) {
+                    e.cd = 3.2; e.fireT = 0.3;
+                    komEbullets.push({ x: e.x + Math.cos(e.ang) * 34, y: e.y + Math.sin(e.ang) * 34,
+                                       vx: Math.cos(e.ang) * 250, vy: Math.sin(e.ang) * 250, ttl: 3.0, big: true });
+                }
+            }
+            // Contacto directo con el héroe (salvo la moto, que ya lo gestiona)
+            if (e.type !== 'moto' && dist < T.r + 14) komHurt();
+        }
+        // ── Balas del héroe ──────────────────────────────────────────────────
+        for (let i = komBullets.length - 1; i >= 0; i--) {
+            const b = komBullets[i];
+            b.x += b.vx * dt; b.y += b.vy * dt; b.ttl -= dt;
+            let dead = b.ttl <= 0;
+            if (dead && b.rocket) { komBoom(b.x, b.y, 90, 4, true); komBullets.splice(i, 1); continue; }
+            // contra enemigos
+            if (!dead) for (const e of komEnemies) {
+                if (e.gone || e.dying > 0) continue;
+                if (Math.hypot(e.x - b.x, e.y - b.y) < KOM_ETYPES[e.type].r + 5) {
+                    if (b.rocket) komBoom(b.x, b.y, 90, 4, false);
+                    else komDamage(e, 1);
+                    dead = true; break;
+                }
+            }
+            // contra atrezzo sólido/destruible
+            if (!dead) for (const p of komProps) {
+                if (p.dead) continue;
+                const PT = KOM_PTYPES[p.t];
+                if (!PT.solid) continue;
+                if (Math.hypot(p.x - b.x, p.y - b.y) < PT.r + 4) {
+                    if (b.rocket) { komBoom(b.x, b.y, 90, 4, false); }
+                    if (PT.hp) {
+                        p.hp -= b.rocket ? 4 : 1;
+                        if (p.hp <= 0 && !p.dead) {
+                            if (PT.explosive) { p.dead = true; komBoom(p.x, p.y, 85, 3, true); }
+                            else {
+                                p.dead = true;
+                                if (PT.drop) { // la caja suelta un suministro determinista
+                                    const kinds = ['missile', 'shield', 'bomb'];
+                                    komPickups.push({ x: p.x, y: p.y, kind: kinds[(p.seed * 3) | 0] });
+                                }
+                                const sc2 = H / KOM_H;
+                                burst((p.x - st.camX) * sc2, p.y * sc2, [190, 160, 110], 8);
+                            }
+                        }
+                    }
+                    dead = true; break;
+                }
+            }
+            if (dead) komBullets.splice(i, 1);
+        }
+        // ── Balas enemigas ───────────────────────────────────────────────────
+        for (let i = komEbullets.length - 1; i >= 0; i--) {
+            const b = komEbullets[i];
+            b.x += b.vx * dt; b.y += b.vy * dt; b.ttl -= dt;
+            let dead = b.ttl <= 0;
+            if (dead && b.big) { komBoom(b.x, b.y, 60, 0, true); komEbullets.splice(i, 1); continue; }
+            if (!dead && Math.hypot(b.x - kk2.x, b.y - kk2.y) < (b.big ? 20 : 15)) {
+                if (b.big) komBoom(b.x, b.y, 60, 0, true); else komHurt();
+                dead = true;
+            }
+            if (!dead) for (const p of komProps) { // los sacos y muros paran plomo
+                if (p.dead) continue;
+                const PT = KOM_PTYPES[p.t];
+                if (PT.solid && Math.hypot(p.x - b.x, p.y - b.y) < PT.r + 3) { dead = true; break; }
+            }
+            if (dead) komEbullets.splice(i, 1);
+        }
+        // Explosiones (solo animación: el daño se aplicó al nacer)
+        for (let i = komBooms.length - 1; i >= 0; i--) {
+            komBooms[i].t += dt;
+            if (komBooms[i].t >= komBooms[i].ttl) komBooms.splice(i, 1);
+        }
+        // Progreso: avanzar puntúa; el foco musical sigue tu posición
+        if (kk2.x > kk2.maxX) { st.score += (kk2.x - kk2.maxX) * 0.1; kk2.maxX = kk2.x; }
+        st.worldT = clamp(kk2.x / KOM_LEN, 0, 0.999) * TERRAIN_SECS;
+        // Helipuerto: FIN DEL JUEGO — victoria
+        if (!kk2.done && kk2.x > KOM_LEN - 80) {
+            kk2.done = true; kk2.doneT = 2.8;
+            st.victory = true;
+            st.score += 1500;
+            banner('¡EXTRACCIÓN COMPLETADA! +1500');
+            hitFx(4);
+            vibrate([40, 30, 40, 30, 120]);
+        }
+        if (kk2.done) {
+            kk2.doneT -= dt;
+            if (kk2.doneT <= 0) { endRound(); return; }
+        }
+        // Cámara: sigue al héroe con suavizado, acotada al mundo
+        const viewW = W / (H / KOM_H);
+        st.camX += (clamp(kk2.x - viewW * 0.42, 0, Math.max(0, KOM_LEN - viewW)) - st.camX) * Math.min(1, 8 * dt);
+    }
+    // ── Dibujo ────────────────────────────────────────────────────────────────
+    function komGroundPattern(sc) {
+        // Terreno: mezcla continua entre el bioma actual y el siguiente (como
+        // la mazmorra) + moteado determinista por celda. Con backgrounds.png:
+        // el tile del bioma en mosaico, con fundido al siguiente.
+        const prog = clamp((st.camX + W / sc / 2) / KOM_LEN, 0, 0.999) * 4;
+        const bi = Math.min(3, prog | 0), bf = clamp((prog - bi - 0.7) / 0.3, 0, 1);
+        const B0 = ZONES_KOMANDOS[bi], B1 = ZONES_KOMANDOS[Math.min(3, bi + 1)];
+        const bgA = komAtl.bg;
+        const drawBgTiles = (name, alpha) => {
+            const entry = bgA.js.backgrounds.find((b) => b.name === name);
+            if (!entry) return false;
+            const m = bgA.js.meta;
+            const rw = entry.width || m.tileWidth, rh = entry.height || m.tileHeight;
+            const dh = H, dw = dh; // tile cuadrado escalado a la altura del lienzo
+            g.globalAlpha = alpha;
+            g.imageSmoothingEnabled = false;
+            const off = Math.round(st.camX * sc) % dw;
+            for (let dx0 = -off - dw; dx0 < W + dw; dx0 += dw) {
+                g.drawImage(bgA.img, entry.x, entry.y, rw, rh, dx0, 0, dw + 1, dh);
+            }
+            g.globalAlpha = 1;
+            return true;
+        };
+        if (bgA && bgA.img) {
+            drawBgTiles(B0.bg, 1);
+            if (bf > 0) drawBgTiles(B1.bg, bf);
+            return;
+        }
+        const base = lerpC(B0.ground[0], B1.ground[0], bf);
+        const spot = lerpC(B0.ground[1], B1.ground[1], bf);
+        g.fillStyle = cssC(base);
+        g.fillRect(-20, -20, W + 40, H + 40);
+        // Moteado determinista: hash por celda de 46u (sin RNG por frame)
+        g.fillStyle = cssC(spot);
+        const cell = 46 * sc;
+        const c0 = Math.floor(st.camX * sc / cell);
+        for (let cxI = c0; cxI < c0 + W / cell + 2; cxI++) {
+            for (let cyI = 0; cyI < H / cell + 1; cyI++) {
+                const hsh = ((cxI * 73856093) ^ (cyI * 19349663)) >>> 0;
+                if ((hsh & 7) < 3) {
+                    const px = cxI * cell - st.camX * sc + (hsh % 23), py = cyI * cell + ((hsh >> 5) % 23);
+                    g.fillRect(px, py, 8 * sc + (hsh % 9), 5 * sc + ((hsh >> 3) % 7));
+                }
+            }
+        }
+        // Línea de "horizonte" arriba (franja no jugable, más oscura)
+        g.fillStyle = 'rgba(6,8,14,0.35)';
+        g.fillRect(-20, -20, W + 40, KOM_TOP * sc * 0.75 + 20);
+    }
+    // Con el atlas world_tiles.json: tipo de prop → grupo de frames del layer
+    const KOM_PROP_TILE = {
+        palm: (L) => L.palms.frames, rock: (L) => L.rocks.medium, house: (L) => L.houses.village,
+        tower: (L) => L.props.watchtower ? [].concat(L.props.watchtower) : [120], sandbag: (L) => L.props.sandbags,
+        crate: (L) => L.props.crates, barrel: (L) => L.props.barrels, bush: (L) => L.vegetation.bushes,
+    };
+    function komDrawProp(p, px, py, sc) {
+        const s = p.seed;
+        const tA = komAtl.tiles;
+        if (tA && tA.img) {
+            const ids = KOM_PROP_TILE[p.t](tA.js.layers);
+            const rect = komFrameRect(tA, ids[(s * ids.length) | 0]);
+            const size = (KOM_PTYPES[p.t].r * 3.1) * sc;
+            g.imageSmoothingEnabled = false;
+            g.drawImage(tA.img, rect.x, rect.y, rect.w, rect.h, px - size / 2, py - size / 2, size, size);
+            if (p.fuse > 0) { g.fillStyle = 'rgba(255,120,60,0.5)'; g.beginPath(); g.arc(px, py, size * 0.45, 0, 7); g.fill(); }
+            return;
+        }
+        g.save();
+        g.translate(px, py);
+        if (p.t === 'palm') {
+            g.fillStyle = '#6d4f2c'; g.fillRect(-3 * sc, -4 * sc, 6 * sc, 10 * sc);
+            g.fillStyle = '#2f6b34';
+            for (let i = 0; i < 5; i++) {
+                const a = i / 5 * 6.28 + s * 6;
+                g.beginPath(); g.ellipse(Math.cos(a) * 13 * sc, -6 * sc + Math.sin(a) * 9 * sc, 13 * sc, 4.5 * sc, a, 0, 7); g.fill();
+            }
+            g.fillStyle = '#4d8f52'; g.beginPath(); g.arc(0, -6 * sc, 4.5 * sc, 0, 7); g.fill();
+        } else if (p.t === 'rock') {
+            g.fillStyle = '#7c7f88'; g.strokeStyle = '#5b5e66'; g.lineWidth = sc;
+            g.beginPath();
+            for (let i = 0; i < 7; i++) { const a = i / 7 * 6.28; const rr = (16 + ((s * 997 + i * 131) % 7)) * sc; g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr * 0.8); }
+            g.closePath(); g.fill(); g.stroke();
+        } else if (p.t === 'house') {
+            g.fillStyle = '#7a5b3a'; g.fillRect(-30 * sc, -24 * sc, 60 * sc, 48 * sc);
+            g.fillStyle = '#5d4025'; g.fillRect(-30 * sc, -24 * sc, 60 * sc, 10 * sc);
+            g.strokeStyle = '#43301c'; g.lineWidth = 2 * sc; g.strokeRect(-30 * sc, -24 * sc, 60 * sc, 48 * sc);
+            g.fillStyle = '#2e2114'; g.fillRect(-6 * sc, 8 * sc, 12 * sc, 16 * sc); // puerta
+        } else if (p.t === 'tower') {
+            g.fillStyle = '#4c4f58'; g.fillRect(-16 * sc, -16 * sc, 32 * sc, 32 * sc);
+            g.strokeStyle = '#33363e'; g.lineWidth = 2 * sc; g.strokeRect(-16 * sc, -16 * sc, 32 * sc, 32 * sc);
+            g.strokeRect(-9 * sc, -9 * sc, 18 * sc, 18 * sc);
+        } else if (p.t === 'sandbag') {
+            g.fillStyle = '#a08a5c';
+            for (const [ox, oy] of [[-9, -4], [2, -6], [-3, 3], [8, 2]]) {
+                g.beginPath(); g.ellipse(ox * sc, oy * sc, 9 * sc, 5.5 * sc, 0.2, 0, 7); g.fill();
+            }
+        } else if (p.t === 'crate') {
+            g.fillStyle = '#8a6b40'; g.fillRect(-11 * sc, -11 * sc, 22 * sc, 22 * sc);
+            g.strokeStyle = '#5d4425'; g.lineWidth = 2 * sc; g.strokeRect(-11 * sc, -11 * sc, 22 * sc, 22 * sc);
+            g.beginPath(); g.moveTo(-11 * sc, -11 * sc); g.lineTo(11 * sc, 11 * sc); g.moveTo(11 * sc, -11 * sc); g.lineTo(-11 * sc, 11 * sc); g.stroke();
+        } else if (p.t === 'barrel') {
+            g.fillStyle = p.fuse > 0 ? '#ff7040' : '#a33b2c';
+            g.beginPath(); g.arc(0, 0, 11 * sc, 0, 7); g.fill();
+            g.strokeStyle = '#6d2419'; g.lineWidth = 2 * sc; g.stroke();
+            g.strokeStyle = 'rgba(255,220,140,0.8)'; g.beginPath(); g.arc(0, 0, 6 * sc, 0, 7); g.stroke();
+        } else if (p.t === 'bush') {
+            g.fillStyle = '#39662f';
+            g.beginPath(); g.arc(-5 * sc, 0, 8 * sc, 0, 7); g.arc(5 * sc, -2 * sc, 7 * sc, 0, 7); g.arc(2 * sc, 4 * sc, 7 * sc, 0, 7); g.fill();
+        }
+        g.restore();
+    }
+    function komDrawEnemy(e, px, py, sc, t) {
+        const T = KOM_ETYPES[e.type];
+        const alpha = e.dying > 0 ? clamp(e.dying / 0.5, 0, 1) : 1;
+        // Con atlas: frame por estado (walk/shoot/death…) rotado al rumbo real
+        const state = e.dying > 0 ? (e.type === 'soldier' ? 'death' : (e.type === 'tank' ? 'destroyed' : 'explode'))
+                    : e.fireT > 0 ? (e.type === 'soldier' ? 'shoot' : e.type === 'tank' || e.type === 'jeep' ? 'fire' : 'shoot')
+                    : e.type === 'soldier' ? 'walk' : e.type === 'tank' ? 'move' : e.type === 'jeep' ? 'drive' : 'ride';
+        const fr = komUnitFrame(e.variant, state, e.animT, 10);
+        if (fr) {
+            g.globalAlpha = alpha;
+            komDrawFrame(komAtl.units, fr, px, py, T.r * 3.4 * sc, e.ang);
+            g.globalAlpha = 1;
+            return;
+        }
+        // Placeholder vectorial (militar, girado al rumbo)
+        g.save();
+        g.translate(px, py);
+        g.rotate(e.ang);
+        g.globalAlpha = alpha;
+        const col = KOM_VAR_COL[e.variant] || '#3e5c34';
+        if (e.type === 'soldier') {
+            const wob = Math.sin(e.animT * 9) * 2.5;
+            g.fillStyle = col;
+            g.fillRect(-8 * sc, (-9 + wob) * sc, 6 * sc, 6 * sc); // hombros
+            g.fillRect(-8 * sc, (3 - wob) * sc, 6 * sc, 6 * sc);
+            g.beginPath(); g.arc(0, 0, 9 * sc, 0, 7); g.fill(); // torso
+            g.fillStyle = '#20301c'; g.beginPath(); g.arc(0, 0, 5.5 * sc, 0, 7); g.fill(); // casco
+            g.fillStyle = '#1a1c22'; g.fillRect(4 * sc, -1.6 * sc, 14 * sc, 3.2 * sc); // fusil
+            if (e.fireT > 0) { g.fillStyle = '#ffd27a'; g.beginPath(); g.arc(20 * sc, 0, 3.5 * sc, 0, 7); g.fill(); }
+        } else if (e.type === 'tank') {
+            g.fillStyle = '#2c3128'; g.fillRect(-24 * sc, -18 * sc, 48 * sc, 8 * sc); // orugas
+            g.fillRect(-24 * sc, 10 * sc, 48 * sc, 8 * sc);
+            g.fillStyle = col; g.fillRect(-22 * sc, -12 * sc, 44 * sc, 24 * sc); // casco
+            g.fillStyle = '#20241d'; g.beginPath(); g.arc(-2 * sc, 0, 11 * sc, 0, 7); g.fill(); // torreta
+            g.fillStyle = '#15171c'; g.fillRect(8 * sc, -2.4 * sc, 26 * sc, 4.8 * sc); // cañón
+            if (e.fireT > 0) { g.fillStyle = '#ffca6a'; g.beginPath(); g.arc(36 * sc, 0, 6 * sc, 0, 7); g.fill(); }
+        } else if (e.type === 'jeep') {
+            g.fillStyle = '#191b20'; g.fillRect(-18 * sc, -15 * sc, 10 * sc, 5 * sc); g.fillRect(8 * sc, -15 * sc, 10 * sc, 5 * sc);
+            g.fillRect(-18 * sc, 10 * sc, 10 * sc, 5 * sc); g.fillRect(8 * sc, 10 * sc, 10 * sc, 5 * sc); // ruedas
+            g.fillStyle = col; g.fillRect(-20 * sc, -11 * sc, 40 * sc, 22 * sc);
+            g.fillStyle = '#1c222c'; g.fillRect(-4 * sc, -8 * sc, 12 * sc, 16 * sc); // parabrisas
+            g.fillStyle = '#15171c'; g.fillRect(6 * sc, -1.6 * sc, 18 * sc, 3.2 * sc); // metralleta
+        } else { // moto
+            const wob = Math.sin(e.animT * 16) * 1.5;
+            g.fillStyle = '#15171c'; g.fillRect(-14 * sc, -2.5 * sc, 28 * sc, 5 * sc); // chasis
+            g.fillStyle = col; g.beginPath(); g.arc(-2 * sc, wob * sc, 6.5 * sc, 0, 7); g.fill(); // piloto
+            g.fillStyle = '#111318'; g.fillRect(9 * sc, -4.5 * sc, 6 * sc, 9 * sc); g.fillRect(-16 * sc, -4 * sc, 6 * sc, 8 * sc); // ruedas
+        }
+        if (e.hitT > 0) { g.globalAlpha = e.hitT * 3; g.fillStyle = '#fff'; g.beginPath(); g.arc(0, 0, T.r * 1.1 * sc, 0, 7); g.fill(); }
+        g.restore();
+        g.globalAlpha = 1;
+    }
+    function komDrawHero(kk2, px, py, sc, t) {
+        if (kk2.invulnT > 0 && ((t * 14) | 0) % 2) return; // parpadeo de invulnerable
+        // Con atlas de armas: frames del comando (uzi/dualgun) rotados al rumbo
+        const wA = komAtl.weapons;
+        if (wA && wA.img) {
+            const dual = kk2.dualT > 0;
+            const names = kk2.fireT > 0
+                ? (dual ? ['dualgun_fire_01', 'dualgun_fire_02', 'dualgun_fire_03'] : ['uzi_fire_01', 'uzi_fire_02', 'uzi_fire_03'])
+                : (dual ? ['dualgun_idle'] : ['uzi_idle']);
+            const f = wA.byName[names[((t * 14) | 0) % names.length]];
+            if (f) { komDrawFrame(wA, { x: f.x, y: f.y, w: f.w, h: f.h }, px, py, 58 * sc, kk2.ang); return; }
+        }
+        g.save();
+        g.translate(px, py);
+        g.rotate(kk2.ang);
+        const wob = kk2.moving ? Math.sin(kk2.animT * 10) * 2.5 : 0;
+        g.fillStyle = '#2f4d2a';
+        g.fillRect(-8 * sc, (-10 + wob) * sc, 6 * sc, 7 * sc); // hombros/brazos
+        g.fillRect(-8 * sc, (3 - wob) * sc, 6 * sc, 7 * sc);
+        g.beginPath(); g.arc(0, 0, 10 * sc, 0, 7); g.fill(); // torso
+    g.fillStyle = '#57774a'; g.beginPath(); g.arc(0, 0, 6 * sc, 0, 7); g.fill(); // casco
+        g.fillStyle = '#cfd6e4'; g.fillRect(2 * sc, -6.5 * sc, 3 * sc, 3 * sc); // hombrera clara (héroe legible)
+        g.fillStyle = '#14161b';
+        g.fillRect(5 * sc, -1.8 * sc, 16 * sc, 3.6 * sc); // uzi
+        if (kk2.dualT > 0) g.fillRect(5 * sc, -6 * sc, 14 * sc, 3 * sc); // segunda arma
+        if (kk2.fireT > 0.03) { g.fillStyle = '#ffe08a'; g.beginPath(); g.arc(23 * sc, 0, 4 * sc, 0, 7); g.fill(); }
+        g.restore();
+        drawShield(px, py, 20 * sc);
+    }
+    function draw5(t) {
+        const kk2 = st.kom;
+        if (!kk2) return;
+        const sc = H / KOM_H;
+        g.save();
+        if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
+        g.clearRect(-20, -20, W + 40, H + 40);
+        komGroundPattern(sc);
+        const toX = (wx) => (wx - st.camX) * sc;
+        // Helipuerto pintado en el suelo, al final del mapa (el objetivo)
+        if (KOM_LEN - st.camX < W / sc + 200) {
+            const hx = toX(KOM_LEN - 60), hy = KOM_H * 0.5 * sc;
+            g.strokeStyle = 'rgba(255,255,255,0.75)'; g.lineWidth = 4 * sc;
+            g.beginPath(); g.arc(hx, hy, 52 * sc, 0, 7); g.stroke();
+            g.font = `bold ${Math.round(58 * sc)}px monospace`; g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillStyle = 'rgba(255,255,255,0.75)'; g.fillText('H', hx, hy);
+            g.textBaseline = 'alphabetic';
+        }
+        // Suministros en el suelo
+        for (const pk of komPickups) {
+            if (toX(pk.x) < -30 || toX(pk.x) > W + 30) continue;
+            drawPickup(toX(pk.x), pk.y * sc, pk.kind, t * 3, sc * 0.9);
+        }
+        // Todo lo demás con orden pintor (y menor primero = "más lejos")
+        const draws = [];
+        for (const p of komProps) {
+            if (p.dead) continue;
+            const px = toX(p.x);
+            if (px < -80 * sc || px > W + 80 * sc) continue;
+            draws.push({ y: p.y + (p.t === 'palm' || p.t === 'house' || p.t === 'tower' ? 26 : 0), fn: () => komDrawProp(p, px, p.y * sc, sc) });
+        }
+        for (const e of komEnemies) {
+            if (e.gone) continue;
+            const px = toX(e.x);
+            if (px < -90 * sc || px > W + 90 * sc) continue;
+            draws.push({ y: e.y, fn: () => komDrawEnemy(e, px, e.y * sc, sc, t) });
+        }
+        draws.push({ y: kk2.y, fn: () => komDrawHero(kk2, toX(kk2.x), kk2.y * sc, sc, t) });
+        draws.sort((a, b) => a.y - b.y);
+        for (const d of draws) d.fn();
+        // Balas por encima
+        for (const b of komBullets) {
+            const px = toX(b.x), py = b.y * sc;
+            if (b.rocket) {
+                g.fillStyle = '#e8e2d2'; g.fillRect(px - 6 * sc, py - 2.5 * sc, 12 * sc, 5 * sc);
+                g.fillStyle = '#ff9a4a'; g.beginPath(); g.arc(px - 8 * sc, py, 3.5 * sc, 0, 7); g.fill();
+            } else {
+                g.fillStyle = '#ffe9a0'; g.fillRect(px - 4 * sc, py - 1.4 * sc, 8 * sc, 2.8 * sc);
+            }
+        }
+        for (const b of komEbullets) {
+            const px = toX(b.x), py = b.y * sc;
+            g.fillStyle = b.big ? '#ffb060' : '#ff7a6a';
+            g.beginPath(); g.arc(px, py, (b.big ? 5 : 2.6) * sc, 0, 7); g.fill();
+        }
+        // Explosiones: anillo + núcleo que se apagan
+        for (const bm of komBooms) {
+            const f = bm.t / bm.ttl;
+            const px = toX(bm.x), py = bm.y * sc;
+            g.globalAlpha = 1 - f;
+            g.fillStyle = '#ffd98a';
+            g.beginPath(); g.arc(px, py, bm.r * sc * (0.3 + f * 0.5), 0, 7); g.fill();
+            g.strokeStyle = '#ff8a3a'; g.lineWidth = 3 * sc;
+            g.beginPath(); g.arc(px, py, bm.r * sc * f, 0, 7); g.stroke();
+            g.globalAlpha = 1;
+        }
+        // Barra de progreso de la misión (playa → helipuerto)
+        if (st.playing) {
+            const bw = 170 * k, bx = W / 2 - bw / 2, by = H - 16 * k;
+            g.fillStyle = 'rgba(18,14,38,0.6)'; g.fillRect(bx, by, bw, 7 * k);
+            g.fillStyle = '#9adf6a'; g.fillRect(bx, by, bw * clamp(kk2.maxX / KOM_LEN, 0, 1), 7 * k);
+            g.strokeStyle = 'rgba(220,255,190,0.45)'; g.lineWidth = 1; g.strokeRect(bx, by, bw, 7 * k);
+            g.fillStyle = 'rgba(220,255,190,0.7)'; g.font = `${Math.round(9 * k)}px monospace`;
+            g.textAlign = 'center'; g.fillText('MISIÓN', W / 2, by - 4 * k);
+        }
+        drawFxOverlays(t, ZONES_KOMANDOS[Math.max(0, st.zone)].tint);
+        g.restore();
+    }
+
     // ── Bucle ─────────────────────────────────────────────────────────────────
     // Paso de física fijo con acumulador: la conducción (y sus colisiones) no
     // deben ir más lentas si el dibujado (bloom/sombras en el circuito) se
@@ -3143,6 +3982,8 @@
         } else if (st.level === 2 || st.level === 3) {
             render3D(t / 1000);
             drawOverlay2D(t / 1000);
+        } else if (st.level === 5) {
+            draw5(t / 1000); // komandos
         } else {
             draw4(t / 1000); // mazmorra
         }
@@ -3179,6 +4020,7 @@
     function step(dt) {
         if (st.level === 1) stepLevel1(dt);
         else if (st.level === 2 || st.level === 3) stepLevel2(dt);
+        else if (st.level === 5) stepLevel5(dt); // komandos (cenital)
         else stepLevel4(dt); // mazmorra (plataformas)
         stepCommon(dt);
     }
@@ -3996,6 +4838,12 @@
         get extrasSheet() { return extrasSheet; },
         heroAttack, heroJump,
         dunLen: DUN_LEN,
+        goLevel5: switchToLevel5,
+        get kom() { return st.kom; },
+        get komEnemies() { return komEnemies; },
+        get komProps() { return komProps; },
+        get komBullets() { return komBullets; },
+        komLen: KOM_LEN,
         spawnAhead(type) {
             if (st.level === 1) {
                 if (type === 'rock') st.asteroids.push({ x: SHIP_X + 200 * k, y: st.shipY, r: 16 * k, rot: 0, vr: 0 });

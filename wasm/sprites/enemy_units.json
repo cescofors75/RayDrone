@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "name": "enemy_units_topdown",
+    "image": "enemy_units.png",
+    "version": "1.0",
+    "tileWidth": 128,
+    "tileHeight": 128,
+    "columns": 8,
+    "rows": 11,
+    "_nota": "rows era 8 en el borrador, pero los IDs llegan a 87 (jeep_camo.explode) => 11 filas de 8 columnas"
+  },
+  "sprites": {
+    "soldier_green":  { "idle": [0],  "walk": [0,1,2,3],     "shoot": [4,5,6],    "death": [7] },
+    "soldier_desert": { "idle": [8],  "walk": [8,9,10,11],   "shoot": [12,13,14], "death": [15] },
+    "soldier_black":  { "idle": [16], "walk": [16,17,18,19], "shoot": [20,21,22], "death": [23] },
+    "soldier_red":    { "idle": [24], "walk": [24,25,26,27], "shoot": [28,29,30], "death": [31] },
+    "tank_green":  { "idle": [32], "move": [32,33], "fire": [34], "destroyed": [35] },
+    "tank_desert": { "idle": [36], "move": [36,37], "fire": [38], "destroyed": [39] },
+    "tank_black":  { "idle": [40], "move": [40,41], "fire": [42], "destroyed": [43] },
+    "tank_camo":   { "idle": [44], "move": [44,45], "fire": [46], "destroyed": [47] },
+    "motorbike_green":  { "ride": [48,49,50,51], "shoot": [52,53], "explode": [54,55] },
+    "motorbike_desert": { "ride": [56,57,58,59], "shoot": [60,61], "explode": [62,63] },
+    "jeep_green":  { "drive": [64,65,66,67], "fire": [68], "explode": [69] },
+    "jeep_desert": { "drive": [70,71,72,73], "fire": [74], "explode": [75] },
+    "jeep_black":  { "drive": [76,77,78,79], "fire": [80], "explode": [81] },
+    "jeep_camo":   { "drive": [82,83,84,85], "fire": [86], "explode": [87] }
+  },
+  "animations": {
+    "soldierWalk":  { "fps": 10, "loop": true },
+    "soldierShoot": { "fps": 16, "loop": true },
+    "tankMove":     { "fps": 6,  "loop": true },
+    "tankFire":     { "fps": 8,  "loop": false },
+    "bikeRide":     { "fps": 12, "loop": true },
+    "jeepDrive":    { "fps": 10, "loop": true },
+    "explosion":    { "fps": 14, "loop": false }
+  }
+}
