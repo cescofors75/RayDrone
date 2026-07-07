@@ -2460,6 +2460,21 @@
         { name: 'PATIO DEL CASTILLO', tint: [220, 140, 255], top: [43, 30, 48], bot: [106, 74, 102], silh: '#1c1224' },
         { name: 'CRIPTA DEL JEFE', tint: [255, 110, 110], top: [26, 15, 28], bot: [58, 29, 51], silh: '#0d0812' },
     ];
+    // Decoraciones de suelo por bioma: índices dentro de extrasSheet.deco
+    // (extras.png trae 70 objetos genéricos — cajas, tinajas, antorchas,
+    // setas, rocas, mesas, cofres… — mezclados sin orden temático). Antes se
+    // recorrían TODOS en bucle ciego, así que un estandarte de pared (pensado
+    // para colgar de un muro) podía aparecer plantado solo en mitad de la
+    // hierba. Estas listas curadas a mano seleccionan, por bioma, solo lo que
+    // tiene sentido en el suelo: setas/flores/rocas en el bosque, peñascos y
+    // ramas secas en la montaña, mobiliario/cofres/antorchas en el castillo,
+    // y velas/tinajas/antorchas frías en la cripta.
+    const DUN_DECO_BIOME = [
+        [63, 64, 58, 52, 62, 66, 55, 56, 57, 61, 3, 0, 13],       // bosque: setas, flores, valla, sacos, cajón
+        [59, 60, 65, 67, 53, 54, 55, 56, 57, 61, 3, 0],            // montaña: rocas, ramas secas, valla, sacos
+        [6, 4, 5, 1, 2, 16, 17, 18, 20, 22, 23, 24, 26, 27, 37, 11, 0], // castillo: mesa, silla, estantería, tinajas, cofres
+        [32, 33, 35, 15, 25, 51, 1, 2, 16, 17, 18, 20, 53, 54],    // cripta: antorchas frías, velas, tinajas, cofres
+    ];
     // ── Pipeline de hojas de sprites ─────────────────────────────────────────
     // En vez de adivinar filas/columnas píxel a píxel (fràgil con arte
     // generado por IA, sin cuadrícula perfecta — y la causa del bug real:
@@ -2658,7 +2673,7 @@
         { x: 3360, t: 'skeleton' }, { x: 3620, t: 'goblin' }, { x: 3920, t: 'skeleton' }, { x: 4160, t: 'shroom' }, { x: 4460, t: 'bat' }, { x: 4720, t: 'skeleton' },
         { x: 4960, t: 'wolf' }, { x: 5210, t: 'skeleton' }, { x: 5460, t: 'bat' }, { x: 5710, t: 'goblin' }, { x: 5960, t: 'wolf' }, { x: 6160, t: 'skeleton' },
     ];
-    let dunEnemies = [], dunShots = []; // enemigos vivos + esporas de las setas
+    let dunEnemies = [], dunShots = [], dunHearts = []; // enemigos vivos + esporas de las setas + corazones sueltos
     function switchToLevel4() {
         st.level = 4;
         st.zone = -1;
@@ -2667,13 +2682,20 @@
         st.hero = { x: 60, y: DUN_GROUND, vx: 0, vy: 0, dir: 1, state: 'idle', animT: 0, attackT: 0,
                     onGround: true, maxX: 60, done: false, doneT: 0, invulnT: 0, hurtT: 0, swingId: 0 };
         st.camX = 0;
+        // Recarga al entrar: sin esto, llegar con las vidas mordidas de los
+        // niveles anteriores (donde no hay forma de recuperarlas) hacía que
+        // la mazmorra —el primer nivel de contacto cuerpo a cuerpo— se
+        // sintiera injustamente letal. Es un respiro de "nueva zona", no un
+        // reset completo: si ya tenías más vidas o escudo, se conservan.
+        st.lives = Math.max(st.lives, 3);
+        st.shield = Math.max(st.shield, 1);
         // Enemigos frescos desde la tabla de spawns (determinista: los tests
         // saben qué hay y dónde). Los voladores guardan su altura de crucero.
-        dunShots = [];
+        dunShots = []; dunHearts = [];
         dunEnemies = DUN_SPAWNS.map((s2) => ({
             type: s2.t, x: s2.x, homeX: s2.x, y: DUN_GROUND, baseY: DUN_GROUND - (s2.t === 'bat' ? 110 : 0),
             vx: 0, dir: -1, hp: ETYPES[s2.t].hp, animT: Math.random() * 6, hitT: 0, cd: 0,
-            charge: 0, chargeT: 0, attackT: 0, dying: 0, gone: false, lastSwing: -1,
+            charge: 0, chargeT: 0, telegraph: 0, attackT: 0, dying: 0, gone: false, lastSwing: -1,
         }));
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
@@ -2710,7 +2732,7 @@
     function heroHurt(srcX) {
         const h = st.hero;
         if (!h || h.invulnT > 0 || !st.playing) return;
-        h.invulnT = 1.3;
+        h.invulnT = 1.6; // un pelín más de colchón tras un golpe (antes 1.3s)
         h.hurtT = 0.32;
         h.attackT = 0;
         h.vx = (h.x < srcX ? -1 : 1) * 260;
@@ -2791,8 +2813,15 @@
                 e.y = e.baseY + Math.sin(e.animT * 3) * 24;
                 if (adx < 280) { e.x += Math.sign(dx) * T.spd * dt; e.baseY += clamp((h.y - 40) - e.baseY, -46 * dt, 46 * dt); e.dir = Math.sign(dx) || e.dir; }
             } else if (e.type === 'wolf') {
-                if (!e.charge && adx < 330 && e.cd <= 0) { e.charge = Math.sign(dx) || 1; e.chargeT = 1.0; e.cd = 2.6; }
-                if (e.charge) {
+                // Telegrafía: se agazapa 0.4s (visible en el dibujo) ANTES de
+                // arrancar — antes cargaba a 330u/s sin aviso, tiempo de
+                // reacción cero. Ahora hay una ventana real para esquivar o
+                // adelantarse con un tajo.
+                if (!e.charge && !e.telegraph && adx < 340 && e.cd <= 0) { e.telegraph = 0.4; e.dir = Math.sign(dx) || e.dir; e.cd = 2.8; }
+                if (e.telegraph > 0) {
+                    e.telegraph -= dt;
+                    if (e.telegraph <= 0) { e.charge = Math.sign(dx) || e.dir; e.chargeT = 0.85; }
+                } else if (e.charge) {
                     e.x += e.charge * T.spd * dt; e.dir = e.charge;
                     e.chargeT -= dt;
                     if (e.chargeT <= 0) { e.charge = 0; }
@@ -2815,6 +2844,13 @@
                     st.shimmer = 1;
                     burst((e.x - st.camX) * sc, (e.y - T.h * 0.6) * sc, T.col, 14);
                     vibrate(14);
+                    // Red de seguridad + recompensa: los enemigos más duros
+                    // tienen más chance de soltar un corazón, y solo si te
+                    // hace falta (por debajo de 5 vidas) — sin esto, morir
+                    // en la mazmorra no tenía ninguna vía de recuperación.
+                    if (st.lives < 5 && Math.random() < (T.hp >= 2 ? 0.22 : 0.1)) {
+                        dunHearts.push({ x: e.x, y: e.y - T.h * 0.7, ph: Math.random() * 6.28, ttl: 9 });
+                    }
                     updateHud();
                 }
             }
@@ -2833,6 +2869,24 @@
             }
             if (!dead && h.invulnT <= 0 && Math.abs(s2.x - h.x) < 16 && Math.abs(s2.y - (h.y - 34)) < 34) { heroHurt(s2.x); dead = true; }
             if (dead) dunShots.splice(i, 1);
+        }
+        // Corazones sueltos: flotan un rato y curan 1 vida al recogerlos (tope
+        // 6, no reemplazan el sistema de escudo — son un colchón adicional).
+        for (let i = dunHearts.length - 1; i >= 0; i--) {
+            const hp = dunHearts[i];
+            hp.ttl -= dt;
+            let dead = hp.ttl <= 0;
+            if (!dead && Math.abs(hp.x - h.x) < 24 && Math.abs(hp.y - h.y + 20) < 40) {
+                dead = true;
+                st.lives = Math.min(6, st.lives + 1);
+                st.score += 25;
+                st.shimmer = Math.max(st.shimmer, 0.5);
+                burst((hp.x - st.camX) * sc, (hp.y - 10) * sc, [255, 90, 110], 12);
+                hitFx(2);
+                vibrate([20, 15, 25]);
+                updateHud();
+            }
+            if (dead) dunHearts.splice(i, 1);
         }
         // Progreso: avanzar hacia la derecha puntúa; el fondo (y la música) siguen tu posición
         if (h.x > h.maxX) { st.score += (h.x - h.maxX) * 0.08; h.maxX = h.x; }
@@ -2947,16 +3001,21 @@
         g.fillRect(-20, gy - 2 * sc, W + 40, 3 * sc);
         // Decoraciones de suelo del sheet de extras: props deterministas cada
         // ~210u (posición y frame por índice, sin RNG → mismas siempre), a
-        // escala del mundo, pegadas a la línea de suelo, DETRÁS del juego.
+        // escala del mundo, pegadas a la línea de suelo, DETRÁS del juego —
+        // elegidas del pool CURADO de su propio bioma (DUN_DECO_BIOME), no
+        // de las 70 decoraciones enteras mezcladas.
         if (extrasSheet && extrasSheet.deco.length) {
             g.imageSmoothingEnabled = false;
             const first = Math.max(0, Math.floor((st.camX - 60) / 210)), last = Math.ceil((st.camX + W / sc + 60) / 210);
             for (let i = first; i <= last; i++) {
                 const wx = i * 210 + 80 + Math.sin(i * 13.7) * 55;
                 if (wx < 60 || wx > DUN_LEN - 120) continue; // deja limpio el arranque y la puerta
-                const f = extrasSheet.deco[(i * 31 + 7) % extrasSheet.deco.length];
-                const hU = clamp(f.h * 1.3, 22, 54);         // alto en unidades de mundo
-                const wU = hU * (f.w / f.h);
+                const zone = Math.min(3, Math.floor(wx / DUN_LEN * 4));
+                const pool = DUN_DECO_BIOME[zone].filter((idx) => idx < extrasSheet.deco.length);
+                if (!pool.length) continue;
+                const f = extrasSheet.deco[pool[(i * 31 + 7) % pool.length]];
+                const hU = clamp(f.h * 1.3, 20, 50);         // alto en unidades de mundo
+                const wU = clamp(hU * (f.w / f.h), 14, 66);  // tope de ancho: el mobiliario ancho (mesa) no se estira
                 g.drawImage(extrasSheet.canvas, f.x, f.y, f.w, f.h,
                             (wx - st.camX - wU / 2) * sc, (DUN_GROUND - hU) * sc, wU * sc, hU * sc);
             }
@@ -2968,19 +3027,35 @@
                             (DUN_LEN - 52 - st.camX - dw2 / 2) * sc, (DUN_GROUND - dh2) * sc, dw2 * sc, dh2 * sc);
             }
         }
-        // Plataformas: con arte real, madera/piedra cálida (el morado neón del
-        // placeholder chirriaba contra el bosque); sin él, el look de siempre.
+        // Plataformas: antes 12u de grosor y sin sombra ni contorno — a la
+        // escala real del lienzo eran una raya de ~5px, prácticamente
+        // invisibles sobre el follaje. Ahora: losa gruesa (20u) con sombra
+        // proyectada en el suelo (delata que "flota"), contorno oscuro que
+        // la separa del fondo en cualquier bioma, y canto superior brillante
+        // bien saturado — con arte real, madera; sin él, piedra violeta.
         for (const p of DUN_PLATS) {
             const px = (p.x - st.camX) * sc, pw = p.w * sc;
             if (px + pw < -30 || px > W + 30) continue;
-            const py = p.y * sc;
-            g.fillStyle = hasBgArt ? '#3a2c1c' : '#241e30';
-            g.fillRect(px, py, pw, 12 * sc);
-            g.fillStyle = hasBgArt ? 'rgba(255,214,150,0.30)' : 'rgba(255,255,255,0.12)';
-            g.fillRect(px, py, pw, 2.5 * sc);
+            const py = p.y * sc, th = 20 * sc;
+            // Sombra de contacto: ancla la plataforma al mundo (sin ella
+            // parece un rectángulo pegado a la pantalla, no un objeto 3D)
+            g.fillStyle = 'rgba(0,0,0,0.30)';
+            g.beginPath();
+            g.ellipse(px + pw / 2, py + th + 7 * sc, pw * 0.46, 5 * sc, 0, 0, 7);
+            g.fill();
+            g.fillStyle = hasBgArt ? '#5a4128' : '#352a4a';
+            g.fillRect(px, py, pw, th);
+            g.strokeStyle = 'rgba(0,0,0,0.55)';
+            g.lineWidth = Math.max(1, sc * 1.4);
+            g.strokeRect(px + g.lineWidth / 2, py + g.lineWidth / 2, pw - g.lineWidth, th - g.lineWidth);
+            g.fillStyle = hasBgArt ? '#e8b878' : 'rgba(220,190,255,0.55)';
+            g.fillRect(px, py, pw, 4 * sc);
             if (hasBgArt) { // vetas de tablones
-                g.fillStyle = 'rgba(0,0,0,0.25)';
-                for (let vx = px + 18 * sc; vx < px + pw - 4; vx += 26 * sc) g.fillRect(vx, py + 2.5 * sc, Math.max(1, sc), 9.5 * sc);
+                g.fillStyle = 'rgba(0,0,0,0.3)';
+                for (let vx = px + 18 * sc; vx < px + pw - 4; vx += 26 * sc) g.fillRect(vx, py + 4 * sc, Math.max(1, sc), th - 6 * sc);
+            } else {
+                g.fillStyle = 'rgba(255,255,255,0.1)';
+                for (let vx = px + 14 * sc; vx < px + pw - 4; vx += 22 * sc) g.fillRect(vx, py + 6 * sc, 3 * sc, th - 10 * sc);
             }
         }
         // Esporas de las setas
@@ -2989,6 +3064,25 @@
             const sx2 = (s2.x - st.camX) * sc;
             if (sx2 < -20 || sx2 > W + 20) continue;
             g.beginPath(); g.arc(sx2, s2.y * sc, 5 * sc, 0, 7); g.fill();
+        }
+        // Corazones sueltos: flotan con un bamboleo suave, brillo pulsante y
+        // se apagan (parpadean) justo antes de expirar para avisar.
+        for (const hp of dunHearts) {
+            const hx = (hp.x - st.camX) * sc;
+            if (hx < -20 || hx > W + 20) continue;
+            const hy = (hp.y + Math.sin(t * 2.4 + hp.ph) * 6) * sc;
+            if (hp.ttl < 2 && (t * 8 | 0) % 2) continue; // parpadeo de aviso
+            const r = 8 * sc;
+            g.save();
+            g.translate(hx, hy);
+            g.shadowColor = '#ff5a6e'; g.shadowBlur = 8 * sc;
+            g.fillStyle = '#ff3b52';
+            g.beginPath();
+            g.moveTo(0, r * 0.7);
+            g.bezierCurveTo(-r * 1.3, -r * 0.3, -r * 0.5, -r * 1.2, 0, -r * 0.35);
+            g.bezierCurveTo(r * 0.5, -r * 1.2, r * 1.3, -r * 0.3, 0, r * 0.7);
+            g.fill();
+            g.restore();
         }
         // Enemigos (detrás del héroe)
         for (const e of dunEnemies) {
@@ -3145,14 +3239,24 @@
             g.beginPath(); g.moveTo(6, -14); g.lineTo(20, -16 - flap); g.lineTo(8, -8); g.fill();
             g.fillStyle = '#ffdddd'; g.fillRect(-4, -13, 2, 2); g.fillRect(2, -13, 2, 2);
         } else if (e.type === 'wolf') {
+            // Se agazapa y tiembla durante la telegrafía (0.4s antes de
+            // cargar), con el ojo encendido en rojo — el aviso visible que
+            // antes no existía (cargaba a 330u/s sin previo).
+            const crouch = e.telegraph > 0 ? 1 - (1 - e.telegraph / 0.4) * 0.3 : 1;
+            const jitter = e.telegraph > 0 ? (Math.random() - 0.5) * 2.4 : 0;
             const lean = e.charge ? 0.18 : 0;
+            g.translate(jitter, 0);
             g.rotate(-lean * e.dir);
+            g.scale(1, crouch);
             g.fillStyle = '#969baa';
             g.fillRect(-20, -22, 40, 14); // cuerpo largo
             g.fillRect(e.dir * 14, -30, e.dir * 14, 12); // cabeza
             g.fillStyle = '#6a6f7d';
             g.fillRect(-18 + wob * 3, -9, 5, 9); g.fillRect(-4 - wob * 3, -9, 5, 9); g.fillRect(10 + wob * 3, -9, 5, 9);
-            g.fillStyle = '#2a0f0f'; g.fillRect(e.dir * 20, -27, 3, 3); // ojo
+            if (e.telegraph > 0) { g.shadowColor = '#ff3b3b'; g.shadowBlur = 6; g.fillStyle = '#ff3b3b'; }
+            else g.fillStyle = '#2a0f0f';
+            g.fillRect(e.dir * 20, -27, 3, 3); // ojo
+            g.shadowBlur = 0;
         }
         if (e.hitT > 0) { g.fillStyle = `rgba(255,255,255,${e.hitT * 2.4})`; g.fillRect(-20, -T.h - 6, 40, T.h + 8); }
         g.restore();
@@ -3445,6 +3549,8 @@
         st.kom = { x: 60, y: KOM_H * 0.55, ang: 0, moving: false, animT: 0, fireT: 0, fireAlt: 0,
                    heavyT: 0, strikeT: 0, invulnT: 0, maxX: 60, done: false, doneT: 0, dualT: 0 };
         st.camX = 0;
+        st.lives = Math.max(st.lives, 3); // mismo respiro de "nueva zona" que la mazmorra
+        st.shield = Math.max(st.shield, 1);
         komBuildWorld();
         komBullets = []; komEbullets = []; komBooms = [];
         komEnemies = KOM_SPAWNS.map((s2) => {
