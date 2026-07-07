@@ -3002,9 +3002,21 @@
         drawFxOverlays(t, ZONES_DUNGEON[Math.max(0, st.zone)].tint);
         g.restore();
     }
+    // Halo fino: un anillo TRAZADO (no una mancha degradada) ciñendo los pies
+    // — como el indicador de posición de un RTS, ayuda a leer dónde está el
+    // héroe/enemigo sobre el arte real sin competir con él ni verse borroso.
+    function dunHalo(px, feetY, wpx) {
+        g.save();
+        g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = wpx * 0.12;
+        g.strokeStyle = 'rgba(235,238,225,0.55)';
+        g.lineWidth = Math.max(1, wpx * 0.045);
+        g.beginPath(); g.ellipse(px, feetY, wpx * 0.5, wpx * 0.2, 0, 0, 7); g.stroke();
+        g.restore();
+    }
     function drawHero4(px, py, sc, h, t) {
-        // Sombra en los pies: despega al héroe del suelo (con o sin arte)
-        g.fillStyle = 'rgba(6,8,10,0.3)';
+        // Halo + sombra en los pies: despega al héroe del suelo (con o sin arte)
+        dunHalo(px, DUN_GROUND * (H / DUN_H), 22 * sc);
+        g.fillStyle = 'rgba(6,8,10,0.34)';
         g.beginPath(); g.ellipse(px, DUN_GROUND * (H / DUN_H) + 3 * sc, 16 * sc, 5 * sc, 0, 0, 7); g.fill();
         // Con la hoja real (procesada: fondo transparente + atlas automático):
         // frame de la fila del estado, anclado a los PIES y escalado a un
@@ -3071,9 +3083,10 @@
     function drawEnemy4(e, ex, ey, sc, t) {
         const T = ETYPES[e.type];
         const fade = e.dying > 0 ? e.dying / 0.45 : 1;
-        if (e.dying <= 0) { // sombra en los pies (los murciélagos la llevan pequeña)
-            g.fillStyle = 'rgba(6,8,10,0.28)';
+        if (e.dying <= 0) { // halo + sombra en los pies (los murciélagos la llevan pequeña)
             const sw = (e.type === 'bat' ? 9 : T.r) * sc;
+            dunHalo(ex, DUN_GROUND * (H / DUN_H), sw * 2.6);
+            g.fillStyle = 'rgba(6,8,10,0.32)';
             g.beginPath(); g.ellipse(ex, DUN_GROUND * (H / DUN_H) + 3 * sc, sw, sw * 0.32, 0, 0, 7); g.fill();
         }
         // Con la hoja real: columnas idle/walk1/walk2/attack1/attack2/hit/die
@@ -3322,12 +3335,21 @@
         g.globalAlpha = 1;
     }
     const komFramePick = (arr, animT, fps) => arr[Math.floor(animT * (fps || 9)) % arr.length];
-    // Sombra elíptica bajo cada entidad: despega los sprites del terreno.
+    // Sombra elíptica de contacto + halo fino TRAZADO (no una mancha difusa):
+    // el terreno real es denso/fotográfico y un anillo ceñido a los pies, al
+    // estilo del indicador de posición de un RTS, separa al sprite del fondo
+    // sin verse borroso ni competir con el arte.
     function komShadow(px, py, wpx) {
-        g.fillStyle = 'rgba(6,8,10,0.28)';
+        g.fillStyle = 'rgba(6,8,10,0.36)';
         g.beginPath();
         g.ellipse(px, py + wpx * 0.16, wpx * 0.42, wpx * 0.16, 0, 0, 7);
         g.fill();
+        g.save();
+        g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = wpx * 0.1;
+        g.strokeStyle = 'rgba(235,238,225,0.5)';
+        g.lineWidth = Math.max(1, wpx * 0.04);
+        g.beginPath(); g.ellipse(px, py + wpx * 0.14, wpx * 0.46, wpx * 0.18, 0, 0, 7); g.stroke();
+        g.restore();
     }
     // Popup de puntos: "+30" flotando desde donde cayó el enemigo.
     function komPop(x, y, txt, col) {
@@ -4036,6 +4058,12 @@
         if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
         g.clearRect(-20, -20, W + 40, H + 40);
         komGroundPattern(sc);
+        // El terreno real (fotográfico, denso) competía con los sprites —
+        // un oscurecido plano SOLO sobre el suelo (todo lo demás se dibuja
+        // encima, a brillo completo) hace que retroceda visualmente y el
+        // héroe/enemigos/atrezzo destaquen por contraste.
+        g.fillStyle = 'rgba(8,9,12,0.30)';
+        g.fillRect(-20, -20, W + 40, H + 40);
         const toX = (wx) => (wx - st.camX) * sc;
         // Marcas de quemadura de las explosiones (se desvanecen)
         for (const s2 of komScorch) {
