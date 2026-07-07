@@ -3275,12 +3275,33 @@
                     for (const f of js.frames) komAtl[key].byName[f.name] = f;
                 }
                 const img = new Image();
-                img.onload = () => { komAtl[key].img = img; };
+                img.onload = () => {
+                    const A = komAtl[key], m = js.meta;
+                    // ESCALA REAL vs contrato: las coordenadas del JSON asumen
+                    // columns×tileWidth px; si el PNG exportado mide otra cosa
+                    // (arte generado a otra resolución), todos los rects se
+                    // escalan por este factor — igual que la mazmorra con sus
+                    // coordenadas fraccionales. Sin esto, un PNG a la mitad de
+                    // tamaño hacía que cada "tile" muestreara una región 2×2.
+                    const declW = m.columns * (m.tileWidth || m.spriteWidth);
+                    const declH = (m.rows || Math.ceil(1)) * (m.tileHeight || m.spriteHeight);
+                    A.sx = img.naturalWidth / declW;
+                    A.sy = m.rows ? img.naturalHeight / declH : A.sx;
+                    if (Math.abs(A.sx - A.sy) / A.sx > 0.2) {
+                        console.warn(`Komandos: sprites/${m.image} mide ${img.naturalWidth}×${img.naturalHeight} pero el contrato declara ${declW}×${declH} — la rejilla no es proporcional (¿faltan o sobran filas?). Revisa ${jsonFile}.`);
+                    }
+                    // Unidades, armas y props: el fondo del sprite se hace
+                    // transparente con la misma clave global por color que las
+                    // hojas de la mazmorra — sin esto, cada frame arrastra su
+                    // caja de fondo opaca. El terreno (bg) se queda tal cual.
+                    A.img = key === 'bg' ? img : stripBg(img).canvas;
+                };
                 img.onerror = () => { console.warn(`Komandos: sprites/${js.meta.image} no disponible — placeholders para "${key}".`); };
                 img.src = 'sprites/' + js.meta.image + '?v=' + Date.now();
             })
             .catch(() => {});
     }
+    const komScaleRect = (atl, r) => ({ x: r.x * atl.sx, y: r.y * atl.sy, w: r.w * atl.sx, h: r.h * atl.sy });
     function ensureKomAssets() {
         if (komAssetsLoaded) return;
         komAssetsLoaded = true;
@@ -3289,10 +3310,10 @@
         loadKomAtlas('units', 'enemy_units.json');
         loadKomAtlas('weapons', 'commando_weapons.json');
     }
-    function komFrameRect(atl, id) { // id de rejilla → rect en píxeles del PNG
+    function komFrameRect(atl, id) { // id de rejilla → rect en píxeles REALES del PNG
         const m = atl.js.meta;
         const tw = m.tileWidth || m.spriteWidth, th = m.tileHeight || m.spriteHeight;
-        return { x: (id % m.columns) * tw, y: Math.floor(id / m.columns) * th, w: tw, h: th };
+        return komScaleRect(atl, { x: (id % m.columns) * tw, y: Math.floor(id / m.columns) * th, w: tw, h: th });
     }
     // Dibuja un frame del atlas centrado en (px,py) con `size` px de lado,
     // rotado a `ang` (el arte cenital mira ARRIBA: se corrige +90°).
@@ -3301,7 +3322,10 @@
         g.translate(px, py);
         g.rotate(ang + Math.PI / 2);
         g.imageSmoothingEnabled = false;
-        g.drawImage(atl.img, rect.x, rect.y, rect.w, rect.h, -size / 2, -size / 2, size, size);
+        // Recorte 2% hacia dentro: los bordes de celda de una rejilla estimada
+        // arrastran píxeles del frame vecino (mismo truco que la mazmorra).
+        const ix = rect.w * 0.02, iy = rect.h * 0.02;
+        g.drawImage(atl.img, rect.x + ix, rect.y + iy, rect.w - 2 * ix, rect.h - 2 * iy, -size / 2, -size / 2, size, size);
         g.restore();
     }
     function komUnitFrame(variant, state, animT, fps) { // nombre+estado → rect actual
@@ -3691,13 +3715,16 @@
             const entry = bgA.js.backgrounds.find((b) => b.name === name);
             if (!entry) return false;
             const m = bgA.js.meta;
-            const rw = entry.width || m.tileWidth, rh = entry.height || m.tileHeight;
+            // Rect escalado al tamaño REAL del PNG + recorte 1.5% hacia dentro
+            // (los bordes de celda arrastran píxeles vecinos y dejaban costura).
+            const r = komScaleRect(bgA, { x: entry.x, y: entry.y, w: entry.width || m.tileWidth, h: entry.height || m.tileHeight });
+            const inx = r.w * 0.015, iny = r.h * 0.015;
             const dh = H, dw = dh; // tile cuadrado escalado a la altura del lienzo
             g.globalAlpha = alpha;
             g.imageSmoothingEnabled = false;
             const off = Math.round(st.camX * sc) % dw;
             for (let dx0 = -off - dw; dx0 < W + dw; dx0 += dw) {
-                g.drawImage(bgA.img, entry.x, entry.y, rw, rh, dx0, 0, dw + 1, dh);
+                g.drawImage(bgA.img, r.x + inx, r.y + iny, r.w - 2 * inx, r.h - 2 * iny, dx0, 0, dw + 1, dh);
             }
             g.globalAlpha = 1;
             return true;
@@ -3742,7 +3769,8 @@
             const rect = komFrameRect(tA, ids[(s * ids.length) | 0]);
             const size = (KOM_PTYPES[p.t].r * 3.1) * sc;
             g.imageSmoothingEnabled = false;
-            g.drawImage(tA.img, rect.x, rect.y, rect.w, rect.h, px - size / 2, py - size / 2, size, size);
+            const ix = rect.w * 0.02, iy = rect.h * 0.02;
+            g.drawImage(tA.img, rect.x + ix, rect.y + iy, rect.w - 2 * ix, rect.h - 2 * iy, px - size / 2, py - size / 2, size, size);
             if (p.fuse > 0) { g.fillStyle = 'rgba(255,120,60,0.5)'; g.beginPath(); g.arc(px, py, size * 0.45, 0, 7); g.fill(); }
             return;
         }
@@ -3852,7 +3880,7 @@
                 ? (dual ? ['dualgun_fire_01', 'dualgun_fire_02', 'dualgun_fire_03'] : ['uzi_fire_01', 'uzi_fire_02', 'uzi_fire_03'])
                 : (dual ? ['dualgun_idle'] : ['uzi_idle']);
             const f = wA.byName[names[((t * 14) | 0) % names.length]];
-            if (f) { komDrawFrame(wA, { x: f.x, y: f.y, w: f.w, h: f.h }, px, py, 58 * sc, kk2.ang); return; }
+            if (f) { komDrawFrame(wA, komScaleRect(wA, f), px, py, 58 * sc, kk2.ang); return; }
         }
         g.save();
         g.translate(px, py);
