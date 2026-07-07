@@ -1,41 +1,154 @@
 {
-  "meta": {
-    "name": "backgrounds_topdown",
-    "image": "backgrounds.png",
-    "version": "1.0",
-    "type": "atlas",
-    "tileWidth": 512,
-    "tileHeight": 512,
-    "columns": 4,
-    "rows": 6,
-    "spacing": 0,
-    "margin": 0
+ "meta": {
+  "image": "backgrounds.png",
+  "format": "rects",
+  "imageW": 1536,
+  "imageH": 1024
+ },
+ "tiles": {
+  "jungle": {
+   "x": 8,
+   "y": 27,
+   "w": 246,
+   "h": 233
   },
-  "backgrounds": [
-    { "id": 0,  "name": "jungle",        "x": 0,    "y": 0,    "width": 512, "height": 512, "collision": true },
-    { "id": 1,  "name": "beach",         "x": 512,  "y": 0,    "width": 512, "height": 512, "collision": false },
-    { "id": 2,  "name": "desert",        "x": 1024, "y": 0,    "width": 512, "height": 512, "collision": false },
-    { "id": 3,  "name": "village",       "x": 1536, "y": 0,    "width": 512, "height": 512, "collision": true },
-    { "id": 4,  "name": "city",          "x": 0,    "y": 512 },
-    { "id": 5,  "name": "bridge",        "x": 512,  "y": 512 },
-    { "id": 6,  "name": "military_base", "x": 1024, "y": 512 },
-    { "id": 7,  "name": "airport",       "x": 1536, "y": 512 },
-    { "id": 8,  "name": "docks",         "x": 0,    "y": 1024 },
-    { "id": 9,  "name": "forest",        "x": 512,  "y": 1024 },
-    { "id": 10, "name": "river",         "x": 1024, "y": 1024 },
-    { "id": 11, "name": "swamp",         "x": 1536, "y": 1024 },
-    { "id": 12, "name": "snow",          "x": 0,    "y": 1536 },
-    { "id": 13, "name": "mountain",      "x": 512,  "y": 1536 },
-    { "id": 14, "name": "volcano",       "x": 1024, "y": 1536 },
-    { "id": 15, "name": "wasteland",     "x": 1536, "y": 1536 },
-    { "id": 16, "name": "night_city",    "x": 0,    "y": 2048 },
-    { "id": 17, "name": "rain_base",     "x": 512,  "y": 2048 },
-    { "id": 18, "name": "farmland",      "x": 1024, "y": 2048 },
-    { "id": 19, "name": "canal",         "x": 1536, "y": 2048 },
-    { "id": 20, "name": "temple",        "x": 0,    "y": 2560 },
-    { "id": 21, "name": "cave",          "x": 512,  "y": 2560 },
-    { "id": 22, "name": "ice_base",      "x": 1024, "y": 2560 },
-    { "id": 23, "name": "heliport",      "x": 1536, "y": 2560 }
-  ],
-  "properties": { "loop": true, "cameraScroll": true, "parallax": false, "lighting": true, "weather": true }
+  "beach": {
+   "x": 262,
+   "y": 28,
+   "w": 248,
+   "h": 232
+  },
+  "desert": {
+   "x": 518,
+   "y": 27,
+   "w": 242,
+   "h": 233
+  },
+  "village": {
+   "x": 769,
+   "y": 27,
+   "w": 250,
+   "h": 233
+  },
+  "city_street": {
+   "x": 1027,
+   "y": 27,
+   "w": 254,
+   "h": 233
+  },
+  "bridge": {
+   "x": 1289,
+   "y": 27,
+   "w": 239,
+   "h": 233
+  },
+  "military_base": {
+   "x": 8,
+   "y": 286,
+   "w": 246,
+   "h": 229
+  },
+  "airport": {
+   "x": 262,
+   "y": 286,
+   "w": 248,
+   "h": 229
+  },
+  "docks": {
+   "x": 518,
+   "y": 286,
+   "w": 242,
+   "h": 229
+  },
+  "forest": {
+   "x": 769,
+   "y": 286,
+   "w": 250,
+   "h": 229
+  },
+  "river": {
+   "x": 1027,
+   "y": 286,
+   "w": 254,
+   "h": 229
+  },
+  "swamp": {
+   "x": 1289,
+   "y": 286,
+   "w": 239,
+   "h": 229
+  },
+  "snow": {
+   "x": 8,
+   "y": 541,
+   "w": 246,
+   "h": 216
+  },
+  "mountain": {
+   "x": 262,
+   "y": 541,
+   "w": 247,
+   "h": 216
+  },
+  "volcano": {
+   "x": 518,
+   "y": 541,
+   "w": 242,
+   "h": 216
+  },
+  "wasteland": {
+   "x": 769,
+   "y": 541,
+   "w": 250,
+   "h": 216
+  },
+  "night_city": {
+   "x": 1028,
+   "y": 541,
+   "w": 252,
+   "h": 216
+  },
+  "rainy_base": {
+   "x": 1289,
+   "y": 541,
+   "w": 239,
+   "h": 216
+  },
+  "farmland": {
+   "x": 8,
+   "y": 783,
+   "w": 246,
+   "h": 232
+  },
+  "canal": {
+   "x": 262,
+   "y": 784,
+   "w": 247,
+   "h": 231
+  },
+  "temple": {
+   "x": 518,
+   "y": 783,
+   "w": 242,
+   "h": 232
+  },
+  "cave": {
+   "x": 769,
+   "y": 783,
+   "w": 250,
+   "h": 232
+  },
+  "ice_base": {
+   "x": 1027,
+   "y": 783,
+   "w": 254,
+   "h": 232
+  },
+  "heli_pad": {
+   "x": 1289,
+   "y": 784,
+   "w": 239,
+   "h": 230
+  }
+ }
 }

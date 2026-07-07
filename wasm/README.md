@@ -359,26 +359,44 @@ Motor con paridad casi completa con la versión JS:
   objetivo del nivel.
   Pendiente: orco miniboss, mago jefe y pickups.
   **Nivel 5 (Komandos)**: el nivel final — run-and-gun **cenital** estilo
-  Commando/Mercs en el canvas 2D. Movimiento en 8 direcciones (flechas/WASD
-  o el dedo), **uzi** hacia donde miras (Z/espacio/clic; el power-up dualgun
-  dobla el plomo), **bazooka** con X (gasta 🚀, explota en área) y
-  **bombardeo aéreo** con C (gasta 💣). Cuatro biomas = cuatro zonas
-  musicales de un sample propio de 24 s (desembarco → selva → aldea en
-  llamas → base enemiga) y avance de izquierda a derecha con la misma
-  cámara suavizada de la mazmorra. Enemigos por tabla determinista
-  (KOM_SPAWNS): soldados que avanzan y disparan, **motos kamikaze**, jeeps
-  que patrullan y ametrallan en ráfagas y **tanques** con obuses que
-  explotan en área. Atrezzo con semilla fija (mismo mapa siempre):
-  palmeras, rocas, casas, sacos terreros que paran balas, **cajas** que
-  sueltan suministros y **barriles rojos que explotan en cadena**. Llegar
-  al **helipuerto (H)** = extracción: +1500 y fin del juego como victoria 🏆.
-  **Atlas del Komandos**: el nivel funciona entero con placeholders
-  vectoriales, y si existen los PNG (`sprites/backgrounds.png`,
-  `world_tiles.png`, `enemy_units.png`, `commando_weapons.png` — contratos
-  en sus `.json` hermanos) el arte real cae encima sin tocar lógica: los
-  frames se resuelven por id de rejilla (meta.columns × tileWidth) o por
-  nombre, y en cenital los sprites **se rotan por código** al rumbo real
-  (el arte mira arriba) — no hacen falta 8 direcciones dibujadas.
+  Commando/Mercs en el canvas 2D, con el atlas real cargado (playa, selva,
+  aldea en llamas y base militar, soldados/vehículos con arte de verdad).
+  Movimiento en 8 direcciones (flechas/WASD o el dedo), **uzi** hacia donde
+  miras (Z/espacio/clic; el power-up dualgun cambia a las metralletas dobles
+  del atlas), **bazooka** con X (gasta 🚀, cohete con estela de humo y
+  explosión en área) y **bombardeo aéreo** con C (gasta 💣, misiles cayendo
+  del cielo). Cuatro biomas = cuatro zonas musicales de un sample propio de
+  24 s (desembarco → selva → aldea en llamas → base enemiga) y avance de
+  izquierda a derecha con la misma cámara suavizada de la mazmorra.
+  Enemigos por tabla determinista (KOM_SPAWNS), cada uno con su propia IA y
+  **telegrafía antes de disparar** (se plantan y "apuntan" un instante,
+  visible, antes del tiro — da tiempo a reaccionar): soldados con fusil,
+  **motos kamikaze** que aceleran en rampa antes de embestir, jeeps que
+  patrullan y ametrallan en ráfagas de 3, y **tanques** con obuses que
+  explotan en área y fogonazo en el cañón. Atrezzo con semilla fija (mismo
+  mapa siempre): palmeras, rocas, casas ardiendo con resplandor parpadeante,
+  sacos terreros que paran balas, alambradas/neumáticos que las balas
+  atraviesan, **cajas** que sueltan suministros (con imán suave al
+  acercarse) y **barriles rojos que explotan en cadena**. Llegar al
+  **helipuerto (H)** real del atlas = extracción: +1500 y fin del juego
+  como victoria 🏆.
+  **FX de combate**: trazadoras aditivas con estela en cada disparo,
+  chispazo de impacto en el enemigo, explosiones con núcleo blanco → bola
+  naranja → onda expansiva, marca de quemadura persistente en el suelo,
+  humo con física propia (denso y oscuro de las explosiones, claro y
+  disperso del disparo), y **popups de puntos** flotando desde cada baja.
+  Todas las entidades llevan sombra elíptica en los pies — despega los
+  sprites del terreno en vez de flotar sobre él.
+  **Atlas del Komandos**: contratos JSON con **rects absolutos medidos
+  sobre el PNG real** (extraídos por detección de componentes conexas, no
+  una rejilla teórica adivinada — las hojas reales no vienen en una
+  cuadrícula perfecta) en `sprites/backgrounds.json`, `world_tiles.json`,
+  `enemy_units.json` y `commando_weapons.json`. Cada frame declara su
+  `facing` de fábrica (el arte de fusil/bazooka mira a la derecha, el de
+  uzi/dualgun en reposo mira arriba, los vehículos traen vistas
+  frente/espalda/lado) y el render rota o elige la vista según el rumbo
+  real — no hacen falta 8 direcciones dibujadas a mano. Sin los PNG, el
+  nivel entero funciona con placeholders vectoriales.
   En la mazmorra no hay armas a distancia: X/C/bláster quedan desactivados
   (el héroe pelea con la espada) y al entrar se limpian los restos del
   circuito — sin ello, un misil podía "matar" un fantasma invisible sobrante
