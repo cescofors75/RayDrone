@@ -2475,6 +2475,13 @@
         [6, 4, 5, 1, 2, 16, 17, 18, 20, 22, 23, 24, 26, 27, 37, 11, 0], // castillo: mesa, silla, estantería, tinajas, cofres
         [32, 33, 35, 15, 25, 51, 1, 2, 16, 17, 18, 20, 53, 54],    // cripta: antorchas frías, velas, tinajas, cofres
     ];
+    // Nombres de tiles del nuevo tileset (usado cuando dungeonTilesetSheet está cargada)
+    const DUN_DECO_BIOME_NAMES = [
+        ['for_mushroom', 'for_rock', 'for_lantern', 'for_sign', 'for_stump', 'for_fern', 'for_flower', 'for_log', 'for_vine', 'for_bush'],
+        ['prop_barrel', 'prop_crate', 'prop_sack', 'prop_shield', 'prop_armor', 'prop_flag', 'prop_shelf', 'for_rock', 'for_log'],
+        ['cas_bookshelf', 'cas_table', 'cas_chair', 'cas_chains', 'cas_chest', 'cas_torch', 'cas_candle', 'prop_anvil', 'prop_cauldron'],
+        ['dun_spikes', 'dun_cage', 'dun_skull', 'dun_candle', 'grav_stone', 'grav_cross', 'grav_bone', 'grav_web', 'grav_rune', 'grav_coffin'],
+    ];
     // ── Pipeline de hojas de sprites ─────────────────────────────────────────
     // En vez de adivinar filas/columnas píxel a píxel (fràgil con arte
     // generado por IA, sin cuadrícula perfecta — y la causa del bug real:
@@ -2546,9 +2553,10 @@
         return { x: tx0, y: ty0, w: tx1 - tx0 + 1, h: ty1 - ty0 + 1 };
     }
     // Héroe: FPS/dirección por estado — ajustables si el PNG real difiere.
-    const HERO_FPS = { idle: 5, walk: 9, run: 12, jump: 8, fall: 8, attack: 26, damage: 12, die: 10 };
-    const HERO_FACE = { idle: 1, walk: 1, run: 1, jump: 1, fall: 1, attack: 1, damage: 1, die: 1 };
+    const HERO_FPS = { idle: 5, walk: 9, run: 12, jump: 8, fall: 8, attack: 26, damage: 12, die: 10, block: 8, victory: 6, death: 10 };
+    const HERO_FACE = { idle: 1, walk: 1, run: 1, jump: 1, fall: 1, attack: 1, damage: 1, die: 1, block: 1, victory: 1, death: 1 };
     let heroSheet = null; // {canvas, rows:{estado:[frames]}, ref} — null = placeholder
+    let knightSheet = null; // {canvas, rows:{idle/walk/attack/block/jump/damage/death/victory:[frames]}, ref:192}
     function framesFromAtlas(atlas, prefix, p) {
         // Agrupa las claves "prefix_estado_N" del atlas en {estado: [frame,...]}
         // ordenadas por N, convirtiendo las fracciones a píxeles reales y
@@ -2582,6 +2590,44 @@
         // héroe → 78 unidades de mundo. Los frames de ataque (más anchos/altos
         // por la espada extendida) se dibujan más grandes SIN encoger el cuerpo.
         heroSheet = { canvas: p.canvas, rows, ref: rows.idle[0].h };
+    }
+    // Knight spritesheet (TexturePacker format, 192×192 frames, proper alpha channel).
+    // Toma prioridad sobre heroSheet si carga correctamente.
+    function buildKnightSheet(img, atlas) {
+        // Detectar si la imagen ya tiene canal alfa (esquina superior izquierda transparente)
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const cx2 = c.getContext('2d', { willReadFrequently: true });
+        cx2.drawImage(img, 0, 0);
+        const corner = cx2.getImageData(0, 0, 1, 1).data;
+        let srcCanvas;
+        if (corner[3] < 200) {
+            srcCanvas = c; // ya tiene transparencia, no stripBg
+        } else {
+            srcCanvas = stripBg(img).canvas; // fondo sólido → eliminar
+        }
+        const rows = {};
+        const framesData = atlas.frames || {};
+        for (const key in framesData) {
+            const m = key.match(/^(.+?)_(\d+)$/);
+            if (!m) continue;
+            const [, stateName, nStr] = m, n = parseInt(nStr, 10) - 1;
+            const f = framesData[key].frame;
+            if (!f) continue;
+            (rows[stateName] || (rows[stateName] = []))[n] = { x: f.x, y: f.y, w: f.w, h: f.h };
+        }
+        if (rows.death && !rows.die) rows.die = rows.death;    // alias TexturePacker → juego
+        if (rows.jump && !rows.fall) rows.fall = rows.jump;
+        if (rows.walk && !rows.run) rows.run = rows.walk;
+        for (const s in rows) rows[s] = rows[s].filter(Boolean);
+        const need = ['idle', 'walk', 'attack', 'die'];
+        const missing = need.filter((s) => !rows[s] || !rows[s].length);
+        if (missing.length) {
+            console.warn(`RayRunner: hero_knight.json falta estados: ${missing.join(', ')}`);
+            return;
+        }
+        const ref = (atlas.meta && atlas.meta.frameSize) ? atlas.meta.frameSize.h : 192;
+        knightSheet = { canvas: srcCanvas, rows, ref };
     }
     let enemySheet = null; // {canvas, rows:{tipo:[7 frames: idle,walk×2,attack×2,hit,die]}}
     function buildEnemySheet(img, atlas) {
@@ -2628,8 +2674,32 @@
         }
         extrasSheet = { canvas: p.canvas, bg, deco, inter };
     }
+    // Hoja de tileset del castillo/bosque/mazmorra: 64×64 tiles indexados + fondos panorámicos.
+    // No usa stripBg — el PNG tiene transparencia propia o el tileset se usa como-es.
+    let dungeonTilesetSheet = null; // {img, tiles:{name:{x,y,w,h}}, bg:{name:{x,y,w,h}}}
+    function buildDungeonTilesetSheet(img, atlas) {
+        const tileSize = atlas.tileSize || 64;
+        const columns = atlas.columns || 24;
+        const tiles = {};
+        for (const [, ts] of Object.entries(atlas.tilesets || {})) {
+            const start = ts.start || 0;
+            (ts.frames || []).forEach((name, i) => {
+                const idx = start + i;
+                tiles[name] = { x: (idx % columns) * tileSize, y: Math.floor(idx / columns) * tileSize, w: tileSize, h: tileSize };
+            });
+        }
+        const bg = {};
+        for (const [name, rect] of Object.entries(atlas.backgrounds || {})) bg[name] = rect;
+        if (!Object.keys(tiles).length && !Object.keys(bg).length) {
+            console.warn('RayRunner: dungeon_castle_forest.json no tiene tiles ni backgrounds utilizables.');
+            return;
+        }
+        dungeonTilesetSheet = { img, tiles, bg };
+    }
     // Bioma → fondo del sheet de extras (el desierto queda de reserva)
     const BIOME_BG = ['bg_forest', 'bg_mountains', 'bg_ruins', 'bg_cave'];
+    // Bioma → fondo del nuevo tileset de castillo/bosque (los 4 biomas de la mazmorra)
+    const BIOME_BG_KNIGHT = ['forest_bridge', 'castle_night', 'castle_red_sky', 'forest_dark'];
     // fetch({cache:'no-store'}) para el PNG y el JSON: evita que el navegador
     // sirva una versión CACHEADA si reemplazas el archivo sin cambiar el
     // nombre (por eso "antes cargaba y ahora no" — el 304 de la consola del
@@ -2652,9 +2722,14 @@
     function ensureDungeonAssets() {
         if (dunAssetsLoaded) return;
         dunAssetsLoaded = true;
-        loadSheet('sprites/hero.png', 'sprites/hero.json', buildHeroSheet);       // sin ellos: un warn en consola (dev-only) + placeholder
+        // Sprites heredados (fallback si los nuevos no existen)
+        loadSheet('sprites/hero.png', 'sprites/hero.json', buildHeroSheet);
         loadSheet('sprites/enemies.png', 'sprites/enemies.json', buildEnemySheet);
-        loadSheet('sprites/extras.png', 'sprites/extras.json', buildExtrasSheet); // fondos parallax + decoraciones + puerta
+        loadSheet('sprites/extras.png', 'sprites/extras.json', buildExtrasSheet);
+        // Nuevo héroe caballero (TexturePacker 192×192) — toma prioridad sobre heroSheet
+        loadSheet('sprites/hero_knight.png', 'sprites/hero_knight.json', buildKnightSheet);
+        // Nuevo tileset dungeon/castle/forest + fondos panorámicos
+        loadSheet('sprites/dungeon_castle_forest.png', 'sprites/dungeon_castle_forest.json', buildDungeonTilesetSheet);
     }
     // ── Enemigos: tipos, spawns fijos (deterministas) y proyectiles ─────────
     // r = radio de contacto, h = altura, spd = velocidad de persecución,
@@ -2925,12 +3000,23 @@
         const sky = g.createLinearGradient(0, 0, 0, H * 0.87);
         sky.addColorStop(0, cssC(top)); sky.addColorStop(1, cssC(bot));
         g.fillStyle = sky; g.fillRect(-20, -20, W + 40, H + 40);
-        // Parallax LEJOS (0.22×). Con el sheet de extras: el FONDO PIXEL-ART del
-        // bioma (bosque/montañas/ruinas/cueva), en mosaico horizontal, con
-        // fundido al del bioma siguiente. Sin sheet: la cordillera procedural.
-        const hasBgArt = !!(extrasSheet && extrasSheet.bg[BIOME_BG[bi]]);
-        const drawBgTiles = (rect, alpha) => {
-            if (!rect) return;
+        // Parallax LEJOS (0.22×). Prioridad: nuevo tileset de castillo/bosque; luego
+        // el sheet de extras; si no hay ninguno, cordillera procedural.
+        const getDungeonBg = (zone) => {
+            if (dungeonTilesetSheet) {
+                const name = BIOME_BG_KNIGHT[zone];
+                if (name && dungeonTilesetSheet.bg[name]) return { src: dungeonTilesetSheet.img, rect: dungeonTilesetSheet.bg[name] };
+            }
+            if (extrasSheet) {
+                const name = BIOME_BG[zone];
+                if (name && extrasSheet.bg[name]) return { src: extrasSheet.canvas, rect: extrasSheet.bg[name] };
+            }
+            return null;
+        };
+        const bgCur = getDungeonBg(bi), bgNext = getDungeonBg(Math.min(3, bi + 1));
+        const hasBgArt = !!bgCur;
+        const drawBgTiles = (src, rect, alpha) => {
+            if (!rect || !src) return;
             // Recorte 1.5% hacia dentro: los bordes de la miniatura arrastran
             // píxeles vecinos del sheet y dejaban una COSTURA vertical visible
             // en cada repetición del mosaico.
@@ -2939,16 +3025,16 @@
             const scale2 = (H * 0.9) / sh;           // el fondo cubre hasta la línea de suelo
             const dw = Math.round(sw * scale2), dy0 = H * 0.87 - H * 0.9;
             g.globalAlpha = alpha;
-            g.imageSmoothingEnabled = false;         // píxel art chunky, a juego con los sprites
+            g.imageSmoothingEnabled = true;          // fondos panorámicos: suavizado para evitar aliasing
             const off = Math.round(st.camX * 0.22 * sc) % dw;
             for (let dx0 = -off - dw; dx0 < W + dw; dx0 += dw) {
-                g.drawImage(extrasSheet.canvas, rect.x + ix, rect.y + iy, sw, sh, dx0, dy0, dw + 1, H * 0.9);
+                g.drawImage(src, rect.x + ix, rect.y + iy, sw, sh, dx0, dy0, dw + 1, H * 0.9);
             }
             g.globalAlpha = 1;
         };
         if (hasBgArt) {
-            drawBgTiles(extrasSheet.bg[BIOME_BG[bi]], 1);
-            if (bf > 0) drawBgTiles(extrasSheet.bg[BIOME_BG[Math.min(3, bi + 1)]], bf);
+            drawBgTiles(bgCur.src, bgCur.rect, 1);
+            if (bf > 0 && bgNext) drawBgTiles(bgNext.src, bgNext.rect, bf);
             // Velo de profundidad: oscurece un punto el fondo (más arriba, más)
             // para que el héroe y los enemigos DESTAQUEN sobre el arte.
             const veil = g.createLinearGradient(0, 0, 0, H * 0.87);
@@ -2999,32 +3085,53 @@
         }
         g.fillStyle = cssC(lerpC(B0.tint, B1.tint, bf), 0.22); // borde superior teñido por bioma
         g.fillRect(-20, gy - 2 * sc, W + 40, 3 * sc);
-        // Decoraciones de suelo del sheet de extras: props deterministas cada
-        // ~210u (posición y frame por índice, sin RNG → mismas siempre), a
-        // escala del mundo, pegadas a la línea de suelo, DETRÁS del juego —
-        // elegidas del pool CURADO de su propio bioma (DUN_DECO_BIOME), no
-        // de las 70 decoraciones enteras mezcladas.
-        if (extrasSheet && extrasSheet.deco.length) {
-            g.imageSmoothingEnabled = false;
+        // Decoraciones de suelo: props deterministas cada ~210u.
+        // Prioridad: nuevo tileset → extras → nada.
+        if (dungeonTilesetSheet || (extrasSheet && extrasSheet.deco.length)) {
             const first = Math.max(0, Math.floor((st.camX - 60) / 210)), last = Math.ceil((st.camX + W / sc + 60) / 210);
             for (let i = first; i <= last; i++) {
                 const wx = i * 210 + 80 + Math.sin(i * 13.7) * 55;
-                if (wx < 60 || wx > DUN_LEN - 120) continue; // deja limpio el arranque y la puerta
+                if (wx < 60 || wx > DUN_LEN - 120) continue;
                 const zone = Math.min(3, Math.floor(wx / DUN_LEN * 4));
-                const pool = DUN_DECO_BIOME[zone].filter((idx) => idx < extrasSheet.deco.length);
-                if (!pool.length) continue;
-                const f = extrasSheet.deco[pool[(i * 31 + 7) % pool.length]];
-                const hU = clamp(f.h * 1.3, 20, 50);         // alto en unidades de mundo
-                const wU = clamp(hU * (f.w / f.h), 14, 66);  // tope de ancho: el mobiliario ancho (mesa) no se estira
-                g.drawImage(extrasSheet.canvas, f.x, f.y, f.w, f.h,
-                            (wx - st.camX - wU / 2) * sc, (DUN_GROUND - hU) * sc, wU * sc, hU * sc);
+                if (dungeonTilesetSheet) {
+                    const names = DUN_DECO_BIOME_NAMES[zone];
+                    const tname = names[(i * 31 + 7) % names.length];
+                    const tile = dungeonTilesetSheet.tiles[tname];
+                    if (!tile) continue;
+                    const hU = 52, wU = 52; // tiles cuadrados de 64px → 52 unidades de mundo
+                    g.imageSmoothingEnabled = true;
+                    g.drawImage(dungeonTilesetSheet.img, tile.x, tile.y, tile.w, tile.h,
+                                (wx - st.camX - wU / 2) * sc, (DUN_GROUND - hU) * sc, wU * sc, hU * sc);
+                } else {
+                    const pool = DUN_DECO_BIOME[zone].filter((idx) => idx < extrasSheet.deco.length);
+                    if (!pool.length) continue;
+                    const f = extrasSheet.deco[pool[(i * 31 + 7) % pool.length]];
+                    const hU = clamp(f.h * 1.3, 20, 50), wU = clamp(hU * (f.w / f.h), 14, 66);
+                    g.imageSmoothingEnabled = false;
+                    g.drawImage(extrasSheet.canvas, f.x, f.y, f.w, f.h,
+                                (wx - st.camX - wU / 2) * sc, (DUN_GROUND - hU) * sc, wU * sc, hU * sc);
+                }
             }
-            // La puerta al final de la mazmorra (el objetivo se VE al llegar)
-            const door = extrasSheet.inter.interactable_object_001 || extrasSheet.deco[0];
-            if (door) {
-                const dh2 = 84, dw2 = dh2 * (door.w / door.h);
-                g.drawImage(extrasSheet.canvas, door.x, door.y, door.w, door.h,
-                            (DUN_LEN - 52 - st.camX - dw2 / 2) * sc, (DUN_GROUND - dh2) * sc, dw2 * sc, dh2 * sc);
+            // La puerta al final de la mazmorra (objetivo visual)
+            const doorX = (DUN_LEN - 52 - st.camX) * sc;
+            if (doorX > -200 && doorX < W + 200) {
+                const door = extrasSheet && (extrasSheet.inter.interactable_object_001 || extrasSheet.deco[0]);
+                if (door) {
+                    const dh2 = 84, dw2 = dh2 * (door.w / door.h);
+                    g.imageSmoothingEnabled = false;
+                    g.drawImage(extrasSheet.canvas, door.x, door.y, door.w, door.h,
+                                doorX - (dw2 / 2) * sc, (DUN_GROUND - dh2) * sc, dw2 * sc, dh2 * sc);
+                } else {
+                    // Puerta procedural: arco con brillo dorado
+                    const dh2 = 90 * sc, dw2 = 56 * sc;
+                    g.fillStyle = '#2a1a0e'; g.fillRect(doorX - dw2 / 2, (DUN_GROUND * sc) - dh2, dw2, dh2);
+                    g.strokeStyle = '#e8b040'; g.lineWidth = 3 * sc;
+                    g.beginPath(); g.arc(doorX, (DUN_GROUND * sc) - dh2, dw2 / 2, Math.PI, 0); g.stroke();
+                    g.strokeRect(doorX - dw2 / 2, (DUN_GROUND * sc) - dh2, dw2, dh2);
+                    g.shadowColor = '#ffc040'; g.shadowBlur = 14 * sc;
+                    g.fillStyle = 'rgba(255,180,40,0.18)'; g.fillRect(doorX - dw2 / 2, (DUN_GROUND * sc) - dh2, dw2, dh2);
+                    g.shadowBlur = 0;
+                }
             }
         }
         // Plataformas: antes 12u de grosor y sin sombra ni contorno — a la
@@ -3109,25 +3216,48 @@
     }
     function drawHero4(px, py, sc, h, t) {
         // Halo + sombra en los pies: despega al héroe del suelo (con o sin arte)
-        dunHalo(px, DUN_GROUND * (H / DUN_H), 22 * sc);
+        dunHalo(px, DUN_GROUND * (H / DUN_H), 24 * sc);
         g.fillStyle = 'rgba(6,8,10,0.34)';
-        g.beginPath(); g.ellipse(px, DUN_GROUND * (H / DUN_H) + 3 * sc, 16 * sc, 5 * sc, 0, 0, 7); g.fill();
-        // Con la hoja real (procesada: fondo transparente + atlas automático):
-        // frame de la fila del estado, anclado a los PIES y escalado a un
-        // cuerpo de referencia constante — los frames de ataque son más
-        // grandes (espada extendida) y se dibujan más grandes, sin encoger
-        // el cuerpo, que era lo que se veía mal con el recorte a ojo.
+        g.beginPath(); g.ellipse(px, DUN_GROUND * (H / DUN_H) + 3 * sc, 18 * sc, 6 * sc, 0, 0, 7); g.fill();
+        // Nuevo knight sheet (TexturePacker 192×192): toma prioridad sobre el héroe anterior.
+        if (knightSheet) {
+            let kState = h.state;
+            if (h.done) kState = 'victory';               // llega a la puerta → celebración
+            else if (kState === 'run') kState = 'walk';
+            else if (kState === 'fall') kState = 'jump';
+            else if (kState === 'die') kState = 'death';
+            const fr = knightSheet.rows[kState] || knightSheet.rows.idle;
+            const fps = HERO_FPS[kState] || 8;
+            const raw = Math.floor(h.animT * fps);
+            const noLoop = kState === 'death' || kState === 'victory';
+            const fi = noLoop ? Math.min(fr.length - 1, raw) : raw % fr.length;
+            const f = fr[Math.min(fi, fr.length - 1)];
+            const s2 = (96 / knightSheet.ref) * sc; // caballero: 96 unidades de mundo de altura
+            g.save();
+            g.translate(px, py);
+            if (h.dir !== (HERO_FACE[h.state] || 1)) g.scale(-1, 1);
+            g.imageSmoothingEnabled = true; // sprites grandes → suavizado
+            g.drawImage(knightSheet.canvas, f.x, f.y, f.w, f.h, -f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
+            if (h.state === 'damage') { // destello de daño encima del sprite
+                g.globalAlpha = 0.45; g.fillStyle = '#ff3030';
+                g.fillRect(-f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
+                g.globalAlpha = 1;
+            }
+            g.restore();
+            return;
+        }
+        // Héroe anterior (sprite más pequeño, pixel art)
         if (heroSheet) {
             const fr = heroSheet.rows[h.state] || heroSheet.rows.idle;
             const fps = HERO_FPS[h.state] || 8;
             const raw = Math.floor(h.animT * fps);
-            const fi = h.state === 'die' ? Math.min(fr.length - 1, raw) : raw % fr.length; // die no se repite
+            const fi = h.state === 'die' ? Math.min(fr.length - 1, raw) : raw % fr.length;
             const f = fr[fi];
-            const s2 = (78 / heroSheet.ref) * sc; // px del sheet → pantalla, cuerpo = 78u
+            const s2 = (78 / heroSheet.ref) * sc;
             g.save();
             g.translate(px, py);
             if (h.dir !== (HERO_FACE[h.state] || 1)) g.scale(-1, 1);
-            g.imageSmoothingEnabled = false; // píxel art nítido
+            g.imageSmoothingEnabled = false;
             g.drawImage(heroSheet.canvas, f.x, f.y, f.w, f.h, -f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
             g.restore();
             return;
@@ -5183,12 +5313,16 @@
         get enemies() { return dunEnemies; },
         get shots() { return dunShots; },
         get heroSheet() { return heroSheet; },
+        get knightSheet() { return knightSheet; },
         get enemySheet() { return enemySheet; },
+        get extrasSheet() { return extrasSheet; },
+        get dungeonTilesetSheet() { return dungeonTilesetSheet; },
         // tests: hoja + atlas sintéticos (dataURL + objeto JS), sin pasar por fetch()
         setHeroSheet(url, atlas) { const img = new Image(); img.onload = () => buildHeroSheet(img, atlas); img.src = url; },
+        setKnightSheet(url, atlas) { const img = new Image(); img.onload = () => buildKnightSheet(img, atlas); img.src = url; },
         setEnemySheet(url, atlas) { const img = new Image(); img.onload = () => buildEnemySheet(img, atlas); img.src = url; },
         setExtrasSheet(url, atlas) { const img = new Image(); img.onload = () => buildExtrasSheet(img, atlas); img.src = url; },
-        get extrasSheet() { return extrasSheet; },
+        setDungeonTilesetSheet(url, atlas) { const img = new Image(); img.onload = () => buildDungeonTilesetSheet(img, atlas); img.src = url; },
         heroAttack, heroJump,
         dunLen: DUN_LEN,
         goLevel5: switchToLevel5,

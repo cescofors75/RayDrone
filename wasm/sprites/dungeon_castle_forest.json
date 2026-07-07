@@ -1,0 +1,53 @@
+{
+  "tileSize": 64,
+  "columns": 24,
+  "imageSize": {"w": 1728, "h": 1152},
+  "tilesets": {
+    "dungeon": {
+      "start": 0,
+      "frames": [
+        "dun_floor", "dun_wall", "dun_floor_crack", "dun_wall_moss",
+        "dun_ceiling", "dun_arch", "dun_pillar_top", "dun_pillar_bot",
+        "dun_spikes", "dun_cage", "dun_skull", "dun_candle"
+      ]
+    },
+    "castle": {
+      "start": 96,
+      "frames": [
+        "cas_floor", "cas_wall", "cas_wall_window",
+        "cas_bookshelf", "cas_table", "cas_chair",
+        "cas_chains", "cas_chest", "cas_torch", "cas_candle"
+      ]
+    },
+    "forest": {
+      "start": 192,
+      "frames": [
+        "for_grass", "for_bush", "for_mushroom", "for_rock",
+        "for_lantern", "for_sign", "for_stump", "for_fern",
+        "for_flower", "for_log", "for_vine"
+      ]
+    },
+    "graveyard": {
+      "start": 260,
+      "frames": [
+        "grav_stone", "grav_cross", "grav_bone",
+        "grav_coffin", "grav_tomb", "grav_flower",
+        "grav_web", "grav_coffin_lid", "grav_rune"
+      ]
+    },
+    "props": {
+      "start": 320,
+      "frames": [
+        "prop_barrel", "prop_crate", "prop_sack", "prop_anvil",
+        "prop_cauldron", "prop_shelf", "prop_lamp", "prop_bell",
+        "prop_flag", "prop_shield", "prop_sword_rack", "prop_armor"
+      ]
+    }
+  },
+  "backgrounds": {
+    "forest_bridge":   {"x":  640, "y":  832, "w": 512, "h": 320},
+    "castle_night":    {"x":  704, "y":  384, "w": 512, "h": 320},
+    "castle_red_sky":  {"x": 1216, "y":  384, "w": 512, "h": 320},
+    "forest_dark":     {"x": 1152, "y":  704, "w": 576, "h": 448}
+  }
+}
