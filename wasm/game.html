@@ -182,6 +182,12 @@
                 <div><kbd>Z</kbd> <kbd>espacio</kbd> clic — uzi</div>
                 <div><kbd>X</kbd> bazooka · <kbd>C</kbd> bombardeo</div>
             </div>
+            <div class="grp">
+                <b>Nivel 6 · MMA</b>
+                <div><kbd>←</kbd> <kbd>→</kbd> moverse · <kbd>↑</kbd> saltar · <kbd>↓</kbd> guardia</div>
+                <div><kbd>Z</kbd> <kbd>espacio</kbd> clic — puñetazo (agarre si estás pegado)</div>
+                <div><kbd>X</kbd> patada (↓+X = baja) · <kbd>C</kbd> especial/derribo</div>
+            </div>
         </div>
         <div class="overlay" id="start-overlay">
             <div style="font-size:1.15rem; font-weight:bold; letter-spacing:1px;">🏍 RAYRUNNER</div>
@@ -280,6 +286,13 @@
             suministros y los sacos terreros paran las balas. Llega al <b>helipuerto (H)</b> para la
             extracción: ahí se completa el juego (+1500).
             <br><br>
+            <b>Nivel 6 · MMA</b> — duelo 1v1 en el octógono, estilo Street Fighter: <b>← →</b> te mueves,
+            <b>↑</b> saltas, <b>↓</b> mantenida es guardia (bloquea la mayoría del daño). <b>Z</b>/<b>espacio</b>/clic
+            reparte un <b>puñetazo</b> (si estás muy pegado, agarra y da un <b>rodillazo</b>). <b>X</b> patea —
+            <b>baja</b> si mantienes <b>↓</b>, <b>media</b> en el suelo, <b>alta</b> en el aire. <b>C</b> es tu
+            movimiento especial: un <b>puñetazo con embestida</b> a media distancia o un <b>derribo</b> a distancia
+            de agarre. Gana el asalto por <b>K.O.</b> o, si se acaba el reloj, quien tenga más vida.
+            <br><br>
             Cada nivel tiene su propia música de 24s, generada en vivo: tu <b>combo</b> controla N (la densidad
             de rayos) — juega bien y la textura converge limpia; recibe un golpe y se rompe en polvo granular.
             <br><br>
@@ -302,6 +315,7 @@
             <button class="btn sec train-lvl" data-lvl="3">☀️ <b>Nivel 3</b><span>Mismo circuito, de día e inverso</span></button>
             <button class="btn sec train-lvl" data-lvl="4">🗡 <b>Nivel 4</b><span>Mazmorra</span></button>
             <button class="btn sec train-lvl" data-lvl="5">🪖 <b>Nivel 5</b><span>Komandos (cenital)</span></button>
+            <button class="btn sec train-lvl" data-lvl="6">🥊 <b>Nivel 6</b><span>MMA · Octógono</span></button>
         </div>
     </div>
 </div>
@@ -666,7 +680,7 @@
     const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (niveles 2-3)
 
     const zones = () => st.level === 1 ? ZONES_SPACE : (st.level === 2 || st.level === 3) ? ZONES_NEON
-                      : st.level === 5 ? ZONES_KOMANDOS : ZONES_DUNGEON;
+                      : st.level === 5 ? ZONES_KOMANDOS : st.level === 6 ? ZONES_MMA : ZONES_DUNGEON;
 
     // Nivel 3 = el mismo circuito del nivel 2, recorrido en sentido inverso.
     // La geometría (asfalto, edificios, pilones...) no cambia — solo la MANERA
@@ -729,8 +743,8 @@
         $('btn-b').innerText = st.level === 1 ? '▼' : '▶';
         // En la mazmorra los botones centrales pasan a ser espada y salto (en
         // táctil no hay teclado): los handlers miran st.level para redirigir.
-        $('btn-fire').innerText = st.level === 4 ? '⚔' : '🚀';
-        $('btn-bomb').innerText = st.level === 4 ? '⬆' : '💣';
+        $('btn-fire').innerText = st.level === 4 ? '⚔' : st.level === 6 ? '👊' : '🚀';
+        $('btn-bomb').innerText = st.level === 4 ? '⬆' : st.level === 6 ? '🦵' : '💣';
     }
     const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
     function banner(text) { st.banner = text; st.bannerTtl = 1; }
@@ -769,6 +783,7 @@
         else if (n === 3) switchToLevel3();
         else if (n === 4) switchToLevel4(); // mazmorra
         else if (n === 5) switchToLevel5(); // komandos
+        else if (n === 6) switchToLevel6(); // MMA
     }
     $('train-btn').addEventListener('click', showTrain);
     $('train-close').addEventListener('click', hideTrain);
@@ -1171,13 +1186,16 @@
         else if ((st.level === 2 || st.level === 3 || st.level === 5) && up) keys.u = true;   // acelerador / andar arriba
         else if ((st.level === 2 || st.level === 3 || st.level === 5) && down) keys.d = true; // freno / andar abajo
         else if (st.level === 4 && up) { if (!e.repeat) heroJump(); }        // mazmorra: saltar
-        else if (kk === 'x') { if (!e.repeat) fireMissile(); }
-        else if (kk === 'c') { if (!e.repeat) useBomb(); }
+        else if (st.level === 6 && up) { if (!e.repeat) mmaJump(); }         // MMA: saltar
+        else if (st.level === 6 && down) keys.d = true;                     // MMA: mantener = guardia
+        else if (kk === 'x') { if (!e.repeat) { if (st.level === 6) mmaKick(); else fireMissile(); } }
+        else if (kk === 'c') { if (!e.repeat) { if (st.level === 6) mmaSpecial(); else useBomb(); } }
         else if (kk === 'v') { if (!e.repeat && (st.level === 2 || st.level === 3)) cycleCamera(); }
         else if (kk === 'h') { if (!e.repeat) toggleKeysSidebar(); }
         else if (kk === 'z' || kk === ' ') {
             // mazmorra: Z = tajo de espada, espacio = salto; resto: bláster
             if (st.level === 4) { if (!e.repeat) (kk === ' ' ? heroJump() : heroAttack()); }
+            else if (st.level === 6) { if (!e.repeat) (kk === ' ' ? mmaJump() : mmaPunch()); }
             else fireBlaster(); // mantener = autofuego (con cadencia)
         }
         else if (kk === 'p' && st.playing) { st.paused ? resumeGame() : pauseGame(); }
@@ -1203,8 +1221,8 @@
     holdBtn('btn-b', 'b');
     // En la mazmorra (N4) los botones centrales se reetiquetan a ⚔/⬆ y pasan
     // a ser espada y salto — en táctil no hay teclado (ver relabelButtons).
-    $('btn-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); st.level === 4 ? heroAttack() : fireMissile(); });
-    $('btn-bomb').addEventListener('pointerdown', (e) => { e.preventDefault(); st.level === 4 ? heroJump() : useBomb(); });
+    $('btn-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); if (st.level === 4) heroAttack(); else if (st.level === 6) mmaPunch(); else fireMissile(); });
+    $('btn-bomb').addEventListener('pointerdown', (e) => { e.preventDefault(); if (st.level === 4) heroJump(); else if (st.level === 6) mmaKick(); else useBomb(); });
     // Arrastre: en nivel 1 la nave sigue la ALTURA del dedo; en nivel 2, su X.
     let dragging = false;
     function dragTo(e) {
@@ -1224,6 +1242,7 @@
         downT = performance.now(); downX = e.clientX; downY = e.clientY;
         if (e.pointerType === 'mouse') {
             if (st.level === 4) heroAttack(); // mazmorra: clic = tajo
+            else if (st.level === 6) mmaPunch(); // MMA: clic = puñetazo
             else fireBlaster();
         }
         else dragTo(e); // N4 incluido: dedo apoyado a un lado = andar hacia ahí
@@ -1235,7 +1254,7 @@
         // Toque corto (sin arrastre) = bláster en N1-N3, SALTO en la mazmorra
         if (e.pointerType !== 'mouse' && performance.now() - downT < 220 &&
             Math.hypot(e.clientX - downX, e.clientY - downY) < 12) {
-            if (st.level === 4) heroJump(); else fireBlaster();
+            if (st.level === 4) heroJump(); else if (st.level === 6) mmaJump(); else fireBlaster();
         }
         dragEnd();
     });
@@ -2516,14 +2535,46 @@
         const W2 = c.width, H2 = c.height;
         const d = x.getImageData(0, 0, W2, H2), px = d.data;
         const bg = sampleBgColor(px, W2, H2);
-        const TOL2 = 26 * 26;
+        const TOL2 = 30 * 30;
         let removed = 0;
         for (let i4 = 0; i4 < px.length; i4 += 4) {
             const dr = px[i4] - bg[0], dg = px[i4 + 1] - bg[1], db = px[i4 + 2] - bg[2];
             if (dr * dr + dg * dg + db * db < TOL2) { px[i4 + 3] = 0; removed++; }
         }
+        // Defringe: pela el HALO de color-de-fondo que queda en el borde del
+        // sprite (píxeles anti-alias entre sprite y fondo). Sin esto, al mover
+        // el sprite se ven "píxeles raros" alrededor. Solo toca píxeles de
+        // BORDE (adyacentes a transparente) cuyo color tira hacia el fondo, así
+        // el interior del sprite no se toca. 2 pasadas.
+        const HALO2 = 72 * 72;
+        for (let pass = 0; pass < 2; pass++) {
+            const toClear = [];
+            for (let y = 0; y < H2; y++) {
+                const rowo = y * W2;
+                for (let xx = 0; xx < W2; xx++) {
+                    const i4 = (rowo + xx) * 4;
+                    if (px[i4 + 3] === 0) continue;
+                    const up = y > 0 ? px[((rowo - W2) + xx) * 4 + 3] : 0;
+                    const dn = y < H2 - 1 ? px[((rowo + W2) + xx) * 4 + 3] : 0;
+                    const lf = xx > 0 ? px[(rowo + xx - 1) * 4 + 3] : 0;
+                    const rt = xx < W2 - 1 ? px[(rowo + xx + 1) * 4 + 3] : 0;
+                    if (up && dn && lf && rt) continue; // interior: no tocar
+                    const dr = px[i4] - bg[0], dg = px[i4 + 1] - bg[1], db = px[i4 + 2] - bg[2];
+                    if (dr * dr + dg * dg + db * db < HALO2) toClear.push(i4);
+                }
+            }
+            if (!toClear.length) break;
+            for (let k = 0; k < toClear.length; k++) { px[toClear[k] + 3] = 0; removed++; }
+        }
         x.putImageData(d, 0, 0);
         return { canvas: c, px, w: W2, h: H2, bg, removedFrac: removed / (W2 * H2) };
+    }
+    function canvasFromImage(img) {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const x = c.getContext('2d');
+        x.drawImage(img, 0, 0);
+        return { canvas: c, w: c.width, h: c.height };
     }
     // Recorte fino por frame: mete el rect del atlas unos píxeles hacia dentro
     // (las líneas de rejilla viven en los bordes de celda) y lo encoge a la
@@ -2532,6 +2583,7 @@
     function trimFrame(p, fx, fy, fw, fh, inset) {
         let x0 = Math.max(0, Math.round(fx + inset)), y0 = Math.max(0, Math.round(fy + inset));
         let x1 = Math.min(p.w, Math.round(fx + fw - inset)), y1 = Math.min(p.h, Math.round(fy + fh - inset));
+        if (x1 <= x0 || y1 <= y0) return null;
         let tx0 = x1, ty0 = y1, tx1 = x0, ty1 = y0, any = false;
         for (let yy = y0; yy < y1; yy++) {
             for (let xx = x0; xx < x1; xx++) {
@@ -2542,12 +2594,189 @@
                 }
             }
         }
-        if (!any) return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+        if (!any) return null; // celda totalmente transparente → sin frame
         return { x: tx0, y: ty0, w: tx1 - tx0 + 1, h: ty1 - ty0 + 1 };
     }
+    // Trocea una hoja en una rejilla cols×rows REAL (a partir del tamaño del
+    // PNG cargado, no de meta.size — que en estas hojas viene de otra
+    // exportación y no cuadra). Cada celda se recorta AISLANDO el sprite
+    // central: se proyecta la opacidad por columna/fila y se toma la racha
+    // contigua que contiene el centro, cortando en el hueco transparente que
+    // separa del vecino — así no se cuela un "trozo" del sprite de al lado.
+    function trimCell(p, fx, fy, fw, fh) {
+        const padX = Math.max(2, Math.round(fw * 0.045)), padY = Math.max(2, Math.round(fh * 0.045));
+        const x0 = Math.max(0, Math.round(fx) + padX), x1 = Math.min(p.w, Math.round(fx + fw) - padX);
+        const y0 = Math.max(0, Math.round(fy) + padY), y1 = Math.min(p.h, Math.round(fy + fh) - padY);
+        if (x1 <= x0 || y1 <= y0) return null;
+        const W2 = p.w, px = p.px;
+        const colCnt = new Uint16Array(x1 - x0), rowCnt = new Uint16Array(y1 - y0);
+        for (let yy = y0; yy < y1; yy++) {
+            const base = yy * W2;
+            for (let xx = x0; xx < x1; xx++) {
+                if (px[(base + xx) * 4 + 3] > 28) { colCnt[xx - x0]++; rowCnt[yy - y0]++; }
+            }
+        }
+        // BBox por UMBRAL: una fila/columna cuenta solo si supera ~5% de píxeles
+        // opacos → abarca el cuerpo entero (huecos internos incluidos) pero
+        // descarta los slivers de 1-3px que se cuelan del sprite vecino.
+        const thX = Math.max(2, Math.round((y1 - y0) * 0.05));
+        const thY = Math.max(2, Math.round((x1 - x0) * 0.05));
+        let lx = -1, hx = -1, ly = -1, hy = -1;
+        for (let i = 0; i < colCnt.length; i++) { if (colCnt[i] > thX) { if (lx < 0) lx = i; hx = i; } }
+        for (let i = 0; i < rowCnt.length; i++) { if (rowCnt[i] > thY) { if (ly < 0) ly = i; hy = i; } }
+        if (lx < 0 || ly < 0) return null;
+        return { x: x0 + lx, y: y0 + ly, w: hx - lx + 1, h: hy - ly + 1 };
+    }
+    function sliceSheetGrid(p, cols, rowsN) {
+        const cw = p.w / cols, ch = p.h / rowsN;
+        const G = [];
+        for (let r = 0; r < rowsN; r++) {
+            const rowArr = [];
+            for (let c = 0; c < cols; c++) rowArr.push(trimCell(p, c * cw, r * ch, cw, ch));
+            G.push(rowArr);
+        }
+        return G;
+    }
+    // ── Segmentación por PROYECCIÓN (para hojas SIN rejilla uniforme) ─────────
+    // Estas hojas AI no tienen celdas regulares: filas de distinta altura y
+    // distinto nº de frames, a veces con marcas de regla. En vez de cortar por
+    // rejilla fija (que mete fragmentos del vecino y parte enemigos), detectamos
+    // los frames REALES por los huecos transparentes (proyección de opacidad).
+    function bandsFromProjection(proj, len, minGap, minLen, th) {
+        const bands = []; let s = -1, gap = 0;
+        for (let i = 0; i < len; i++) {
+            if (proj[i] > th) { if (s < 0) s = i; gap = 0; }
+            else if (s >= 0) { gap++; if (gap >= minGap) { bands.push([s, i - gap]); s = -1; gap = 0; } }
+        }
+        if (s >= 0) bands.push([s, len - 1]);
+        return bands.filter((b) => b[1] - b[0] + 1 >= minLen);
+    }
+    function tightBox(p, x, y, w, h) {
+        const W2 = p.w, px = p.px;
+        let x0 = x + w, y0 = y + h, x1 = x, y1 = y, any = false;
+        for (let yy = y; yy < y + h; yy++) {
+            const base = yy * W2;
+            for (let xx = x; xx < x + w; xx++) {
+                if (px[(base + xx) * 4 + 3] > 24) { any = true; if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
+            }
+        }
+        if (!any) return null;
+        return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    }
+    // Devuelve un array de filas; cada fila es un array de frames {x,y,w,h}.
+    function segmentSheet(p, rowsN) {
+        const W2 = p.w, H2 = p.h, px = p.px;
+        const rowP = new Int32Array(H2);
+        for (let y = 0; y < H2; y++) { let n = 0; const base = y * W2; for (let x = 0; x < W2; x += 2) if (px[(base + x) * 4 + 3] > 24) n++; rowP[y] = n; }
+        let bands = bandsFromProjection(rowP, H2, Math.max(4, Math.round(H2 * 0.012)), Math.round(H2 * 0.03), 2);
+        // Si el nº de bandas no cuadra (filas que se tocan), coge la banda de
+        // contenido MÁS GRANDE (ignora reglas/marcas) y divídela en rowsN filas.
+        if (bands.length !== rowsN) {
+            let big = null;
+            for (const b of bands) if (!big || (b[1] - b[0]) > (big[1] - big[0])) big = b;
+            const y0 = big ? big[0] : 0, y1 = big ? big[1] : H2 - 1;
+            bands = [];
+            const hh = (y1 - y0 + 1) / rowsN;
+            for (let r = 0; r < rowsN; r++) bands.push([Math.round(y0 + r * hh), Math.round(y0 + (r + 1) * hh) - 1]);
+        }
+        const rows = [];
+        for (const bd of bands) {
+            const colP = new Int32Array(W2);
+            for (let x = 0; x < W2; x++) { let n = 0; for (let y = bd[0]; y <= bd[1]; y += 2) if (px[(y * W2 + x) * 4 + 3] > 24) n++; colP[x] = n; }
+            let cols = bandsFromProjection(colP, W2, Math.max(3, Math.round(W2 * 0.006)), Math.round(W2 * 0.02), 1);
+            const frames = cols.map((c) => tightBox(p, c[0], bd[0], c[1] - c[0] + 1, bd[1] - bd[0] + 1)).filter(Boolean);
+            rows.push(frames);
+        }
+        return rows;
+    }
+    // Rejilla FIJA cols×rows con MARGEN horizontal (no invade al vecino cuando
+    // los sprites se tocan) y RECORTE vertical al contenido (ancla bien los
+    // pies). Para hojas densas sin huecos (p.ej. enemies.png).
+    function gridFramesFixedX(p, cols, rowsN, insetFrac) {
+        const W2 = p.w, px = p.px, cw = W2 / cols, ch = p.h / rowsN;
+        const inx = Math.round(cw * insetFrac);
+        const G = [];
+        for (let r = 0; r < rowsN; r++) {
+            const row = [];
+            for (let c = 0; c < cols; c++) {
+                const x0 = Math.round(c * cw) + inx, x1 = Math.round((c + 1) * cw) - inx;
+                const yc0 = Math.round(r * ch), yc1 = Math.round((r + 1) * ch);
+                let ty0 = yc1, ty1 = yc0, any = false;
+                for (let yy = yc0; yy < yc1; yy++) {
+                    let cnt = 0;
+                    for (let xx = x0; xx < x1; xx += 2) if (px[(yy * W2 + xx) * 4 + 3] > 24) cnt++;
+                    if (cnt > 2) { any = true; if (yy < ty0) ty0 = yy; if (yy > ty1) ty1 = yy; }
+                }
+                row.push(any ? { x: x0, y: ty0, w: x1 - x0, h: ty1 - ty0 + 1 } : null);
+            }
+            G.push(row);
+        }
+        return G;
+    }
+    // Hojas densas SIN huecos pero con rejilla IRREGULAR (columnas de distinto
+    // ancho que no empiezan en múltiplos exactos, p.ej. enemies.png): filas por
+    // división uniforme del rango vertical de contenido, y bordes de columna
+    // detectados por los VALLES de densidad (las junturas entre sprites que se
+    // tocan), ajustados alrededor de las posiciones esperadas.
+    function framesByRowsAndValleys(p, rowsN, colsN) {
+        const W2 = p.w, H2 = p.h, px = p.px;
+        const rowP = new Int32Array(H2);
+        for (let y = 0; y < H2; y++) { let n = 0; const b = y * W2; for (let x = 0; x < W2; x += 2) if (px[(b + x) * 4 + 3] > 24) n++; rowP[y] = n; }
+        let rmax = 0; for (let y = 0; y < H2; y++) if (rowP[y] > rmax) rmax = rowP[y];
+        // Filas por bandas con umbral RELATIVO: las filas están separadas por
+        // valles de densidad (aunque no lleguen a transparencia total por ruido
+        // o marcas de regla). Así cada banda cubre el sprite ENTERO (no corta
+        // piernas) y respeta filas de distinta altura.
+        let bands = bandsFromProjection(rowP, H2, Math.max(6, Math.round(H2 * 0.008)), Math.round(H2 * 0.035), rmax * 0.12);
+        if (bands.length !== rowsN) {
+            let y0 = 0, y1 = H2 - 1; const rth = rmax * 0.12;
+            while (y0 < H2 && rowP[y0] < rth) y0++;
+            while (y1 > 0 && rowP[y1] < rth) y1--;
+            bands = [];
+            const hh = (y1 - y0 + 1) / rowsN;
+            for (let r = 0; r < rowsN; r++) bands.push([Math.round(y0 + r * hh), Math.round(y0 + (r + 1) * hh) - 1]);
+        }
+        const rows = [];
+        for (const bd of bands) {
+            // Bordes de columna detectados EN ESTA fila (los anchos varían por
+            // criatura), por valles alrededor de las posiciones esperadas.
+            const colP = new Int32Array(W2);
+            for (let x = 0; x < W2; x++) { let n = 0; for (let y = bd[0]; y <= bd[1]; y += 2) if (px[(y * W2 + x) * 4 + 3] > 24) n++; colP[x] = n; }
+            let cmax = 0; for (let x = 0; x < W2; x++) if (colP[x] > cmax) cmax = colP[x];
+            let xL = 0, xR = W2 - 1; const cth = cmax * 0.12;
+            while (xL < W2 && colP[xL] < cth) xL++;
+            while (xR > 0 && colP[xR] < cth) xR--;
+            const span = (xR - xL + 1) / colsN;
+            const edges = [xL];
+            for (let k = 1; k < colsN; k++) {
+                const target = xL + k * span, win = Math.round(span * 0.34);
+                let bx = Math.round(target), bv = Infinity;
+                for (let x = Math.round(target - win); x <= Math.round(target + win); x++) {
+                    if (x <= xL || x >= xR) continue;
+                    if (colP[x] < bv) { bv = colP[x]; bx = x; }
+                }
+                edges.push(bx);
+            }
+            edges.push(xR + 1);
+            const frames = [];
+            for (let c = 0; c < colsN; c++) {
+                const cx0 = edges[c] + 2, cx1 = edges[c + 1] - 2;
+                frames.push(tightBox(p, cx0, bd[0], Math.max(1, cx1 - cx0), bd[1] - bd[0] + 1));
+            }
+            rows.push(frames);
+        }
+        return rows;
+    }
     // Héroe: FPS/dirección por estado — ajustables si el PNG real difiere.
-    const HERO_FPS = { idle: 5, walk: 9, run: 12, jump: 8, fall: 8, attack: 26, damage: 12, die: 10 };
-    const HERO_FACE = { idle: 1, walk: 1, run: 1, jump: 1, fall: 1, attack: 1, damage: 1, die: 1 };
+    const HERO_FPS = {
+        idle: 5, walk: 9, run: 12, jump: 8, fall: 8, attack: 26, damage: 12, die: 10,
+        // hero2.png (movimientos especiales): correr-atacar, subida de nivel, ballesta.
+        runAttack: 16, hurt: 14, levelup: 8, crossbowIdle: 6, crossbowFire: 16, crossbowHurt: 14,
+    };
+    const HERO_FACE = {
+        idle: 1, walk: 1, run: 1, jump: 1, fall: 1, attack: 1, damage: 1, die: 1,
+        runAttack: 1, hurt: 1, levelup: 1, crossbowIdle: 1, crossbowFire: 1, crossbowHurt: 1,
+    };
     let heroSheet = null; // {canvas, rows:{estado:[frames]}, ref} — null = placeholder
     function framesFromAtlas(atlas, prefix, p) {
         // Agrupa las claves "prefix_estado_N" del atlas en {estado: [frame,...]}
@@ -2565,41 +2794,130 @@
         for (const s2 in rows) rows[s2] = rows[s2].filter(Boolean); // por si algún índice quedó hueco
         return rows;
     }
-    function buildHeroSheet(img, atlas) {
+    function framesFromTexturePacker(atlas, p) {
+        // Soporta atlas tipo TexturePacker: { frames: { idle_01:{frame:{x,y,w,h}}, ... } }
+        const rows = {};
+        const src = atlas && atlas.frames;
+        if (!src || typeof src !== 'object') return rows;
+        const mw = +(atlas && atlas.meta && atlas.meta.size && atlas.meta.size.w) || p.w;
+        const mh = +(atlas && atlas.meta && atlas.meta.size && atlas.meta.size.h) || p.h;
+        let maxX = 0, maxY = 0;
+        for (const key in src) {
+            const fr = src[key] && src[key].frame;
+            if (!fr) continue;
+            maxX = Math.max(maxX, fr.x + fr.w);
+            maxY = Math.max(maxY, fr.y + fr.h);
+        }
+        // Si el ancho encaja y solo hay desajuste pequeño vertical por export,
+        // las coords son pixels reales. Se clampan los frames que rozan el borde.
+        const useDirectPixels = maxX <= p.w + 1 && maxY <= p.h + Math.max(2, p.h * 0.04);
+        const kx = useDirectPixels ? 1 : p.w / mw;
+        const ky = useDirectPixels ? 1 : p.h / mh;
+        for (const key in src) {
+            const m = key.match(/^([a-zA-Z]+)_0*(\d+)$/);
+            if (!m) continue;
+            const state = m[1].toLowerCase();
+            const idx = Math.max(0, (+m[2] || 1) - 1);
+            const fr = src[key] && src[key].frame;
+            if (!fr) continue;
+            // Si el PNG se reescalo respecto al atlas, ajusta coordenadas.
+            const rect = trimFrame(p, fr.x * kx, fr.y * ky, fr.w * kx, fr.h * ky, 1);
+            if (rect) (rows[state] || (rows[state] = []))[idx] = rect;
+        }
+        for (const s2 in rows) rows[s2] = rows[s2].filter(Boolean);
+        return rows;
+    }
+    function rectsFromGridIndices(indices, meta, p, inset) {
+        const m = meta || {};
+        let fw = +m.frameWidth || 0, fh = +m.frameHeight || 0;
+        const spacing = +m.spacing || 0, margin = +m.margin || 0;
+        const cols = +m.columns || 0;
+        const rows = +m.rows || 0;
+        // Si frameWidth/frameHeight no encajan con el PNG real, infiere celda
+        // por columnas/filas declaradas (caso habitual tras reescalar atlas).
+        if (!(fw > 0 && fh > 0) || (cols > 0 && rows > 0 &&
+            (Math.abs((fw * cols + spacing * (cols - 1) + margin * 2) - p.w) > p.w * 0.08 ||
+             Math.abs((fh * rows + spacing * (rows - 1) + margin * 2) - p.h) > p.h * 0.08))) {
+            if (cols > 0) fw = (p.w - margin * 2 - spacing * (cols - 1)) / cols;
+            if (rows > 0) fh = (p.h - margin * 2 - spacing * (rows - 1)) / rows;
+        }
+        if (!(fw > 0 && fh > 0)) return [];
+        const useCols = cols || Math.max(1, Math.floor((p.w - margin * 2 + spacing) / (fw + spacing)));
+        return (indices || []).map((idx) => {
+            const n = +idx;
+            if (!Number.isFinite(n) || n < 0) return null;
+            const c = n % useCols, r = Math.floor(n / useCols);
+            const x = margin + c * (fw + spacing), y = margin + r * (fh + spacing);
+            return trimFrame(p, x, y, fw, fh, inset);
+        }).filter(Boolean);
+    }
+    function buildHeroSheet(img) {
+        // hero.png: 6 filas de animación (idle, andar/correr, ataque, salto,
+        // daño+muerte, extra), pero SIN rejilla uniforme → segmentamos por
+        // proyección para coger los frames REALES (sin fragmentos del vecino).
         const p = stripBg(img);
-        if (p.removedFrac < 0.03 || p.removedFrac > 0.85) {
-            console.warn(`RayRunner: sprites/hero.png — la limpieza de fondo quitó un ${(p.removedFrac * 100).toFixed(0)}% de la imagen (color de fondo detectado ≈ rgb(${p.bg.map((v) => v | 0).join(',')})); esto suele indicar que el fondo no es uniforme. Revisando igualmente.`);
+        const R = segmentSheet(p, 6);
+        const half = (arr) => Math.ceil((arr || []).length / 2);
+        const r0 = R[0] || [], r1 = R[1] || [], r2 = R[2] || [], r3 = R[3] || [], r4 = R[4] || [];
+        const rows = {
+            idle: r0,
+            walk: r1, run: r1,
+            attack: r2,
+            jump: r3.slice(0, half(r3)), fall: r3.slice(half(r3)),
+            damage: r4.slice(0, 2), die: r4.slice(2),
+        };
+        const base = r0.length ? r0 : (r1.length ? r1 : null);
+        if (!base) { heroSheet = null; console.warn('RayRunner: hero.png no produjo frames; usando héroe placeholder.'); return; }
+        for (const k of ['idle', 'walk', 'run', 'jump', 'fall', 'attack', 'damage', 'die']) {
+            if (!rows[k] || !rows[k].length) rows[k] = base;
         }
-        const rows = framesFromAtlas(atlas, 'hero', p);
-        const need = ['idle', 'walk', 'run', 'jump', 'fall', 'attack', 'damage', 'die'];
-        const missing = need.filter((s2) => !rows[s2] || !rows[s2].length);
-        if (missing.length) {
-            heroSheet = null;
-            console.warn(`RayRunner: sprites/hero.json no define frames para: ${missing.join(', ')}. Usando héroe placeholder.`);
-            return;
-        }
-        // Escala de referencia: alto del primer frame de idle = el "cuerpo" del
-        // héroe → 78 unidades de mundo. Los frames de ataque (más anchos/altos
-        // por la espada extendida) se dibujan más grandes SIN encoger el cuerpo.
         heroSheet = { canvas: p.canvas, rows, ref: rows.idle[0].h };
     }
-    let enemySheet = null; // {canvas, rows:{tipo:[7 frames: idle,walk×2,attack×2,hit,die]}}
-    function buildEnemySheet(img, atlas) {
+    // hero2.png: movimientos especiales (correr-atacar, subida de nivel,
+    // disparo de ballesta). A diferencia de hero.png, este atlas trae
+    // COORDENADAS EXACTAS en píxeles (generadas por análisis real de la
+    // imagen) — no hace falta heurística de segmentación, solo recortar al
+    // contenido opaco tras el chroma-key.
+    let hero2Sheet = null; // {canvas, rows:{estado:[frames]}, ref}
+    function buildHero2Sheet(img, atlas) {
         const p = stripBg(img);
-        if (p.removedFrac < 0.03 || p.removedFrac > 0.85) {
-            console.warn(`RayRunner: sprites/enemies.png — la limpieza de fondo quitó un ${(p.removedFrac * 100).toFixed(0)}% de la imagen (color de fondo detectado ≈ rgb(${p.bg.map((v) => v | 0).join(',')})); esto suele indicar que el fondo no es uniforme. Revisando igualmente.`);
-        }
-        const types = ['slime', 'goblin', 'skeleton', 'bat', 'orc', 'wolf', 'shroom', 'ghost', 'eye', 'mage'];
-        const cols = ['idle_0', 'walk_0', 'walk_1', 'attack_0', 'attack_1', 'hit_0', 'die_0'];
-        const inset = Math.max(2, p.w * 0.004);
+        const src = atlas && atlas.frames;
+        const anims = atlas && atlas.animations;
+        if (!src || !anims) { hero2Sheet = null; return; }
         const rows = {};
-        for (const t2 of types) {
-            const frames = cols.map((c) => { const f = atlas[`${t2}_${c}`]; return f ? trimFrame(p, f.x * p.w, f.y * p.h, f.w * p.w, f.h * p.h, inset) : null; });
-            if (frames.every(Boolean)) rows[t2] = frames;
+        for (const state in anims) {
+            const list = (anims[state] || []).map((name) => {
+                const f = src[name];
+                return f ? trimFrame(p, f.x, f.y, f.w, f.h, 1) : null;
+            }).filter(Boolean);
+            if (list.length) rows[state] = list;
         }
-        if (Object.keys(rows).length < 6) {
+        if (!rows.run) { hero2Sheet = null; return; }
+        hero2Sheet = { canvas: p.canvas, rows, ref: rows.run[0].h };
+    }
+    let enemySheet = null; // {canvas, rows:{tipo:[7 frames: idle,walk×2,attack×2,hit,die]}}
+    function buildEnemySheet(img) {
+        // enemies.png: 6 criaturas (una por fila) pero SIN rejilla uniforme y con
+        // filas que se tocan → segmentamos por proyección (con fallback a 6 filas
+        // iguales). Columnas por fila: idle, andar1, andar2, ataque, golpe, muerte.
+        //   filas: 0 goblin · 1 esqueleto · 2 orco · 3 slime · 4 murciélago · 5 caballero oscuro
+        const p = stripBg(img);
+        const R = framesByRowsAndValleys(p, 6, 6);
+        const rowOf = { goblin: 0, skeleton: 1, shroom: 2, slime: 3, bat: 4, wolf: 5 };
+        const rows = {};
+        for (const t2 in rowOf) {
+            const gr = R[rowOf[t2]];
+            if (!gr) continue;
+            const idle = gr[0] || gr[1];
+            if (!idle) continue;
+            const w1 = gr[1] || idle, w2 = gr[2] || w1;
+            const at = gr[3] || idle, hit = gr[4] || at, die = gr[5] || hit;
+            // Orden que consume drawEnemy4: [idle, walk0, walk1, attack0, attack1, hit, die]
+            rows[t2] = [idle, w1, w2, at, at, hit, die];
+        }
+        if (Object.keys(rows).length < 5) {
             enemySheet = null;
-            console.warn(`RayRunner: sprites/enemies.json solo define ${Object.keys(rows).length} criaturas completas (hacen falta ≥6, de: ${types.join('/')}). Usando placeholders.`);
+            console.warn(`RayRunner: enemies.png solo produjo ${Object.keys(rows).length} criaturas; usando placeholders.`);
             return;
         }
         enemySheet = { canvas: p.canvas, rows };
@@ -2610,26 +2928,82 @@
     // atlas sigue valiendo si el PNG se exporta a otra resolución.
     let extrasSheet = null; // {canvas, bg:{id:rect}, deco:[rects], inter:{id:rect}}
     function buildExtrasSheet(img, atlas) {
-        const p = stripBg(img);
+        // extras.png contiene fondos completos; no se debe hacer chroma-key
+        // global aquí o se arrancan masas oscuras del background.
+        const p = canvasFromImage(img);
         const ms = (atlas.meta && atlas.meta.atlasSize) || { w: p.w, h: p.h };
         const kx = p.w / ms.w, ky = p.h / ms.h;
-        const px2 = (r) => ({ x: r.x * kx, y: r.y * ky, w: r.w * kx, h: r.h * ky });
+        const px2 = (r) => {
+            const x = Math.max(0, r.x * kx), y = Math.max(0, r.y * ky);
+            const x2 = Math.min(p.w, (r.x + r.w) * kx), y2 = Math.min(p.h, (r.y + r.h) * ky);
+            if (x2 <= x || y2 <= y) return null;
+            return { x, y, w: x2 - x, h: y2 - y };
+        };
         const bg = {};
-        for (const b of atlas.backgrounds || []) bg[b.id] = px2(b);
+        // Formato legacy: backgrounds = [{id,x,y,w,h}, ...]
+        for (const b of (Array.isArray(atlas.backgrounds) ? atlas.backgrounds : [])) {
+            const r = px2(b); if (r) bg[b.id] = r;
+        }
+        // Formato nuevo: backgrounds = { id:{x,y,w,h}, ... }
+        if (atlas.backgrounds && !Array.isArray(atlas.backgrounds)) {
+            for (const id in atlas.backgrounds) { const r = px2(atlas.backgrounds[id]); if (r) bg[id] = r; }
+        }
         const deco = [], inter = {};
         for (const o of atlas.objects || []) {
-            if (o.group === 'environment_decorations') deco.push(px2(o.frame));
-            else if (o.group === 'interactable_objects') inter[o.id] = px2(o.frame);
+            const r = px2(o.frame);
+            if (!r) continue;
+            if (o.group === 'environment_decorations') deco.push(r);
+            else if (o.group === 'interactable_objects') inter[o.id] = r;
+        }
+        // Formato nuevo tileset_atlas: genera deco/inter desde la grilla.
+        if ((!deco.length || !Object.keys(inter).length) && atlas.tilesets && atlas.meta && atlas.meta.tileSize) {
+            const ts = +atlas.meta.tileSize;
+            const cols = +atlas.meta.columns || Math.max(1, Math.floor(p.w / ts));
+            const rectAt = (idx) => {
+                const c = idx % cols, r = Math.floor(idx / cols);
+                return px2({ x: c * ts, y: r * ts, w: ts, h: ts });
+            };
+            const takeSet = (name) => atlas.tilesets[name] && Array.isArray(atlas.tilesets[name].frames) ? atlas.tilesets[name] : null;
+            for (const name of ['props', 'forest', 'graveyard', 'castle']) {
+                const set = takeSet(name);
+                if (!set) continue;
+                for (let i = 0; i < set.frames.length; i++) { const r = rectAt((+set.start || 0) + i); if (r) deco.push(r); }
+            }
+            const dSet = takeSet('dungeon');
+            if (dSet) {
+                const doorI = dSet.frames.indexOf('dungeon_door');
+                if (doorI >= 0) { const r = rectAt((+dSet.start || 0) + doorI); if (r) inter.interactable_object_001 = r; }
+            }
+        }
+        // Fondo del hall gótico (castillo de cielo rojo): rect LIMPIO verificado
+        // por escaneo (el rojo empieza en x≈1120; antes de ahí es el castillo azul).
+        if (!bg.castle_hall) { const r = px2({ x: 1120, y: 384, w: 400, h: 320 }); if (r) bg.castle_hall = r; }
+        // Mapa nombre→rect de TODOS los tiles del tileset (para plataformas /
+        // props concretos, p.ej. `castle_bridge`, `dungeon_floor_01`).
+        const named = {};
+        if (atlas.tilesets && atlas.meta && atlas.meta.tileSize) {
+            const ts2 = +atlas.meta.tileSize;
+            const cols2 = +atlas.meta.columns || Math.max(1, Math.floor(p.w / ts2));
+            for (const setName in atlas.tilesets) {
+                const set = atlas.tilesets[setName];
+                if (!set || !Array.isArray(set.frames)) continue;
+                set.frames.forEach((nm, i) => {
+                    const idx = (+set.start || 0) + i;
+                    const c = idx % cols2, r = Math.floor(idx / cols2);
+                    const rr = px2({ x: c * ts2, y: r * ts2, w: ts2, h: ts2 });
+                    if (rr && nm) named[nm] = rr;
+                });
+            }
         }
         if (!Object.keys(bg).length && !deco.length) {
             extrasSheet = null;
             console.warn('RayRunner: sprites/extras.json no trae backgrounds ni objects utilizables. Ignorando.');
             return;
         }
-        extrasSheet = { canvas: p.canvas, bg, deco, inter };
+        extrasSheet = { canvas: p.canvas, bg, deco, inter, named };
     }
-    // Bioma → fondo del sheet de extras (el desierto queda de reserva)
-    const BIOME_BG = ['bg_forest', 'bg_mountains', 'bg_ruins', 'bg_cave'];
+    // Bioma → fondo del sheet de extras (formato nuevo de extras.json).
+    const BIOME_BG = ['castle_hall', 'castle_hall', 'castle_night', 'castle_hall'];
     // fetch({cache:'no-store'}) para el PNG y el JSON: evita que el navegador
     // sirva una versión CACHEADA si reemplazas el archivo sin cambiar el
     // nombre (por eso "antes cargaba y ahora no" — el 304 de la consola del
@@ -2652,7 +3026,9 @@
     function ensureDungeonAssets() {
         if (dunAssetsLoaded) return;
         dunAssetsLoaded = true;
-        loadSheet('sprites/hero.png', 'sprites/hero.json', buildHeroSheet);       // sin ellos: un warn en consola (dev-only) + placeholder
+        // Nivel 4 usa los atlas legacy de mazmorra.
+        loadSheet('sprites/hero.png', 'sprites/hero.json', buildHeroSheet);
+        loadSheet('sprites/hero2.png', 'sprites/hero2.json', buildHero2Sheet); // movimientos especiales
         loadSheet('sprites/enemies.png', 'sprites/enemies.json', buildEnemySheet);
         loadSheet('sprites/extras.png', 'sprites/extras.json', buildExtrasSheet); // fondos parallax + decoraciones + puerta
     }
@@ -2660,12 +3036,12 @@
     // r = radio de contacto, h = altura, spd = velocidad de persecución,
     // hp = golpes de espada que aguanta, pts = puntos al morir.
     const ETYPES = {
-        slime: { r: 16, h: 26, spd: 0, hp: 1, pts: 20, col: [110, 230, 110] },
-        shroom: { r: 15, h: 32, spd: 0, hp: 2, pts: 35, col: [235, 90, 90] },
-        goblin: { r: 14, h: 46, spd: 105, hp: 2, pts: 40, col: [120, 200, 90] },
-        bat: { r: 14, h: 22, spd: 95, hp: 1, pts: 30, col: [190, 120, 230] },
-        skeleton: { r: 15, h: 56, spd: 90, hp: 3, pts: 50, col: [230, 230, 215] },
-        wolf: { r: 20, h: 30, spd: 330, hp: 2, pts: 60, col: [150, 155, 170] },
+        slime: { r: 16, h: 34, spd: 0, hp: 1, pts: 20, col: [110, 230, 110] },
+        shroom: { r: 15, h: 44, spd: 0, hp: 2, pts: 35, col: [235, 90, 90] },
+        goblin: { r: 14, h: 50, spd: 105, hp: 2, pts: 40, col: [120, 200, 90] },
+        bat: { r: 14, h: 30, spd: 95, hp: 1, pts: 30, col: [190, 120, 230] },
+        skeleton: { r: 15, h: 58, spd: 90, hp: 3, pts: 50, col: [230, 230, 215] },
+        wolf: { r: 20, h: 46, spd: 330, hp: 2, pts: 60, col: [150, 155, 170] },
     };
     const DUN_SPAWNS = [ // por bioma: bosque → montaña → castillo → cripta (más denso al final)
         { x: 560, t: 'slime' }, { x: 900, t: 'shroom' }, { x: 1150, t: 'slime' }, { x: 1420, t: 'goblin' },
@@ -2673,15 +3049,18 @@
         { x: 3360, t: 'skeleton' }, { x: 3620, t: 'goblin' }, { x: 3920, t: 'skeleton' }, { x: 4160, t: 'shroom' }, { x: 4460, t: 'bat' }, { x: 4720, t: 'skeleton' },
         { x: 4960, t: 'wolf' }, { x: 5210, t: 'skeleton' }, { x: 5460, t: 'bat' }, { x: 5710, t: 'goblin' }, { x: 5960, t: 'wolf' }, { x: 6160, t: 'skeleton' },
     ];
-    let dunEnemies = [], dunShots = [], dunHearts = []; // enemigos vivos + esporas de las setas + corazones sueltos
+    let dunEnemies = [], dunShots = [], dunHearts = [], dunBolts = []; // + saetas de ballesta del héroe
+    let dunCrossbowPickup = null; // extra que se encuentra en la mazmorra: da la ballesta
     function switchToLevel4() {
         st.level = 4;
         st.zone = -1;
         st.worldT = 0;
         st.touchTarget = null; st.touchTargetX = null; st.touchThrottle = 0;
         st.hero = { x: 60, y: DUN_GROUND, vx: 0, vy: 0, dir: 1, state: 'idle', animT: 0, attackT: 0,
-                    onGround: true, maxX: 60, done: false, doneT: 0, invulnT: 0, hurtT: 0, swingId: 0 };
+                    onGround: true, maxX: 60, done: false, doneT: 0, invulnT: 0, hurtT: 0, swingId: 0,
+                    weapon: 'sword', crossbowCd: 0, levelupT: 0, powerT: 0 };
         st.camX = 0;
+        st.dunKills = 0; // cuenta las bajas de esta mazmorra: cada 5 = subida de nivel
         // Recarga al entrar: sin esto, llegar con las vidas mordidas de los
         // niveles anteriores (donde no hay forma de recuperarlas) hacía que
         // la mazmorra —el primer nivel de contacto cuerpo a cuerpo— se
@@ -2691,10 +3070,13 @@
         st.shield = Math.max(st.shield, 1);
         // Enemigos frescos desde la tabla de spawns (determinista: los tests
         // saben qué hay y dónde). Los voladores guardan su altura de crucero.
-        dunShots = []; dunHearts = [];
+        dunShots = []; dunHearts = []; dunBolts = [];
+        // Ballesta: un extra fijo (siempre en el mismo sitio, determinista) a
+        // media mazmorra — la encuentras y cambia tu forma de atacar a distancia.
+        dunCrossbowPickup = { x: DUN_LEN * 0.52, y: DUN_GROUND, collected: false, ph: 0 };
         dunEnemies = DUN_SPAWNS.map((s2) => ({
             type: s2.t, x: s2.x, homeX: s2.x, y: DUN_GROUND, baseY: DUN_GROUND - (s2.t === 'bat' ? 110 : 0),
-            vx: 0, dir: -1, hp: ETYPES[s2.t].hp, animT: Math.random() * 6, hitT: 0, cd: 0,
+            vx: 0, dir: -1, face: -1, vy: 0, onGround: true, jumpCd: 0, hp: ETYPES[s2.t].hp, animT: Math.random() * 6, hitT: 0, cd: 0,
             charge: 0, chargeT: 0, telegraph: 0, attackT: 0, dying: 0, gone: false, lastSwing: -1,
         }));
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
@@ -2717,14 +3099,49 @@
     function heroAttack() {
         const h = st.hero;
         if (st.level !== 4 || !st.playing || st.paused || !h || h.attackT > 0 || h.hurtT > 0) return;
+        const sc = H / DUN_H;
+        if (h.weapon === 'crossbow') {
+            // Disparo a distancia: cadencia propia (crossbowCd), sin lunge ni
+            // hitbox de espada — spawnea una saeta que viaja y golpea a distancia.
+            if (h.crossbowCd > 0) return;
+            h.attackT = 0.32;
+            h.crossbowCd = 0.46;
+            h.animT = 0;
+            dunBolts.push({ x: h.x + h.dir * 20, y: h.y - 52, vx: h.dir * 620, dir: h.dir, ttl: 1.4, hitId: ++dunBoltSeq });
+            st.shimmer = Math.max(st.shimmer, 0.25);
+            hitFx(2);
+            burst((h.x - st.camX + h.dir * 20) * sc, (h.y - 52) * sc, [140, 210, 255], 6);
+            vibrate(8);
+            return;
+        }
         h.attackT = 0.28;
         h.animT = 0;
         h.swingId++; // cada tajo golpea a cada enemigo COMO MUCHO una vez
+        if (h.onGround) h.vx = h.dir * 190; // lunge: paso al frente al tajar (más alcance)
         st.shimmer = Math.max(st.shimmer, 0.3);
         hitFx(2);
-        const sc = H / DUN_H;
         burst((h.x - st.camX + h.dir * 34) * sc, (h.y - 40) * sc, [120, 220, 255], 6);
         vibrate(10);
+    }
+    // Da\u00f1o de la espada/ballesta: el buff de subida de nivel dobla el golpe.
+    const heroDmg = (h) => (h.powerT > 0 ? 2 : 1);
+    let dunBoltSeq = 0;
+    // Subida de nivel: cada 5 bajas. Breve invulnerabilidad + brillo dorado +
+    // el pr\u00f3ximo tramo de golpes hace el doble de da\u00f1o (powerT).
+    function heroLevelUp() {
+        const h = st.hero;
+        if (!h) return;
+        h.levelupT = 1.1;
+        h.invulnT = Math.max(h.invulnT, 1.0);
+        h.powerT = 8;
+        st.score += 200;
+        st.shimmer = 1;
+        banner('¡SUBIDA DE NIVEL! · daño x2');
+        const sc = H / DUN_H;
+        burst((h.x - st.camX) * sc, (h.y - 50) * sc, [255, 214, 110], 22);
+        hitFx(4);
+        vibrate([30, 20, 30, 20, 60]);
+        updateHud();
     }
     // Daño al héroe: knockback + invulnerabilidad breve (parpadeo). Vidas,
     // escudo, audio y fin de partida van por hitShip() — el mismo contrato
@@ -2754,6 +3171,8 @@
         h.x = clamp(h.x + h.vx * dt, 20, DUN_LEN - 20);
         h.y += h.vy * dt;
         // Suelo y plataformas (solo se aterriza cayendo, one-way como un plataformas clásico)
+        const wasGround = h.onGround;   // para detectar el instante de aterrizaje
+        const impactV = h.vy;           // velocidad de caída antes de anularla
         h.onGround = false;
         if (h.y >= DUN_GROUND) { h.y = DUN_GROUND; h.vy = 0; h.onGround = true; }
         else if (h.vy > 0) {
@@ -2762,25 +3181,40 @@
                 if (prevY <= p.y && h.y >= p.y) { h.y = p.y; h.vy = 0; h.onGround = true; break; }
             }
         }
-        // Máquina de estados → sprite (daño > ataque > aire > correr/andar/quieto)
+        // Aterrizaje fuerte: nube de polvo + microtemblor (lee el peso del salto)
+        if (!wasGround && h.onGround && impactV > 700) {
+            const sc0 = H / DUN_H;
+            burst((h.x - st.camX) * sc0, h.y * sc0, [214, 202, 178], 12);
+            st.shake = Math.max(st.shake, 0.22);
+            vibrate(6);
+        }
+        // Máquina de estados → sprite (nivel-up > daño > ataque > aire > correr/andar/quieto)
         h.attackT = Math.max(0, h.attackT - dt);
         h.hurtT = Math.max(0, h.hurtT - dt);
         h.invulnT = Math.max(0, h.invulnT - dt);
+        h.crossbowCd = Math.max(0, (h.crossbowCd || 0) - dt);
+        h.levelupT = Math.max(0, (h.levelupT || 0) - dt);
+        h.powerT = Math.max(0, (h.powerT || 0) - dt);
+        const ranged = h.weapon === 'crossbow';
         let state;
-        if (h.hurtT > 0) state = 'damage';
-        else if (h.attackT > 0) state = 'attack';
+        if (h.levelupT > 0) state = 'levelup';
+        else if (h.hurtT > 0) state = ranged ? 'crossbowHurt' : 'damage';
+        else if (h.attackT > 0) state = ranged ? 'crossbowFire' : (Math.abs(h.vx) > 210 ? 'runAttack' : 'attack');
         else if (!h.onGround) state = h.vy < 0 ? 'jump' : 'fall';
         else if (Math.abs(h.vx) > 210) state = 'run';
         else if (Math.abs(h.vx) > 24) state = 'walk';
-        else state = 'idle';
+        else state = ranged ? 'crossbowIdle' : 'idle';
         if (state !== h.state) { h.state = state; h.animT = 0; }
-        h.animT += dt;
+        if (h.state === 'idle' || h.state === 'crossbowIdle') h.animT = 0;
+        else h.animT += dt;
         if (dir) h.dir = dir;
         // Hitbox de la espada: activa en el tramo central del tajo (v = ω×r
         // espiritual: el filo "corta" a mitad de barrido, no al armar ni al recoger)
         const sc = H / DUN_H;
         const swing = h.attackT > 0.05 && h.attackT < 0.24;
-        const hbX0 = h.x + (h.dir > 0 ? 4 : -60), hbX1 = h.x + (h.dir > 0 ? 60 : -4);
+        // Alcance de la espada AMPLIADO para los sprites grandes (héroe ~82u):
+        // ~86u por delante, con margen atrás para no fallar pegado.
+        const hbX0 = h.x + (h.dir > 0 ? 6 : -86), hbX1 = h.x + (h.dir > 0 ? 86 : -6);
         // ── Enemigos: IA + espada + contacto ─────────────────────────────────
         for (const e of dunEnemies) {
             if (e.gone) continue;
@@ -2793,48 +3227,74 @@
             e.animT += dt;
             const dx = h.x - e.x, adx = Math.abs(dx);
             if (adx > 950) continue; // fuera de rango: dormido (y barato)
+            if (adx > 8) e.face = Math.sign(dx); // mira SIEMPRE hacia el héroe
             e.hitT = Math.max(0, e.hitT - dt);
             e.cd = Math.max(0, e.cd - dt);
             e.attackT = Math.max(0, e.attackT - dt);
-            // IA por tipo (3 líneas por cabeza, como debe ser)
+            e.jumpCd = Math.max(0, (e.jumpCd || 0) - dt);
+            // IA por tipo: ahora con VIDA — persiguen, atacan cuerpo a cuerpo
+            // y saltan para subir a las plataformas donde estés.
             if (e.type === 'slime') {
-                e.x += e.dir * 30 * dt;
-                if (Math.abs(e.x - e.homeX) > 85) e.dir = -Math.sign(e.x - e.homeX);
+                // Va a saltitos HACIA el héroe (antes patrullaba quieto).
+                e.dir = Math.sign(dx) || e.dir;
+                if (e.onGround && e.jumpCd <= 0) { e.vy = -520; e.jumpCd = 1.1 + Math.random() * 0.5; }
+                e.x += Math.sign(dx) * (e.onGround ? 16 : 72) * dt;
             } else if (e.type === 'shroom') {
-                if (adx < 300 && e.cd <= 0) { // escupe una espora hacia ti
-                    e.cd = 2.4; e.attackT = 0.3;
-                    dunShots.push({ x: e.x + Math.sign(dx) * 14, y: e.y - 20, vx: Math.sign(dx) * 190, ttl: 2.6 });
+                if (adx < 320 && e.cd <= 0) { // escupe una espora hacia ti
+                    e.cd = 2.2; e.attackT = 0.35;
+                    dunShots.push({ x: e.x + Math.sign(dx) * 14, y: e.y - 20, vx: Math.sign(dx) * 200, ttl: 2.6 });
                 }
                 e.dir = Math.sign(dx) || e.dir;
             } else if (e.type === 'goblin' || e.type === 'skeleton') {
-                if (adx < 250) { e.x += Math.sign(dx) * T.spd * dt; e.dir = Math.sign(dx) || e.dir; }
-                else { e.x += e.dir * 34 * dt; if (Math.abs(e.x - e.homeX) > 110) e.dir = -Math.sign(e.x - e.homeX); }
+                if (adx < 340) { e.x += Math.sign(dx) * T.spd * dt; e.dir = Math.sign(dx) || e.dir; }
+                else { e.x += e.dir * 40 * dt; if (Math.abs(e.x - e.homeX) > 130) e.dir = -Math.sign(e.x - e.homeX); }
+                // Tajo cuerpo a cuerpo con LUNGE: da un pasito al frente al pegar.
+                if (adx < 52 && Math.abs(h.y - e.y) < 62 && e.cd <= 0) { e.attackT = 0.4; e.cd = 0.9; e.x += Math.sign(dx) * 24; }
             } else if (e.type === 'bat') {
                 e.y = e.baseY + Math.sin(e.animT * 3) * 24;
-                if (adx < 280) { e.x += Math.sign(dx) * T.spd * dt; e.baseY += clamp((h.y - 40) - e.baseY, -46 * dt, 46 * dt); e.dir = Math.sign(dx) || e.dir; }
+                if (adx < 340) { e.x += Math.sign(dx) * T.spd * dt; e.baseY += clamp((h.y - 40) - e.baseY, -62 * dt, 62 * dt); e.dir = Math.sign(dx) || e.dir; }
+                if (adx < 42 && e.cd <= 0) { e.attackT = 0.4; e.cd = 0.8; }
             } else if (e.type === 'wolf') {
-                // Telegrafía: se agazapa 0.4s (visible en el dibujo) ANTES de
-                // arrancar — antes cargaba a 330u/s sin aviso, tiempo de
-                // reacción cero. Ahora hay una ventana real para esquivar o
-                // adelantarse con un tajo.
-                if (!e.charge && !e.telegraph && adx < 340 && e.cd <= 0) { e.telegraph = 0.4; e.dir = Math.sign(dx) || e.dir; e.cd = 2.8; }
+                if (!e.charge && !e.telegraph && adx < 360 && e.cd <= 0) { e.telegraph = 0.4; e.dir = Math.sign(dx) || e.dir; e.cd = 2.6; }
                 if (e.telegraph > 0) {
                     e.telegraph -= dt;
-                    if (e.telegraph <= 0) { e.charge = Math.sign(dx) || e.dir; e.chargeT = 0.85; }
+                    if (e.telegraph <= 0) { e.charge = Math.sign(dx) || e.dir; e.chargeT = 0.85; if (e.onGround) e.vy = -540; } // salto-embestida
                 } else if (e.charge) {
                     e.x += e.charge * T.spd * dt; e.dir = e.charge;
                     e.chargeT -= dt;
                     if (e.chargeT <= 0) { e.charge = 0; }
                 }
             }
-            if (e.type !== 'bat') e.y = DUN_GROUND; // los terrestres pisan el suelo
-            // Espada: un golpe por tajo y por enemigo
+            // Física vertical de los terrestres: gravedad + suelo + PLATAFORMAS.
+            // Así suben de un salto a la plataforma donde estés para perseguirte.
+            if (e.type !== 'bat') {
+                e.vy = (e.vy || 0) + 2400 * dt;
+                const prevEy = e.y;
+                e.y += e.vy * dt;
+                e.onGround = false;
+                if (e.y >= DUN_GROUND) { e.y = DUN_GROUND; e.vy = 0; e.onGround = true; }
+                else if (e.vy > 0) {
+                    for (const pl of DUN_PLATS) {
+                        if (e.x < pl.x || e.x > pl.x + pl.w) continue;
+                        if (prevEy <= pl.y && e.y >= pl.y) { e.y = pl.y; e.vy = 0; e.onGround = true; break; }
+                    }
+                }
+                // Salta si el héroe está por encima y cerca (subir a la plataforma).
+                if (e.onGround && e.jumpCd <= 0 && h.y < e.y - 50 && adx < 150 &&
+                    (e.type === 'goblin' || e.type === 'skeleton' || e.type === 'wolf')) {
+                    e.vy = -860 - Math.random() * 80; e.jumpCd = 1.5 + Math.random() * 0.5;
+                }
+            }
+            // Espada: un golpe por tajo y por enemigo. Rango vertical AMPLIADO
+            // (héroe/enemigos más grandes): cubre desde la cabeza del enemigo
+            // hasta ~96u sobre los pies del héroe.
             const eTop = e.y - T.h;
-            if (swing && e.lastSwing !== h.swingId && e.x + T.r > hbX0 && e.x - T.r < hbX1 && eTop < h.y - 4 && e.y > h.y - 66) {
+            if (swing && e.lastSwing !== h.swingId && e.x + T.r > hbX0 && e.x - T.r < hbX1 && eTop < h.y - 2 && e.y > h.y - 96) {
                 e.lastSwing = h.swingId;
-                e.hp -= 1;
+                e.hp -= heroDmg(h);
                 e.hitT = 0.22;
                 e.x += h.dir * 16; // retroceso del impacto
+                if (!h.onGround) { h.vy = -540; hitFx(1); } // REBOTE POGO al golpear en el aire
                 hitFx(2);
                 burst((e.x - st.camX) * sc, (e.y - T.h * 0.6) * sc, T.col, 8);
                 if (e.hp <= 0) {
@@ -2844,6 +3304,8 @@
                     st.shimmer = 1;
                     burst((e.x - st.camX) * sc, (e.y - T.h * 0.6) * sc, T.col, 14);
                     vibrate(14);
+                    st.dunKills = (st.dunKills || 0) + 1;
+                    if (st.dunKills % 5 === 0) heroLevelUp(); // cada 5 bajas: subida de nivel
                     // Red de seguridad + recompensa: los enemigos más duros
                     // tienen más chance de soltar un corazón, y solo si te
                     // hace falta (por debajo de 5 vidas) — sin esto, morir
@@ -2855,7 +3317,7 @@
                 }
             }
             // Contacto con el héroe = daño (con la invulnerabilidad como colchón)
-            if (h.invulnT <= 0 && adx < T.r + 15 && (h.y > eTop - 8) && (h.y - 66 < e.y)) heroHurt(e.x);
+            if (h.invulnT <= 0 && adx < T.r + 15 && (h.y > eTop - 8) && (h.y - 96 < e.y)) heroHurt(e.x);
         }
         // Esporas de las setas: viajan, caducan, se paran con la espada o te dan
         for (let i = dunShots.length - 1; i >= 0; i--) {
@@ -2869,6 +3331,57 @@
             }
             if (!dead && h.invulnT <= 0 && Math.abs(s2.x - h.x) < 16 && Math.abs(s2.y - (h.y - 34)) < 34) { heroHurt(s2.x); dead = true; }
             if (dead) dunShots.splice(i, 1);
+        }
+        // Saetas de ballesta del héroe: viajan en línea recta y golpean al
+        // primer enemigo que atraviesan (una sola baja por saeta).
+        for (let i = dunBolts.length - 1; i >= 0; i--) {
+            const b = dunBolts[i];
+            b.x += b.vx * dt;
+            b.ttl -= dt;
+            let dead = b.ttl <= 0 || b.x < st.camX - 40 || b.x > st.camX + W / sc + 40;
+            if (!dead) {
+                for (const e of dunEnemies) {
+                    if (e.gone || e.dying > 0) continue;
+                    const T2 = ETYPES[e.type];
+                    if (Math.abs(b.x - e.x) < T2.r + 10 && Math.abs(b.y - (e.y - T2.h * 0.55)) < T2.h * 0.6 + 10) {
+                        e.hp -= heroDmg(h);
+                        e.hitT = 0.22;
+                        e.lastSwing = h.swingId; // evita doble golpe si además pasa la espada
+                        hitFx(2);
+                        burst((e.x - st.camX) * sc, (e.y - T2.h * 0.6) * sc, T2.col, 8);
+                        if (e.hp <= 0) {
+                            e.dying = 0.45; e.animT = 0;
+                            st.combo = Math.min(10, st.combo + 1);
+                            st.score += T2.pts;
+                            st.shimmer = 1;
+                            burst((e.x - st.camX) * sc, (e.y - T2.h * 0.6) * sc, T2.col, 14);
+                            vibrate(14);
+                            st.dunKills = (st.dunKills || 0) + 1;
+                            if (st.dunKills % 5 === 0) heroLevelUp();
+                            if (st.lives < 5 && Math.random() < (T2.hp >= 2 ? 0.22 : 0.1)) {
+                                dunHearts.push({ x: e.x, y: e.y - T2.h * 0.7, ph: Math.random() * 6.28, ttl: 9 });
+                            }
+                            updateHud();
+                        }
+                        dead = true;
+                        break;
+                    }
+                }
+            }
+            if (dead) dunBolts.splice(i, 1);
+        }
+        // Ballesta (extra fijo): al tocarla cambia el arma a distancia.
+        if (dunCrossbowPickup && !dunCrossbowPickup.collected &&
+            Math.abs(dunCrossbowPickup.x - h.x) < 30 && Math.abs(dunCrossbowPickup.y - h.y) < 44) {
+            dunCrossbowPickup.collected = true;
+            h.weapon = 'crossbow';
+            st.score += 50;
+            st.shimmer = Math.max(st.shimmer, 0.6);
+            banner('¡BALLESTA! · ataque a distancia');
+            burst((h.x - st.camX) * sc, (h.y - 40) * sc, [255, 224, 150], 16);
+            hitFx(3);
+            vibrate([20, 20, 30]);
+            updateHud();
         }
         // Corazones sueltos: flotan un rato y curan 1 vida al recogerlos (tope
         // 6, no reemplazan el sistema de escudo — son un colchón adicional).
@@ -2925,69 +3438,76 @@
         const sky = g.createLinearGradient(0, 0, 0, H * 0.87);
         sky.addColorStop(0, cssC(top)); sky.addColorStop(1, cssC(bot));
         g.fillStyle = sky; g.fillRect(-20, -20, W + 40, H + 40);
-        // Parallax LEJOS (0.22×). Con el sheet de extras: el FONDO PIXEL-ART del
-        // bioma (bosque/montañas/ruinas/cueva), en mosaico horizontal, con
-        // fundido al del bioma siguiente. Sin sheet: la cordillera procedural.
+        // Parallax del fondo: arte real del bioma o cielo procedural atmosférico.
         const hasBgArt = !!(extrasSheet && extrasSheet.bg[BIOME_BG[bi]]);
-        const drawBgTiles = (rect, alpha) => {
+        const horizon = H * 0.87;
+        const drawBgScene = (rect, alpha) => {
             if (!rect) return;
-            // Recorte 1.5% hacia dentro: los bordes de la miniatura arrastran
-            // píxeles vecinos del sheet y dejaban una COSTURA vertical visible
-            // en cada repetición del mosaico.
-            const ix = rect.w * 0.015, iy = rect.h * 0.015;
-            const sw = rect.w - 2 * ix, sh = rect.h - 2 * iy;
-            const scale2 = (H * 0.9) / sh;           // el fondo cubre hasta la línea de suelo
-            const dw = Math.round(sw * scale2), dy0 = H * 0.87 - H * 0.9;
+            const scale2 = Math.max(W / rect.w, H / rect.h); // CUBRE todo el lienzo (sin franjas negras)
+            const dw = rect.w * scale2, dh = rect.h * scale2;
+            const pan = st.camX / Math.max(1, DUN_LEN - W / sc);
+            const dx0 = Math.min(0, W - dw) * clamp(pan, 0, 1);
+            const dy0 = 0; // anclado arriba; el suelo tapa la parte baja
             g.globalAlpha = alpha;
-            g.imageSmoothingEnabled = false;         // píxel art chunky, a juego con los sprites
-            const off = Math.round(st.camX * 0.22 * sc) % dw;
-            for (let dx0 = -off - dw; dx0 < W + dw; dx0 += dw) {
-                g.drawImage(extrasSheet.canvas, rect.x + ix, rect.y + iy, sw, sh, dx0, dy0, dw + 1, H * 0.9);
-            }
+            g.imageSmoothingEnabled = false;
+            g.drawImage(extrasSheet.canvas, rect.x, rect.y, rect.w, rect.h, dx0, dy0, dw, dh);
             g.globalAlpha = 1;
         };
         if (hasBgArt) {
-            drawBgTiles(extrasSheet.bg[BIOME_BG[bi]], 1);
-            if (bf > 0) drawBgTiles(extrasSheet.bg[BIOME_BG[Math.min(3, bi + 1)]], bf);
-            // Velo de profundidad: oscurece un punto el fondo (más arriba, más)
-            // para que el héroe y los enemigos DESTAQUEN sobre el arte.
-            const veil = g.createLinearGradient(0, 0, 0, H * 0.87);
-            veil.addColorStop(0, 'rgba(6,8,14,0.34)');
-            veil.addColorStop(0.65, 'rgba(6,8,14,0.16)');
-            veil.addColorStop(1, 'rgba(6,8,14,0.24)');
-            g.fillStyle = veil;
-            g.fillRect(-20, -20, W + 40, H * 0.87 + 20);
+            drawBgScene(extrasSheet.bg[BIOME_BG[bi]], 1);
+            if (bf > 0) drawBgScene(extrasSheet.bg[BIOME_BG[Math.min(3, bi + 1)]], bf);
+            // Velo de profundidad: funde el arte hacia la sombra arriba y abajo
+            // para que el héroe y los enemigos destaquen sin competir con el arte.
+            const veil = g.createLinearGradient(0, 0, 0, horizon);
+            veil.addColorStop(0, 'rgba(4,6,12,0.45)');
+            veil.addColorStop(0.5, 'rgba(4,6,12,0.10)');
+            veil.addColorStop(1, 'rgba(4,6,12,0.30)');
+            g.fillStyle = veil; g.fillRect(-20, -20, W + 40, horizon + 20);
         } else {
-            g.fillStyle = B0.silh;
-            g.beginPath();
-            const farOff = st.camX * 0.22 * sc, seg = 56 * sc;
-            g.moveTo(-20, H);
-            for (let px = -20; px <= W + seg; px += seg) {
-                const i = (px + farOff) / seg;
-                const y = H * 0.62 - (Math.sin(i * 0.7) * 0.5 + Math.sin(i * 0.23 + 2) * 0.5) * H * 0.2;
-                g.lineTo(px, y);
+            // Luna con halo (parallax lentísimo)
+            const moonX = W * 0.72 - (st.camX * 0.05 * sc) % (W * 1.4);
+            const moonY = H * 0.24;
+            const halo = g.createRadialGradient(moonX, moonY, 4, moonX, moonY, 130 * sc);
+            halo.addColorStop(0, 'rgba(214,226,245,0.5)');
+            halo.addColorStop(1, 'rgba(214,226,245,0)');
+            g.fillStyle = halo; g.beginPath(); g.arc(moonX, moonY, 130 * sc, 0, 7); g.fill();
+            g.fillStyle = '#dde6f2'; g.beginPath(); g.arc(moonX, moonY, 26 * sc, 0, 7); g.fill();
+            g.fillStyle = cssC(lerpC(top, [12, 16, 26], 0.4));
+            g.beginPath(); g.arc(moonX + 9 * sc, moonY - 5 * sc, 23 * sc, 0, 7); g.fill();
+            // Estrellas titilantes (deterministas por índice)
+            for (let s = 0; s < 64; s++) {
+                const sx = (((s * 149.13) % (W + 40)) - st.camX * 0.04 * sc % (W + 40) + W + 40) % (W + 40) - 20;
+                const sy = ((s * 71.7) % 1000) / 1000 * horizon * 0.72;
+                g.globalAlpha = 0.35 + 0.55 * Math.abs(Math.sin(t * 1.4 + s));
+                g.fillStyle = '#e6eeff'; g.fillRect(sx, sy, 2, 2);
             }
-            g.lineTo(W + 20, H); g.closePath(); g.fill();
-            // Parallax MEDIO (0.5×): árboles/torres — SOLO en el modo procedural
-            // (sobre el arte real quedaban como triángulos negros flotando).
-            g.fillStyle = 'rgba(6,8,10,0.55)';
-            const midOff = st.camX * 0.5 * sc, midStep = 150 * sc;
-            for (let px = -midStep; px <= W + midStep; px += midStep) {
-                const i = Math.round((px + midOff) / midStep);
-                const bx = px - (midOff % midStep);
-                const hgt = (0.16 + ((i * 37) % 13) / 13 * 0.14) * H;
-                if (i % 3 === 2) { // torre con almenas
-                    g.fillRect(bx, H * 0.87 - hgt, 34 * sc, hgt);
-                    for (let m = 0; m < 3; m++) g.fillRect(bx + m * 12 * sc, H * 0.87 - hgt - 7 * sc, 8 * sc, 7 * sc);
-                } else { // árbol triangular
-                    g.beginPath();
-                    g.moveTo(bx, H * 0.87); g.lineTo(bx + 17 * sc, H * 0.87 - hgt); g.lineTo(bx + 34 * sc, H * 0.87);
-                    g.closePath(); g.fill();
+            g.globalAlpha = 1;
+            // Cordilleras en 3 capas con perspectiva atmosférica (clara lejos → oscura cerca)
+            const ranges = [
+                { amp: 0.10, base: 0.54, spd: 0.10, col: lerpC(bot, top, 0.5) },
+                { amp: 0.15, base: 0.66, spd: 0.18, col: lerpC(bot, [10, 12, 18], 0.35) },
+                { amp: 0.22, base: 0.80, spd: 0.30, col: lerpC(bot, [4, 5, 9], 0.6) },
+            ];
+            for (const R of ranges) {
+                g.fillStyle = cssC(R.col);
+                g.beginPath();
+                const off = st.camX * R.spd * sc, seg = 44 * sc;
+                g.moveTo(-20, H);
+                for (let px = -20; px <= W + seg; px += seg) {
+                    const i = (px + off) / seg;
+                    const y = H * R.base - (Math.sin(i * 0.5) * 0.5 + Math.sin(i * 0.17 + 1.3) * 0.35 + Math.sin(i * 0.09 + 3) * 0.15) * H * R.amp;
+                    g.lineTo(px, y);
                 }
+                g.lineTo(W + 20, H); g.closePath(); g.fill();
             }
         }
-        // Suelo: losa oscura con juntas de ladrillo desplazándose con la cámara
-        // (tierra cálida cuando hay arte de fondo, violeta neón si no)
+        // Niebla de horizonte: banda que funde el fondo con el suelo → profundidad.
+        const fog = g.createLinearGradient(0, horizon - 96 * sc, 0, horizon + 6 * sc);
+        fog.addColorStop(0, 'rgba(12,16,24,0)');
+        fog.addColorStop(1, cssC(lerpC(B0.bot, B1.bot, bf), 0.5));
+        g.fillStyle = fog; g.fillRect(-20, horizon - 96 * sc, W + 40, 106 * sc);
+        // Suelo: losa oscura con juntas de sillar dibujadas (fiable, no depende
+        // de índices del tileset de extras — que no cuadran con el arte).
         const gy = DUN_GROUND * sc;
         g.fillStyle = hasBgArt ? '#171009' : '#191521'; g.fillRect(-20, gy, W + 40, H - gy + 20);
         g.strokeStyle = hasBgArt ? 'rgba(255,224,180,0.10)' : 'rgba(255,255,255,0.07)'; g.lineWidth = Math.max(1, sc);
@@ -3004,27 +3524,53 @@
         // escala del mundo, pegadas a la línea de suelo, DETRÁS del juego —
         // elegidas del pool CURADO de su propio bioma (DUN_DECO_BIOME), no
         // de las 70 decoraciones enteras mezcladas.
-        if (extrasSheet && extrasSheet.deco.length) {
-            g.imageSmoothingEnabled = false;
-            const first = Math.max(0, Math.floor((st.camX - 60) / 210)), last = Math.ceil((st.camX + W / sc + 60) / 210);
-            for (let i = first; i <= last; i++) {
-                const wx = i * 210 + 80 + Math.sin(i * 13.7) * 55;
-                if (wx < 60 || wx > DUN_LEN - 120) continue; // deja limpio el arranque y la puerta
-                const zone = Math.min(3, Math.floor(wx / DUN_LEN * 4));
-                const pool = DUN_DECO_BIOME[zone].filter((idx) => idx < extrasSheet.deco.length);
-                if (!pool.length) continue;
-                const f = extrasSheet.deco[pool[(i * 31 + 7) % pool.length]];
-                const hU = clamp(f.h * 1.3, 20, 50);         // alto en unidades de mundo
-                const wU = clamp(hU * (f.w / f.h), 14, 66);  // tope de ancho: el mobiliario ancho (mesa) no se estira
-                g.drawImage(extrasSheet.canvas, f.x, f.y, f.w, f.h,
-                            (wx - st.camX - wU / 2) * sc, (DUN_GROUND - hU) * sc, wU * sc, hU * sc);
+        // Puerta del final de la mazmorra (objetivo): arco de piedra DIBUJADO
+        // (fiable, sin depender de los tiles del atlas de extras).
+        {
+            const dw2 = 84 * sc, dh2 = 140 * sc;
+            const dx = (DUN_LEN - 52 - st.camX) * sc - dw2 / 2, dyy = DUN_GROUND * sc - dh2;
+            if (dx > -dw2 && dx < W + dw2) {
+                g.fillStyle = '#2a1f15'; g.fillRect(dx - 6 * sc, dyy, dw2 + 12 * sc, dh2); // jamba
+                g.fillStyle = '#3a2c1c';
+                g.beginPath();
+                g.moveTo(dx, dyy + dw2 * 0.5);
+                g.quadraticCurveTo(dx + dw2 / 2, dyy - dw2 * 0.18, dx + dw2, dyy + dw2 * 0.5);
+                g.lineTo(dx + dw2, dyy + dh2); g.lineTo(dx, dyy + dh2); g.closePath(); g.fill();
+                g.fillStyle = 'rgba(8,5,3,0.92)'; // hueco oscuro
+                g.beginPath();
+                g.moveTo(dx + 8 * sc, dyy + dw2 * 0.55);
+                g.quadraticCurveTo(dx + dw2 / 2, dyy + 4 * sc, dx + dw2 - 8 * sc, dyy + dw2 * 0.55);
+                g.lineTo(dx + dw2 - 8 * sc, dyy + dh2); g.lineTo(dx + 8 * sc, dyy + dh2); g.closePath(); g.fill();
+                g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = Math.max(1, sc); g.strokeRect(dx - 6 * sc, dyy, dw2 + 12 * sc, dh2);
             }
-            // La puerta al final de la mazmorra (el objetivo se VE al llegar)
-            const door = extrasSheet.inter.interactable_object_001 || extrasSheet.deco[0];
-            if (door) {
-                const dh2 = 84, dw2 = dh2 * (door.w / door.h);
-                g.drawImage(extrasSheet.canvas, door.x, door.y, door.w, door.h,
-                            (DUN_LEN - 52 - st.camX - dw2 / 2) * sc, (DUN_GROUND - dh2) * sc, dw2 * sc, dh2 * sc);
+        }
+        // Antorchas de pared PROCEDURALES (llama + halo parpadeante): fiables,
+        // sin depender de índices del tileset (que no cuadran con el arte).
+        {
+            const stepT = 320;
+            const f0 = Math.floor((st.camX - 40) / stepT), f1 = Math.ceil((st.camX + W / sc + 40) / stepT);
+            for (let i = f0; i <= f1; i++) {
+                const wx = i * stepT + 160;
+                if (wx < 80 || wx > DUN_LEN - 120) continue;
+                const sx = (wx - st.camX) * sc, sy = (DUN_GROUND - 96) * sc;
+                const flick = 0.72 + 0.28 * (Math.sin(t * 13 + i * 1.7) * 0.6 + Math.sin(t * 27 + i) * 0.4);
+                const rad = 110 * sc * (0.85 + 0.3 * flick);
+                g.save();
+                g.globalCompositeOperation = 'lighter';
+                const gl = g.createRadialGradient(sx, sy, 2, sx, sy, rad);
+                gl.addColorStop(0, `rgba(255,180,92,${0.5 * flick})`);
+                gl.addColorStop(1, 'rgba(255,140,50,0)');
+                g.fillStyle = gl; g.beginPath(); g.arc(sx, sy, rad, 0, 7); g.fill();
+                g.restore();
+                // soporte + brasero
+                g.fillStyle = '#2a2016'; g.fillRect(sx - 3 * sc, sy, 6 * sc, 42 * sc);
+                g.fillStyle = '#3a2c1a'; g.fillRect(sx - 10 * sc, sy - 3 * sc, 20 * sc, 7 * sc);
+                // llama (dos lóbulos)
+                const fh = (26 + 8 * flick) * sc;
+                g.fillStyle = '#ffcf6a';
+                g.beginPath(); g.moveTo(sx, sy - fh); g.quadraticCurveTo(sx + 11 * sc, sy - fh * 0.3, sx, sy); g.quadraticCurveTo(sx - 11 * sc, sy - fh * 0.3, sx, sy - fh); g.fill();
+                g.fillStyle = '#ff8a3a';
+                g.beginPath(); g.moveTo(sx, sy - fh * 0.72); g.quadraticCurveTo(sx + 6.2 * sc, sy - fh * 0.2, sx, sy); g.quadraticCurveTo(sx - 6.2 * sc, sy - fh * 0.2, sx, sy - fh * 0.72); g.fill();
             }
         }
         // Plataformas: antes 12u de grosor y sin sombra ni contorno — a la
@@ -3036,34 +3582,66 @@
         for (const p of DUN_PLATS) {
             const px = (p.x - st.camX) * sc, pw = p.w * sc;
             if (px + pw < -30 || px > W + 30) continue;
-            const py = p.y * sc, th = 20 * sc;
+            const py = p.y * sc, th = 24 * sc;
             // Sombra de contacto: ancla la plataforma al mundo (sin ella
             // parece un rectángulo pegado a la pantalla, no un objeto 3D)
-            g.fillStyle = 'rgba(0,0,0,0.30)';
+            g.fillStyle = 'rgba(0,0,0,0.34)';
             g.beginPath();
             g.ellipse(px + pw / 2, py + th + 7 * sc, pw * 0.46, 5 * sc, 0, 0, 7);
             g.fill();
-            g.fillStyle = hasBgArt ? '#5a4128' : '#352a4a';
+            // Cuerpo de piedra tallada con degradado (fiable, sin tiles de extras)
+            const grad = g.createLinearGradient(0, py, 0, py + th);
+            grad.addColorStop(0, '#6a5636');
+            grad.addColorStop(1, '#2e2416');
+            g.fillStyle = grad;
             g.fillRect(px, py, pw, th);
-            g.strokeStyle = 'rgba(0,0,0,0.55)';
+            g.strokeStyle = 'rgba(0,0,0,0.6)';
             g.lineWidth = Math.max(1, sc * 1.4);
             g.strokeRect(px + g.lineWidth / 2, py + g.lineWidth / 2, pw - g.lineWidth, th - g.lineWidth);
-            g.fillStyle = hasBgArt ? '#e8b878' : 'rgba(220,190,255,0.55)';
-            g.fillRect(px, py, pw, 4 * sc);
-            if (hasBgArt) { // vetas de tablones
-                g.fillStyle = 'rgba(0,0,0,0.3)';
-                for (let vx = px + 18 * sc; vx < px + pw - 4; vx += 26 * sc) g.fillRect(vx, py + 4 * sc, Math.max(1, sc), th - 6 * sc);
-            } else {
-                g.fillStyle = 'rgba(255,255,255,0.1)';
-                for (let vx = px + 14 * sc; vx < px + pw - 4; vx += 22 * sc) g.fillRect(vx, py + 6 * sc, 3 * sc, th - 10 * sc);
+            g.fillStyle = '#f0c584';
+            g.fillRect(px, py, pw, 3.5 * sc);
+            g.strokeStyle = 'rgba(0,0,0,0.35)';
+            g.lineWidth = Math.max(1, sc);
+            for (let vx = px + 28 * sc; vx < px + pw - 6 * sc; vx += 28 * sc) {
+                g.beginPath(); g.moveTo(vx, py + 4 * sc); g.lineTo(vx, py + th - 2 * sc); g.stroke();
             }
         }
-        // Esporas de las setas
-        g.fillStyle = 'rgba(235,90,90,0.95)';
+        // Esporas de las setas: glob tóxico grande con halo aditivo pulsante,
+        // estela de motas detrás (según dirección) y burbujas orbitando —
+        // antes un círculo plano de 7.5u, ahora un proyectil que se LEE de lejos.
         for (const s2 of dunShots) {
             const sx2 = (s2.x - st.camX) * sc;
-            if (sx2 < -20 || sx2 > W + 20) continue;
-            g.beginPath(); g.arc(sx2, s2.y * sc, 5 * sc, 0, 7); g.fill();
+            if (sx2 < -36 || sx2 > W + 36) continue;
+            const sy2 = s2.y * sc;
+            const R = 13 * sc;
+            const pulse = 0.8 + 0.2 * Math.sin(t * 10 + sx2 * 0.05);
+            g.save();
+            g.translate(sx2, sy2);
+            // Estela: motas que se desvanecen hacia atrás
+            const back = -Math.sign(s2.vx || 1);
+            g.globalCompositeOperation = 'lighter';
+            for (let i = 1; i <= 4; i++) {
+                g.globalAlpha = (1 - i / 5) * 0.35;
+                g.fillStyle = '#ff6a4a';
+                g.beginPath(); g.arc(back * i * 9 * sc, Math.sin(t * 14 + i) * 2 * sc, R * (1 - i * 0.15), 0, 7); g.fill();
+            }
+            g.globalAlpha = 1;
+            // Halo tóxico aditivo
+            const glow = g.createRadialGradient(0, 0, 2, 0, 0, R * 1.9 * pulse);
+            glow.addColorStop(0, `rgba(255,140,90,${0.55 * pulse})`);
+            glow.addColorStop(1, 'rgba(255,90,60,0)');
+            g.fillStyle = glow; g.beginPath(); g.arc(0, 0, R * 1.9 * pulse, 0, 7); g.fill();
+            g.globalCompositeOperation = 'source-over';
+            // Núcleo del glob con degradado + burbujas internas
+            const core = g.createRadialGradient(-R * 0.3, -R * 0.3, 1, 0, 0, R);
+            core.addColorStop(0, '#ffb37a'); core.addColorStop(0.55, '#e8503c'); core.addColorStop(1, '#8a1f18');
+            g.fillStyle = core; g.beginPath(); g.arc(0, 0, R * pulse, 0, 7); g.fill();
+            for (let b2 = 0; b2 < 3; b2++) {
+                const ang = t * 4 + b2 * 2.1;
+                g.fillStyle = 'rgba(255,205,160,0.65)';
+                g.beginPath(); g.arc(Math.cos(ang) * R * 0.45, Math.sin(ang) * R * 0.45, R * 0.16, 0, 7); g.fill();
+            }
+            g.restore();
         }
         // Corazones sueltos: flotan con un bamboleo suave, brillo pulsante y
         // se apagan (parpadean) justo antes de expirar para avisar.
@@ -3072,10 +3650,10 @@
             if (hx < -20 || hx > W + 20) continue;
             const hy = (hp.y + Math.sin(t * 2.4 + hp.ph) * 6) * sc;
             if (hp.ttl < 2 && (t * 8 | 0) % 2) continue; // parpadeo de aviso
-            const r = 8 * sc;
+            const r = 13 * sc;
             g.save();
             g.translate(hx, hy);
-            g.shadowColor = '#ff5a6e'; g.shadowBlur = 8 * sc;
+            g.shadowColor = '#ff5a6e'; g.shadowBlur = 12 * sc;
             g.fillStyle = '#ff3b52';
             g.beginPath();
             g.moveTo(0, r * 0.7);
@@ -3091,8 +3669,72 @@
             if (ex < -80 || ex > W + 80) continue;
             drawEnemy4(e, ex, e.y * sc, sc, t);
         }
+        // Saetas de ballesta: proyectil grande y espectacular — estela cian
+        // aditiva larga, asta dorada con brillo metálico, punta con destello
+        // y plumas traseras. Antes 22u de estela / 12u de asta.
+        for (const b of dunBolts) {
+            const bx = (b.x - st.camX) * sc, by = b.y * sc;
+            if (bx < -60 || bx > W + 60) continue;
+            g.save();
+            g.translate(bx, by);
+            g.rotate(b.dir < 0 ? Math.PI : 0);
+            // Estela aditiva larga (degradado que se desvanece hacia atrás)
+            g.globalCompositeOperation = 'lighter';
+            const trail = g.createLinearGradient(-52 * sc, 0, -6 * sc, 0);
+            trail.addColorStop(0, 'rgba(120,200,255,0)');
+            trail.addColorStop(1, 'rgba(170,225,255,0.85)');
+            g.strokeStyle = trail; g.lineWidth = 5 * sc; g.lineCap = 'round';
+            g.beginPath(); g.moveTo(-52 * sc, 0); g.lineTo(-6 * sc, 0); g.stroke();
+            g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 1.8 * sc;
+            g.beginPath(); g.moveTo(-40 * sc, 0); g.lineTo(-6 * sc, 0); g.stroke();
+            g.globalCompositeOperation = 'source-over';
+            // Plumas traseras
+            g.fillStyle = '#8a5a2c';
+            g.beginPath(); g.moveTo(-6 * sc, 0); g.lineTo(-16 * sc, -6 * sc); g.lineTo(-11 * sc, 0); g.lineTo(-16 * sc, 6 * sc); g.closePath(); g.fill();
+            // Asta dorada con brillo
+            g.fillStyle = '#caa050'; g.fillRect(-6 * sc, -2.4 * sc, 22 * sc, 4.8 * sc);
+            g.fillStyle = 'rgba(255,240,200,0.75)'; g.fillRect(-6 * sc, -0.7 * sc, 22 * sc, 1.4 * sc);
+            // Punta cian con destello aditivo
+            g.globalCompositeOperation = 'lighter';
+            g.fillStyle = 'rgba(180,225,255,0.5)';
+            g.beginPath(); g.arc(16 * sc, 0, 9 * sc, 0, 7); g.fill();
+            g.globalCompositeOperation = 'source-over';
+            g.fillStyle = '#eaf6ff';
+            g.beginPath(); g.moveTo(16 * sc, 0); g.lineTo(4 * sc, -6 * sc); g.lineTo(6 * sc, 0); g.lineTo(4 * sc, 6 * sc); g.closePath(); g.fill();
+            g.restore();
+        }
+        // Ballesta (extra por recoger): icono con brillo pulsante, hasta que la cojas.
+        if (dunCrossbowPickup && !dunCrossbowPickup.collected) {
+            const cx0 = (dunCrossbowPickup.x - st.camX) * sc;
+            if (cx0 > -30 && cx0 < W + 30) {
+                const cy0 = (dunCrossbowPickup.y - 30 + Math.sin(t * 2.2) * 5) * sc;
+                g.save();
+                g.translate(cx0, cy0);
+                g.shadowColor = '#ffd27a'; g.shadowBlur = 18 * sc;
+                g.strokeStyle = '#c99a4a'; g.lineWidth = 4.4 * sc; g.lineCap = 'round';
+                g.beginPath(); g.arc(0, 0, 18 * sc, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+                g.strokeStyle = '#e8c878'; g.lineWidth = 2.4 * sc;
+                g.beginPath(); g.moveTo(-16.5 * sc, 4.5 * sc); g.lineTo(16.5 * sc, 4.5 * sc); g.stroke();
+                g.fillStyle = '#8a5a2c'; g.fillRect(-2.4 * sc, 3 * sc, 4.8 * sc, 18 * sc);
+                g.restore();
+            }
+        }
         // Héroe (parpadea mientras es invulnerable tras un golpe)
         if (!(h.invulnT > 0 && (t * 14 | 0) % 2)) drawHero4((h.x - st.camX) * sc, h.y * sc, sc, h, t);
+        // ATMÓSFERA: brasas/ceniza flotando hacia arriba + viñeta cinematográfica.
+        for (let e2 = 0; e2 < 30; e2++) {
+            const phase = e2 / 30;
+            const bx = ((phase * 1.7 + t * 0.012 * (0.5 + phase)) % 1) * (W + 40) - 20;
+            const by = H - (((phase * 2.3 + t * 0.05 * (0.6 + phase)) % 1) * (H + 40));
+            g.globalAlpha = 0.18 + 0.4 * Math.abs(Math.sin(t * 1.3 + e2));
+            g.fillStyle = e2 % 4 === 0 ? 'rgba(255,178,108,0.9)' : 'rgba(198,216,255,0.7)';
+            g.fillRect(bx, by, 2 * sc, 2 * sc);
+        }
+        g.globalAlpha = 1;
+        const vig = g.createRadialGradient(W / 2, H * 0.48, H * 0.42, W / 2, H * 0.56, H * 0.98);
+        vig.addColorStop(0, 'rgba(0,0,0,0)');
+        vig.addColorStop(1, 'rgba(0,0,0,0.52)');
+        g.fillStyle = vig; g.fillRect(-20, -20, W + 40, H + 40);
         drawFxOverlays(t, ZONES_DUNGEON[Math.max(0, st.zone)].tint);
         g.restore();
     }
@@ -3117,19 +3759,52 @@
         // cuerpo de referencia constante — los frames de ataque son más
         // grandes (espada extendida) y se dibujan más grandes, sin encoger
         // el cuerpo, que era lo que se veía mal con el recorte a ojo.
-        if (heroSheet) {
-            const fr = heroSheet.rows[h.state] || heroSheet.rows.idle;
+        // hero2.png cubre los movimientos especiales (correr-atacar, subida de
+        // nivel, ballesta); hero.png cubre lo básico (idle/salto/caída). Se
+        // elige la hoja seg\u00fan qui\u00e9n tenga frames para el estado actual.
+        const sheet2 = hero2Sheet && hero2Sheet.rows[h.state] ? hero2Sheet : heroSheet;
+        if (sheet2) {
+            const fr = sheet2.rows[h.state] || sheet2.rows.idle || sheet2.rows.run || Object.values(sheet2.rows)[0];
             const fps = HERO_FPS[h.state] || 8;
             const raw = Math.floor(h.animT * fps);
-            const fi = h.state === 'die' ? Math.min(fr.length - 1, raw) : raw % fr.length; // die no se repite
+            const noRepeat = h.state === 'die';
+            const fi = noRepeat ? Math.min(fr.length - 1, raw) : raw % fr.length;
             const f = fr[fi];
-            const s2 = (78 / heroSheet.ref) * sc; // px del sheet → pantalla, cuerpo = 78u
+            const s2 = (96 / sheet2.ref) * sc; // px del sheet → pantalla, cuerpo = 96u
+            // Subida de nivel: aura dorada expansiva DETR\u00c1S del sprite.
+            if (h.state === 'levelup') {
+                const fL = 1 - h.levelupT / 1.1;
+                g.save();
+                g.globalCompositeOperation = 'lighter';
+                const rg = g.createRadialGradient(px, py - 46 * sc, 2, px, py - 46 * sc, (30 + fL * 60) * sc);
+                rg.addColorStop(0, `rgba(255,224,140,${0.55 * (1 - fL)})`);
+                rg.addColorStop(1, 'rgba(255,224,140,0)');
+                g.fillStyle = rg; g.beginPath(); g.arc(px, py - 46 * sc, (30 + fL * 60) * sc, 0, 7); g.fill();
+                g.restore();
+            }
             g.save();
             g.translate(px, py);
             if (h.dir !== (HERO_FACE[h.state] || 1)) g.scale(-1, 1);
             g.imageSmoothingEnabled = false; // píxel art nítido
-            g.drawImage(heroSheet.canvas, f.x, f.y, f.w, f.h, -f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
+            g.drawImage(sheet2.canvas, f.x, f.y, f.w, f.h, -f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
             g.restore();
+            // Arco de tajo: media luna de luz que barre delante del héroe durante
+            // el golpe (se desvanece con el avance del swing) — el "corte" que
+            // hace que el ataque se sienta contundente.
+            if (h.state === 'attack' || h.state === 'runAttack') {
+                const fr2 = clamp(1 - h.attackT / 0.28, 0, 1);
+                const a = (-1.6 + fr2 * 2.7) * h.dir;
+                const cx = px + h.dir * 8 * sc, cy = py - 42 * sc, rr = 46 * sc;
+                g.save();
+                g.lineCap = 'round';
+                g.strokeStyle = `rgba(150,225,255,${0.8 * (1 - fr2)})`;
+                g.lineWidth = 6 * sc;
+                g.beginPath(); g.arc(cx, cy, rr, a - 1.15 * h.dir, a + 0.2 * h.dir, h.dir < 0); g.stroke();
+                g.strokeStyle = `rgba(255,255,255,${0.55 * (1 - fr2)})`;
+                g.lineWidth = 2.4 * sc;
+                g.beginPath(); g.arc(cx, cy, rr, a - 1.15 * h.dir, a + 0.2 * h.dir, h.dir < 0); g.stroke();
+                g.restore();
+            }
             return;
         }
         g.save();
@@ -3179,9 +3854,12 @@
         const fade = e.dying > 0 ? e.dying / 0.45 : 1;
         if (e.dying <= 0) { // halo + sombra en los pies (los murciélagos la llevan pequeña)
             const sw = (e.type === 'bat' ? 9 : T.r) * sc;
-            dunHalo(ex, DUN_GROUND * (H / DUN_H), sw * 2.6);
+            // Sombra a la altura de los pies: en el suelo o sobre una plataforma
+            // (los terrestres ya saltan). El murciélago la proyecta en el suelo.
+            const shY = e.type === 'bat' ? DUN_GROUND * (H / DUN_H) : ey;
+            dunHalo(ex, shY, sw * 2.6);
             g.fillStyle = 'rgba(6,8,10,0.32)';
-            g.beginPath(); g.ellipse(ex, DUN_GROUND * (H / DUN_H) + 3 * sc, sw, sw * 0.32, 0, 0, 7); g.fill();
+            g.beginPath(); g.ellipse(ex, shY + 3 * sc, sw, sw * 0.32, 0, 0, 7); g.fill();
         }
         // Con la hoja real: columnas idle/walk1/walk2/attack1/attack2/hit/die
         if (enemySheet && enemySheet.rows[e.type] && enemySheet.rows[e.type].length >= 6) {
@@ -3193,14 +3871,25 @@
             else if (e.type === 'shroom') fi = 0; // la seta no anda
             else fi = 1 + ((e.animT * 6 | 0) % 2);
             const f = fr[Math.min(fi, fr.length - 1)];
-            const s2 = (T.h * 1.25 / f.h) * sc;
+            const pop = e.dying > 0 ? 1 + (1 - fade) * 0.28 : 1; // muerte: se hincha al desvanecerse
+            const s2 = (T.h * 2.15 / f.h) * sc * pop;
             g.save();
             g.globalAlpha = fade;
             g.translate(ex, ey);
-            if (e.dir > 0) g.scale(-1, 1); // la hoja mira a la izquierda
+            if ((e.face || e.dir) < 0) g.scale(-1, 1); // la hoja mira a la DERECHA → voltea cuando el héroe está a la izquierda
             g.imageSmoothingEnabled = false;
             g.drawImage(enemySheet.canvas, f.x, f.y, f.w, f.h, -f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
             g.restore();
+            // Destello de impacto: halo aditivo blanco-azulado sobre el enemigo
+            // el instante que recibe el tajo (lee el golpe sin ensuciar el arte).
+            if (e.hitT > 0) {
+                g.save();
+                g.globalCompositeOperation = 'lighter';
+                g.globalAlpha = Math.min(0.7, e.hitT * 3.2) * fade;
+                g.fillStyle = '#eaf4ff';
+                g.beginPath(); g.ellipse(ex, ey - T.h * 0.55 * sc, T.r * 1.15 * sc, T.h * 0.7 * sc, 0, 0, 7); g.fill();
+                g.restore();
+            }
             return;
         }
         // Placeholders: formas simples pero legibles, una por tipo
@@ -3281,8 +3970,8 @@
     const KOM_LEN = 7200, KOM_H = 540;
     const KOM_TOP = 84, KOM_BOT = KOM_H - 26; // franja jugable
     const ZONES_KOMANDOS = [
-        { name: 'DESEMBARCO',      tint: [240, 205, 120], ground: [[203, 176, 118], [188, 158, 100]], bg: 'beach' },
-        { name: 'SELVA',           tint: [110, 220, 150], ground: [[56, 88, 50],   [46, 74, 42]],     bg: 'jungle' },
+        { name: 'DESEMBARCO',      tint: [240, 205, 120], ground: [[203, 176, 118], [188, 158, 100]], bg: 'docks' },
+        { name: 'SELVA',           tint: [110, 220, 150], ground: [[56, 88, 50],   [46, 74, 42]],     bg: 'wasteland' },
         { name: 'ALDEA EN LLAMAS', tint: [255, 150, 70],  ground: [[99, 82, 60],   [84, 68, 50]],     bg: 'village' },
         { name: 'BASE ENEMIGA',    tint: [255, 90, 90],   ground: [[76, 79, 88],   [64, 66, 74]],     bg: 'military_base' },
     ];
@@ -3397,6 +4086,33 @@
     // ── Atlas del Komandos: contratos con rects absolutos + facing ──────────
     const komAtl = { bg: null, tiles: null, units: null, weapons: null };
     let komAssetsLoaded = false;
+    // comando_weapons.json llega como `frames` ARRAY en rejilla 6×4 (coords
+    // 128px nominales) pero el PNG real es 1402×1122: troceamos por la rejilla
+    // REAL y damos de alta ALIAS con los nombres que espera el render.
+    function buildWeaponFrames(js, p) {
+        const cols = +js.meta.columns || 6, rowsN = +js.meta.rows || 4;
+        const cw = p.w / cols, ch = p.h / rowsN;
+        const byName = {};
+        for (const f of js.frames) {
+            const id = +f.id;
+            const c = id % cols, r = Math.floor(id / cols);
+            const rect = trimCell(p, c * cw, r * ch, cw, ch);
+            if (rect && f.name) byName[f.name] = rect;
+        }
+        const A = (dst, src) => { if (byName[src]) byName[dst] = byName[src]; };
+        A('uzi_idle_0', 'uzi_idle'); A('uzi_idle_1', 'uzi_ready');
+        A('uzi_fire_0', 'uzi_fire_01'); A('uzi_fire_1', 'uzi_fire_02'); A('uzi_fire_2', 'uzi_fire_03');
+        A('uzi_ready', 'uzi_ready'); A('uzi_tracer', 'bullets_fast');
+        A('dual_idle_0', 'dualgun_idle'); A('dual_idle_1', 'dualgun_ready');
+        A('dual_fire_0', 'dualgun_fire_01'); A('dual_fire_1', 'dualgun_fire_02'); A('dual_fire_2', 'dualgun_fire_03');
+        A('dual_ready', 'dualgun_ready'); A('dual_tracer', 'bullets');
+        A('bazooka_fire', 'bazooka_fire'); A('bazooka_recoil', 'bazooka_recoil');
+        A('bazooka_idle', 'bazooka_aim_01'); A('bazooka_ready', 'bazooka_aim_02');
+        A('missile_fire', 'missile_fire'); A('missile_recoil', 'missile_recoil');
+        A('missile_idle', 'missile_aim_01'); A('missile_ready', 'missile_aim_02');
+        A('missile', 'missile'); A('rocket', 'rocket');
+        return byName;
+    }
     function loadKomAtlas(key, jsonFile) {
         fetch('sprites/' + jsonFile, { cache: 'no-store' })
             .then((r) => (r.ok ? r.json() : null))
@@ -3407,7 +4123,11 @@
                 img.onload = () => {
                     // El terreno (bg) se queda opaco; en el resto el fondo del
                     // sprite pasa a transparente (misma clave global que la mazmorra).
-                    komAtl[key].img = key === 'bg' ? img : stripBg(img).canvas;
+                    if (key === 'bg') { komAtl[key].img = img; return; }
+                    const s = stripBg(img);
+                    komAtl[key].img = s.canvas;
+                    // Armas en formato rejilla/array → mapa nombre→rect recortado.
+                    if (key === 'weapons' && Array.isArray(js.frames)) js.frames = buildWeaponFrames(js, s);
                 };
                 img.onerror = () => { console.warn(`Komandos: sprites/${js.meta.image} no disponible — placeholders para "${key}".`); };
                 img.src = 'sprites/' + js.meta.image + '?v=' + Date.now();
@@ -3420,7 +4140,7 @@
         loadKomAtlas('bg', 'backgrounds.json');
         loadKomAtlas('tiles', 'world_tiles.json');
         loadKomAtlas('units', 'enemy_units.json');
-        loadKomAtlas('weapons', 'commando_weapons.json');
+        loadKomAtlas('weapons', 'comando_weapons.json');
     }
     // Ángulo del rumbo "de fábrica" del arte: el render rota la diferencia.
     const KOM_FACE_A = { right: 0, up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI };
@@ -3874,10 +4594,9 @@
         // Progreso + música
         if (kk2.x > kk2.maxX) { st.score += (kk2.x - kk2.maxX) * 0.1; kk2.maxX = kk2.x; }
         st.worldT = clamp(kk2.x / KOM_LEN, 0, 0.999) * TERRAIN_SECS;
-        // Helipuerto: FIN DEL JUEGO — victoria
+        // Helipuerto: FIN DE LA MISIÓN — encadena con el combate final (N6)
         if (!kk2.done && kk2.x > KOM_LEN - 110) {
             kk2.done = true; kk2.doneT = 2.8;
-            st.victory = true;
             st.score += 1500;
             banner('¡EXTRACCIÓN COMPLETADA! +1500');
             hitFx(4);
@@ -3885,7 +4604,7 @@
         }
         if (kk2.done) {
             kk2.doneT -= dt;
-            if (kk2.doneT <= 0) { endRound(); return; }
+            if (kk2.doneT <= 0) { switchToLevel6(); return; } // el helipuerto te lleva al duelo final
         }
         const viewW = W / (H / KOM_H);
         st.camX += (clamp(kk2.x - viewW * 0.42, 0, Math.max(0, KOM_LEN - viewW)) - st.camX) * Math.min(1, 8 * dt);
@@ -3913,6 +4632,14 @@
         if (bgA && bgA.img) {
             drawBgTiles(B0.bg, 1);
             if (bf > 0) drawBgTiles(B1.bg, bf);
+            // Scrim de legibilidad: enfría y aplana el fondo fotográfico para que
+            // las unidades (con sombra + halo) resalten — sube el CONTRASTE
+            // figura/fondo. Degradado arriba/abajo + lavado neutro plano.
+            const scrim = g.createLinearGradient(0, 0, 0, H);
+            scrim.addColorStop(0, 'rgba(10,14,22,0.52)');
+            scrim.addColorStop(0.5, 'rgba(20,26,38,0.26)');
+            scrim.addColorStop(1, 'rgba(8,10,16,0.46)');
+            g.fillStyle = scrim; g.fillRect(-20, -20, W + 40, H + 40);
             // Helipuerto REAL como parche de suelo al final del mapa (el objetivo)
             const hp = bgA.js.tiles.heli_pad;
             if (hp && KOM_LEN - st.camX < W / sc + 300) {
@@ -4303,6 +5030,358 @@
         g.restore();
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    // NIVEL 6 · MMA — duelo 1v1 estilo Street Fighter en el octógono. Cámara
+    // FIJA (sin scroll): dos luchadores con el MISMO atlas (coordenadas exactas
+    // verificadas por análisis de píxeles — warrior1_mma_atlas.json vale para
+    // warrior1.png y warrior.png, mismo rig, distinto tono). CPU con IA simple,
+    // barras de vida y cronómetro. Golpes: jab, patada baja/media/alta,
+    // roundhouse (pesado), dash_punch (especial con embestida) y, a distancia
+    // de clinch, rodillazo/derribo.
+    // ════════════════════════════════════════════════════════════════════════
+    const MMA_W = 900, MMA_H = 520, MMA_GROUND = 430;
+    const ZONES_MMA = [
+        { name: 'CAMPANA',        tint: [255, 214, 110] },
+        { name: 'INTERCAMBIO',    tint: [255, 150, 90] },
+        { name: 'PRESIÓN',        tint: [255, 90, 90] },
+        { name: 'ÚLTIMO ASALTO',  tint: [255, 60, 90] },
+    ];
+    let mmaP1Sheet = null, mmaP2Sheet = null; // {canvas, rows, ref}
+    let octagonBg = null; // {canvas, w, h}
+    let mmaAssetsLoaded = false;
+    // warrior1_mma_atlas.json trae COORDENADAS EXACTAS en píxeles (frame:{x,y,w,h})
+    // ya verificadas — solo hace falta el chroma-key (stripBg) y un recorte fino.
+    function buildMmaSheet(which) {
+        return (img, atlas) => {
+            const p = stripBg(img);
+            const rows = {};
+            for (const name in atlas.frames) {
+                // Greedy: "hit_back_01" -> estado "hit_back", índice 1. Con
+                // `[a-zA-Z]+` (sin guion bajo) se perdían TODOS los estados
+                // compuestos (hit_back, low/mid/high_kick, crouch_guard,
+                // ko_front/back, ground_hit, get_up, dash_punch, ground_roll)
+                // y el dibujo caía al rectángulo de repuesto ("cuadrados").
+                const m = name.match(/^(.+)_(\d+)$/);
+                if (!m) continue;
+                const state = m[1], idx = Math.max(0, (+m[2]) - 1);
+                const fr = atlas.frames[name] && atlas.frames[name].frame;
+                if (!fr) continue;
+                const rect = trimFrame(p, fr.x, fr.y, fr.w, fr.h, 1);
+                if (rect) (rows[state] || (rows[state] = []))[idx] = rect;
+            }
+            for (const s2 in rows) rows[s2] = rows[s2].filter(Boolean);
+            const sheet = { canvas: p.canvas, rows, ref: (rows.idle && rows.idle[0] ? rows.idle[0].h : 140) };
+            if (which === 'p1') mmaP1Sheet = sheet; else mmaP2Sheet = sheet;
+        };
+    }
+    function ensureMmaAssets() {
+        if (mmaAssetsLoaded) return;
+        mmaAssetsLoaded = true;
+        loadSheet('sprites/warrior1.png', 'sprites/warrior1_mma_atlas.json', buildMmaSheet('p1'));
+        loadSheet('sprites/warrior.png', 'sprites/warrior1_mma_atlas.json', buildMmaSheet('p2'));
+        fetch('sprites/ocotogono.png', { cache: 'no-store' })
+            .then((r) => (r.ok ? r.blob() : null))
+            .then((blob) => {
+                if (!blob) return;
+                const img = new Image();
+                img.onload = () => { octagonBg = canvasFromImage(img); };
+                img.src = URL.createObjectURL(blob);
+            })
+            .catch(() => {});
+    }
+    // Duración total (s), ventana de impacto [inicio,fin] (fracción de la
+    // duración), alcance (u), daño, empuje. `dash` = embestida hacia delante.
+    const MMA_MOVES = {
+        jab:        { dur: 0.32, hit: [0.25, 0.6],  range: 78,  dmg: 3,  push: 30 },
+        low_kick:   { dur: 0.36, hit: [0.3, 0.65],  range: 82,  dmg: 4,  push: 40 },
+        mid_kick:   { dur: 0.38, hit: [0.3, 0.65],  range: 86,  dmg: 6,  push: 55 },
+        high_kick:  { dur: 0.42, hit: [0.35, 0.7],  range: 88,  dmg: 8,  push: 65 },
+        roundhouse: { dur: 0.6,  hit: [0.45, 0.75], range: 104, dmg: 15, push: 130 },
+        dash_punch: { dur: 0.5,  hit: [0.3, 0.55],  range: 130, dmg: 12, push: 100, dash: 340 },
+        knee:       { dur: 0.3,  hit: [0.2, 0.55],  range: 46,  dmg: 10, push: 70 },
+        takedown:   { dur: 0.7,  hit: [0.3, 0.55],  range: 48,  dmg: 18, push: 0, knockdown: true },
+    };
+    function mmaFighter(x, dir, isCPU) {
+        return {
+            x, y: MMA_GROUND, vx: 0, vy: 0, dir, isCPU,
+            hp: 100, maxHp: 100, state: 'ready', animT: 0,
+            attackT: 0, attackKind: null, hitDone: false,
+            hitT: 0, hurtT: 0, blockT: 0, onGround: true,
+            koT: 0, koKind: null, getUpPending: false,
+            comboStep: 0, comboT: 0,
+            aiCd: 0.8,
+        };
+    }
+    function switchToLevel6() {
+        st.level = 6;
+        st.zone = 0;
+        st.camX = 0;
+        st.victory = false;
+        ensureMmaAssets();
+        loadTerrain('komandos'); // reutiliza la música de acción (sin pista nueva)
+        st.mma = {
+            p1: mmaFighter(MMA_W * 0.26, 1, false),
+            p2: mmaFighter(MMA_W * 0.74, -1, true),
+            timer: 90, roundOver: false, roundOverT: 0, winner: null, readyT: 1.6,
+        };
+        clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
+        $('stage').classList.remove('mode3d');
+        resizeCanvas();
+        banner('¡PREPÁRATE!');
+        relabelButtons();
+        updateHud();
+    }
+    function mmaStartAttack(F, kind) {
+        if (F.attackT > 0 || F.hurtT > 0 || F.koT > 0) return false;
+        const mv = MMA_MOVES[kind];
+        F.attackKind = kind;
+        F.attackT = mv.dur;
+        F.animT = 0;
+        F.hitDone = false;
+        if (mv.dash) F.vx = F.dir * mv.dash;
+        return true;
+    }
+    function mmaPunch() {
+        const M = st.mma;
+        if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
+        const p1 = M.p1, p2 = M.p2;
+        const kind = Math.abs(p1.x - p2.x) < 54 ? 'knee' : 'jab';
+        if (kind === 'jab') {
+            // Combo de 2-3 golpes: pulsar de nuevo dentro de la ventana
+            // (0.55s tras el último jab) encadena y el 3er golpe pega más
+            // fuerte (ver escalado en la resolución de impacto).
+            p1.comboStep = p1.comboT > 0 ? Math.min(2, p1.comboStep + 1) : 0;
+            p1.comboT = 0.55;
+        }
+        if (mmaStartAttack(p1, kind)) { hitFx(2 + (kind === 'jab' ? p1.comboStep : 0)); vibrate(kind === 'knee' ? 12 : 8 + p1.comboStep * 3); }
+    }
+    function mmaKick() {
+        const M = st.mma;
+        if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
+        const p1 = M.p1;
+        const kind = !p1.onGround ? 'high_kick' : (keys.d ? 'low_kick' : 'mid_kick');
+        if (mmaStartAttack(p1, kind)) { hitFx(2); vibrate(10); }
+    }
+    function mmaSpecial() {
+        const M = st.mma;
+        if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
+        const p1 = M.p1, p2 = M.p2;
+        const dist = Math.abs(p1.x - p2.x);
+        const kind = dist < 54 ? 'takedown' : (dist < 90 ? 'roundhouse' : 'dash_punch');
+        if (mmaStartAttack(p1, kind)) { hitFx(3); vibrate(kind === 'takedown' ? [20, 20, 30] : 14); }
+    }
+    function mmaJump() {
+        const M = st.mma;
+        if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
+        const p1 = M.p1;
+        if (!p1.onGround || p1.attackT > 0 || p1.hurtT > 0) return;
+        p1.vy = -760; p1.onGround = false; hitFx(1); vibrate(6);
+    }
+    function mmaAI(F, opp, dt) {
+        F.aiCd = Math.max(0, F.aiCd - dt);
+        const dist = Math.abs(opp.x - F.x);
+        F.vx = 0;
+        if (F.attackT > 0 || F.hurtT > 0 || F.koT > 0) return;
+        if (dist > 260) {
+            F.vx = Math.sign(opp.x - F.x) * 150;
+        } else if (dist > 90) {
+            if (F.aiCd <= 0) {
+                const r = Math.random();
+                if (r < 0.5) { mmaStartAttack(F, 'mid_kick'); F.aiCd = 1.1; }
+                else if (r < 0.7) { mmaStartAttack(F, 'high_kick'); F.aiCd = 1.3; }
+                else if (r < 0.85) { mmaStartAttack(F, 'roundhouse'); F.aiCd = 1.8; }
+                else { F.vx = Math.sign(opp.x - F.x) * 150; F.aiCd = 0.3; }
+            } else {
+                F.vx = Math.sign(opp.x - F.x) * 90;
+            }
+        } else if (F.aiCd <= 0) {
+            const r = Math.random();
+            if (r < 0.35) { mmaStartAttack(F, 'jab'); F.aiCd = 0.6; }
+            else if (r < 0.55) { mmaStartAttack(F, 'low_kick'); F.aiCd = 0.9; }
+            else if (r < 0.7) { mmaStartAttack(F, dist < 50 ? 'knee' : 'jab'); F.aiCd = 1.0; }
+            else if (r < 0.85 && dist < 50) { mmaStartAttack(F, 'takedown'); F.aiCd = 2.2; }
+            else { F.blockT = 0.5; F.aiCd = 0.6; }
+        }
+    }
+    function mmaStepFighter(F, dt, opp) {
+        F.attackT = Math.max(0, F.attackT - dt);
+        F.hurtT = Math.max(0, F.hurtT - dt);
+        F.hitT = Math.max(0, F.hitT - dt);
+        F.blockT = Math.max(0, F.blockT - dt);
+        F.comboT = Math.max(0, F.comboT - dt);
+        if (F.comboT <= 0) F.comboStep = 0;
+        if (!F.isCPU && keys.d && F.onGround && F.attackT <= 0 && F.hurtT <= 0 && F.koT <= 0) F.blockT = 0.1;
+        if (F.koT > 0) { F.koT -= dt; F.animT += dt; return; }
+        F.vy += 2200 * dt;
+        F.y += F.vy * dt;
+        F.onGround = false;
+        if (F.y >= MMA_GROUND) { F.y = MMA_GROUND; F.vy = 0; F.onGround = true; }
+        if (F.attackT <= 0 && F.hurtT <= 0) F.dir = opp.x >= F.x ? 1 : -1;
+        F.animT += dt;
+    }
+    function stepLevel6(dt) {
+        const M = st.mma;
+        if (!M) return;
+        st.worldT = (st.worldT + dt) % TERRAIN_SECS;
+        if (M.readyT > 0) { M.readyT -= dt; if (M.readyT <= 0) banner('¡FIGHT!'); return; }
+        if (M.roundOver) {
+            M.roundOverT -= dt;
+            // Celebración: el ganador alterna victoria/taunt; el perdedor, si
+            // no está en la caída/levantada del K.O., se queda tendido.
+            const winnerF = M.winner === 'p1' ? M.p1 : M.p2;
+            winnerF.animT += dt;
+            winnerF.state = M.roundOverT > 1.6 ? 'victory' : 'taunt';
+            if (M.roundOverT <= 0) {
+                st.victory = M.winner === 'p1';
+                st.score += st.victory ? 800 : 150;
+                endRound();
+            }
+            return;
+        }
+        M.timer = Math.max(0, M.timer - dt);
+        const p1 = M.p1, p2 = M.p2;
+        let dir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
+        if (st.touchTargetX !== null) dir = st.touchTargetX > 0.15 ? 1 : st.touchTargetX < -0.15 ? -1 : 0;
+        if ((p1.attackT > 0 && p1.onGround) || p1.blockT > 0 || p1.hurtT > 0) dir = 0;
+        const SPD = 190;
+        p1.vx += (dir * SPD - p1.vx) * Math.min(1, 12 * dt);
+        mmaAI(p2, p1, dt);
+        mmaStepFighter(p1, dt, p2);
+        mmaStepFighter(p2, dt, p1);
+        p1.x = clamp(p1.x + p1.vx * dt, 40, MMA_W - 40);
+        p2.x = clamp(p2.x + p2.vx * dt, 40, MMA_W - 40);
+        const minSep = 46;
+        if (Math.abs(p1.x - p2.x) < minSep) {
+            const mid = (p1.x + p2.x) / 2, sgn = p1.x < p2.x ? -1 : 1;
+            p1.x = clamp(mid + sgn * minSep / 2, 40, MMA_W - 40);
+            p2.x = clamp(mid - sgn * minSep / 2, 40, MMA_W - 40);
+        }
+        for (const F of [p1, p2]) {
+            if (F.koT > 0) { F.state = F.koKind || 'ko_back'; continue; }
+            if (F.hurtT > 0) { F.state = 'hit_back'; continue; }
+            if (F.attackT > 0) { F.state = F.attackKind; continue; }
+            if (F.blockT > 0) { F.state = 'crouch_guard'; continue; }
+            if (!F.onGround) { F.state = 'jump'; continue; }
+            const spd = Math.abs(F.vx);
+            F.state = spd > 150 ? 'run' : (spd > 40 ? 'walk' : 'idle');
+        }
+        const sc6 = H / MMA_H;
+        for (const [A, D] of [[p1, p2], [p2, p1]]) {
+            if (A.attackT <= 0 || A.hitDone || A.koT > 0) continue;
+            const mv = MMA_MOVES[A.attackKind];
+            const frac = 1 - A.attackT / mv.dur;
+            if (frac < mv.hit[0] || frac > mv.hit[1]) continue;
+            if (Math.abs(A.x - D.x) > mv.range) continue;
+            A.hitDone = true;
+            const blocked = D.blockT > 0;
+            // Combo de jab: el 2º y 3er golpe pegan y empujan más fuerte.
+            const comboMul = A.attackKind === 'jab' ? [1, 1.25, 1.6][A.comboStep] || 1 : 1;
+            const dmg = blocked ? Math.max(1, Math.round(mv.dmg * 0.15)) : Math.round(mv.dmg * comboMul);
+            D.hp = Math.max(0, D.hp - dmg);
+            D.hitT = 0.18;
+            D.vx = (blocked ? mv.push * 0.3 : mv.push * comboMul) * Math.sign(D.x - A.x || 1);
+            if (!blocked) D.hurtT = 0.28;
+            burst(D.x * sc6, (D.y - 90) * sc6, blocked ? [140, 180, 255] : [255, 120, 90], blocked ? 6 : 12);
+            hitFx(blocked ? 1 : 3);
+            vibrate(blocked ? 6 : 16);
+            st.shake = Math.max(st.shake, blocked ? 0.08 : 0.18);
+            if (mv.knockdown && !blocked) { D.koT = 0.7; D.koKind = 'ground_roll'; D.getUpPending = true; D.state = D.koKind; D.animT = 0; }
+            if (D.hp <= 0 && !M.roundOver) {
+                D.koT = 1.6; D.koKind = Math.sign(D.x - A.x) === D.dir ? 'ko_front' : 'ko_back';
+                // Fijar el estado YA: en cuanto roundOver sea true, el bucle
+                // normal que asigna F.state (según koT) deja de ejecutarse
+                // (stepLevel6 corta antes) — sin esto, el K.O. no se veía.
+                D.state = D.koKind; D.animT = 0;
+                A.state = 'victory'; A.animT = 0;
+                M.roundOver = true; M.roundOverT = 3.2; M.winner = (A === p1) ? 'p1' : 'p2';
+                banner(A === p1 ? '¡K.O.! · VICTORIA' : '¡K.O.! · DERROTA');
+            }
+            updateHud();
+        }
+        for (const F of [p1, p2]) {
+            if (F.koT > 0 && F.getUpPending && F.koT <= 0.05 && !M.roundOver) { F.koT = 0.9; F.koKind = 'get_up'; F.getUpPending = false; }
+            else if (F.koT <= 0 && F.koKind === 'get_up') F.koKind = null;
+        }
+        if (M.timer <= 0 && !M.roundOver) {
+            M.roundOver = true; M.roundOverT = 3.0;
+            M.winner = p1.hp >= p2.hp ? 'p1' : 'p2';
+            banner(M.winner === 'p1' ? '¡TIEMPO! · VICTORIA' : '¡TIEMPO! · DERROTA');
+        }
+    }
+    function drawMmaFighter(F, sheet, sc) {
+        const px = F.x * sc, py = F.y * sc;
+        if (!sheet || !sheet.rows[F.state]) {
+            g.save(); g.translate(px, py); g.fillStyle = F.isCPU ? '#c85a5a' : '#5a8ac8';
+            g.fillRect(-16 * sc, -90 * sc, 32 * sc, 90 * sc); g.restore();
+            return;
+        }
+        const fr = sheet.rows[F.state];
+        const raw = Math.floor(F.animT * 10);
+        const noRepeat = F.state.indexOf('ko_') === 0 || F.state === 'takedown' || F.state === 'get_up' || F.state === 'ground_hit';
+        const fi = noRepeat ? Math.min(fr.length - 1, raw) : raw % fr.length;
+        const f = fr[fi];
+        const s2 = (150 / sheet.ref) * sc; // cuerpo objetivo ~150u
+        g.save();
+        g.translate(px, py);
+        if (F.dir < 0) g.scale(-1, 1);
+        g.imageSmoothingEnabled = false;
+        g.drawImage(sheet.canvas, f.x, f.y, f.w, f.h, -f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
+        g.restore();
+    }
+    function draw6(t) {
+        const M = st.mma;
+        if (!M) return;
+        const sc = H / MMA_H;
+        g.save();
+        if (st.shake > 0) g.translate((Math.random() - 0.5) * st.shake * 10 * k, (Math.random() - 0.5) * st.shake * 10 * k);
+        g.clearRect(-20, -20, W + 40, H + 40);
+        if (octagonBg) {
+            const scale2 = Math.max(W / octagonBg.w, H / octagonBg.h);
+            const dw = octagonBg.w * scale2, dh = octagonBg.h * scale2;
+            g.imageSmoothingEnabled = false;
+            g.drawImage(octagonBg.canvas, 0, 0, octagonBg.w, octagonBg.h, (W - dw) / 2, (H - dh) / 2, dw, dh);
+            g.fillStyle = 'rgba(6,8,14,0.22)'; g.fillRect(-20, -20, W + 40, H + 40);
+        } else {
+            g.fillStyle = '#1a1220'; g.fillRect(-20, -20, W + 40, H + 40);
+        }
+        const gy = MMA_GROUND * sc;
+        for (const F of [M.p1, M.p2]) {
+            g.fillStyle = 'rgba(0,0,0,0.4)';
+            g.beginPath(); g.ellipse(F.x * sc, gy + 4 * sc, 30 * sc, 8 * sc, 0, 0, 7); g.fill();
+        }
+        drawMmaFighter(M.p1, mmaP1Sheet, sc);
+        drawMmaFighter(M.p2, mmaP2Sheet, sc);
+        for (const p of st.particles) {
+            g.fillStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.life})`;
+            const sz = 3 * k; g.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
+        }
+        const barW = W * 0.38, barH = 16 * k;
+        const drawBar = (hp, maxHp, x0, flip) => {
+            const frac = clamp(hp / maxHp, 0, 1);
+            g.fillStyle = 'rgba(10,8,16,0.7)'; g.fillRect(x0, 14 * k, barW, barH);
+            const bw2 = barW * frac;
+            const grad = g.createLinearGradient(0, 0, barW, 0);
+            grad.addColorStop(0, frac < 0.3 ? '#ff3b3b' : '#ffcf4a'); grad.addColorStop(1, frac < 0.3 ? '#ff8a3a' : '#7be860');
+            g.fillStyle = grad;
+            g.fillRect(flip ? x0 + barW - bw2 : x0, 14 * k, bw2, barH);
+            g.strokeStyle = 'rgba(255,255,255,0.4)'; g.lineWidth = 1.5; g.strokeRect(x0, 14 * k, barW, barH);
+        };
+        drawBar(M.p1.hp, M.p1.maxHp, 14 * k, false);
+        drawBar(M.p2.hp, M.p2.maxHp, W - 14 * k - barW, true);
+        g.fillStyle = '#fff'; g.font = `bold ${Math.round(13 * k)}px monospace`;
+        g.textAlign = 'left'; g.fillText('TÚ', 14 * k, 12 * k);
+        g.textAlign = 'right'; g.fillText('RIVAL', W - 14 * k, 12 * k);
+        g.textAlign = 'center'; g.font = `bold ${Math.round(20 * k)}px monospace`; g.fillStyle = '#ffd27a';
+        g.fillText(Math.ceil(M.timer).toString(), W / 2, 34 * k);
+        if (st.bannerTtl > 0) {
+            g.fillStyle = `rgba(255,214,110,${Math.min(1, st.bannerTtl * 2)})`;
+            g.font = `bold ${Math.round(34 * k)}px monospace`;
+            g.textAlign = 'center';
+            g.fillText(st.banner, W / 2, H * 0.5);
+        }
+        g.restore();
+    }
+
     // ── Bucle ─────────────────────────────────────────────────────────────────
     // Paso de física fijo con acumulador: la conducción (y sus colisiones) no
     // deben ir más lentas si el dibujado (bloom/sombras en el circuito) se
@@ -4337,6 +5416,8 @@
             drawOverlay2D(t / 1000);
         } else if (st.level === 5) {
             draw5(t / 1000); // komandos
+        } else if (st.level === 6) {
+            draw6(t / 1000); // MMA
         } else {
             draw4(t / 1000); // mazmorra
         }
@@ -4374,6 +5455,7 @@
         if (st.level === 1) stepLevel1(dt);
         else if (st.level === 2 || st.level === 3) stepLevel2(dt);
         else if (st.level === 5) stepLevel5(dt); // komandos (cenital)
+        else if (st.level === 6) stepLevel6(dt); // MMA
         else stepLevel4(dt); // mazmorra (plataformas)
         stepCommon(dt);
     }
@@ -5192,6 +6274,8 @@
         heroAttack, heroJump,
         dunLen: DUN_LEN,
         goLevel5: switchToLevel5,
+        goLevel6: switchToLevel6,
+        get mma() { return st.mma; },
         get kom() { return st.kom; },
         get komEnemies() { return komEnemies; },
         get komProps() { return komProps; },

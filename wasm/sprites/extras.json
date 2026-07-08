@@ -1,149 +1,892 @@
 {
   "meta": {
-    "source": "sprites/extras.png",
-    "atlasSize": {
+    "app": "manual_atlas_map",
+    "version": "1.0",
+    "image": "extras (2)(1).png",
+    "format": "RGBA8888",
+    "size": {
       "w": 1536,
       "h": 1024
     },
-    "coordinateSystem": "pixel_top_left_origin",
-    "generatedAt": "2026-07-06"
+    "scale": "1",
+    "coordinateSystem": "top-left",
+    "note": "Atlas manual por regiones medido sobre la imagen 1536x1024. Los fondos son recortes grandes; tiles/extras son recortes por bloques y props principales."
   },
-  "backgrounds": [
-    { "id": "bg_forest", "x": 452, "y": 900, "w": 108, "h": 91 },
-    { "id": "bg_mountains", "x": 572, "y": 900, "w": 104, "h": 91 },
-    { "id": "bg_desert", "x": 688, "y": 900, "w": 105, "h": 92 },
-    { "id": "bg_ruins", "x": 805, "y": 900, "w": 113, "h": 91 },
-    { "id": "bg_cave", "x": 931, "y": 900, "w": 112, "h": 91 }
-  ],
-  "objects": [
-    { "id": "environment_object_001", "group": "environment_decorations", "frame": { "x": 509, "y": 591, "w": 31, "h": 38 } },
-    { "id": "environment_object_002", "group": "environment_decorations", "frame": { "x": 556, "y": 592, "w": 33, "h": 38 } },
-    { "id": "environment_object_003", "group": "environment_decorations", "frame": { "x": 605, "y": 592, "w": 32, "h": 38 } },
-    { "id": "environment_object_004", "group": "environment_decorations", "frame": { "x": 654, "y": 592, "w": 31, "h": 37 } },
-    { "id": "environment_object_005", "group": "environment_decorations", "frame": { "x": 825, "y": 593, "w": 27, "h": 29 } },
-    { "id": "environment_object_006", "group": "environment_decorations", "frame": { "x": 999, "y": 593, "w": 24, "h": 37 } },
-    { "id": "environment_object_007", "group": "environment_decorations", "frame": { "x": 737, "y": 596, "w": 69, "h": 17 } },
-    { "id": "environment_object_008", "group": "environment_decorations", "frame": { "x": 703, "y": 597, "w": 15, "h": 32 } },
-    { "id": "environment_object_009", "group": "environment_decorations", "frame": { "x": 456, "y": 599, "w": 36, "h": 30 } },
-    { "id": "environment_object_010", "group": "environment_decorations", "frame": { "x": 462, "y": 600, "w": 24, "h": 23 } },
-    { "id": "environment_object_011", "group": "environment_decorations", "frame": { "x": 870, "y": 602, "w": 14, "h": 28 } },
-    { "id": "environment_object_012", "group": "environment_decorations", "frame": { "x": 956, "y": 602, "w": 26, "h": 28 } },
-    { "id": "environment_object_013", "group": "environment_decorations", "frame": { "x": 925, "y": 612, "w": 9, "h": 12 } },
-    { "id": "environment_object_014", "group": "environment_decorations", "frame": { "x": 456, "y": 651, "w": 32, "h": 32 } },
-    { "id": "environment_object_015", "group": "environment_decorations", "frame": { "x": 554, "y": 652, "w": 30, "h": 30 } },
-    { "id": "environment_object_016", "group": "environment_decorations", "frame": { "x": 907, "y": 652, "w": 24, "h": 31 } },
-    { "id": "environment_object_017", "group": "environment_decorations", "frame": { "x": 647, "y": 653, "w": 29, "h": 17 } },
-    { "id": "environment_object_018", "group": "environment_decorations", "frame": { "x": 736, "y": 655, "w": 28, "h": 13 } },
-    { "id": "environment_object_019", "group": "environment_decorations", "frame": { "x": 600, "y": 656, "w": 31, "h": 27 } },
-    { "id": "environment_object_020", "group": "environment_decorations", "frame": { "x": 506, "y": 657, "w": 29, "h": 26 } },
-    { "id": "environment_object_021", "group": "environment_decorations", "frame": { "x": 691, "y": 657, "w": 30, "h": 26 } },
-    { "id": "environment_object_022", "group": "environment_decorations", "frame": { "x": 511, "y": 658, "w": 21, "h": 20 } },
-    { "id": "environment_object_023", "group": "environment_decorations", "frame": { "x": 779, "y": 658, "w": 24, "h": 25 } },
-    { "id": "environment_object_024", "group": "environment_decorations", "frame": { "x": 818, "y": 658, "w": 30, "h": 24 } },
-    { "id": "environment_object_025", "group": "environment_decorations", "frame": { "x": 862, "y": 659, "w": 31, "h": 23 } },
-    { "id": "environment_object_026", "group": "environment_decorations", "frame": { "x": 946, "y": 663, "w": 21, "h": 19 } },
-    { "id": "environment_object_027", "group": "environment_decorations", "frame": { "x": 983, "y": 664, "w": 17, "h": 18 } },
-    { "id": "environment_object_028", "group": "environment_decorations", "frame": { "x": 1016, "y": 665, "w": 15, "h": 17 } },
-    { "id": "environment_object_029", "group": "environment_decorations", "frame": { "x": 648, "y": 668, "w": 27, "h": 15 } },
-    { "id": "environment_object_030", "group": "environment_decorations", "frame": { "x": 605, "y": 669, "w": 20, "h": 9 } },
-    { "id": "environment_object_031", "group": "environment_decorations", "frame": { "x": 743, "y": 670, "w": 14, "h": 8 } },
-    { "id": "environment_object_032", "group": "environment_decorations", "frame": { "x": 457, "y": 701, "w": 18, "h": 29 } },
-    { "id": "environment_object_033", "group": "environment_decorations", "frame": { "x": 496, "y": 701, "w": 21, "h": 41 } },
-    { "id": "environment_object_034", "group": "environment_decorations", "frame": { "x": 537, "y": 701, "w": 21, "h": 42 } },
-    { "id": "environment_object_035", "group": "environment_decorations", "frame": { "x": 577, "y": 701, "w": 21, "h": 41 } },
-    { "id": "environment_object_036", "group": "environment_decorations", "frame": { "x": 620, "y": 701, "w": 19, "h": 29 } },
-    { "id": "environment_object_037", "group": "environment_decorations", "frame": { "x": 660, "y": 708, "w": 36, "h": 44 } },
-    { "id": "environment_object_038", "group": "environment_decorations", "frame": { "x": 932, "y": 708, "w": 27, "h": 45 } },
-    { "id": "environment_object_039", "group": "environment_decorations", "frame": { "x": 711, "y": 709, "w": 30, "h": 41 } },
-    { "id": "environment_object_040", "group": "environment_decorations", "frame": { "x": 751, "y": 710, "w": 30, "h": 39 } },
-    { "id": "environment_object_041", "group": "environment_decorations", "frame": { "x": 800, "y": 710, "w": 30, "h": 39 } },
-    { "id": "environment_object_042", "group": "environment_decorations", "frame": { "x": 845, "y": 710, "w": 25, "h": 39 } },
-    { "id": "environment_object_043", "group": "environment_decorations", "frame": { "x": 889, "y": 710, "w": 26, "h": 39 } },
-    { "id": "environment_object_044", "group": "environment_decorations", "frame": { "x": 977, "y": 712, "w": 16, "h": 17 } },
-    { "id": "environment_object_045", "group": "environment_decorations", "frame": { "x": 456, "y": 729, "w": 20, "h": 14 } },
-    { "id": "environment_object_046", "group": "environment_decorations", "frame": { "x": 619, "y": 729, "w": 20, "h": 13 } },
-    { "id": "environment_object_047", "group": "environment_decorations", "frame": { "x": 1016, "y": 729, "w": 19, "h": 23 } },
-    { "id": "environment_object_048", "group": "environment_decorations", "frame": { "x": 975, "y": 730, "w": 17, "h": 17 } },
-    { "id": "environment_object_049", "group": "environment_decorations", "frame": { "x": 460, "y": 743, "w": 12, "h": 19 } },
-    { "id": "environment_object_050", "group": "environment_decorations", "frame": { "x": 500, "y": 744, "w": 14, "h": 18 } },
-    { "id": "environment_object_051", "group": "environment_decorations", "frame": { "x": 540, "y": 744, "w": 14, "h": 18 } },
-    { "id": "environment_object_052", "group": "environment_decorations", "frame": { "x": 454, "y": 788, "w": 26, "h": 44 } },
-    { "id": "environment_object_053", "group": "environment_decorations", "frame": { "x": 498, "y": 788, "w": 18, "h": 44 } },
-    { "id": "environment_object_054", "group": "environment_decorations", "frame": { "x": 810, "y": 788, "w": 31, "h": 44 } },
-    { "id": "environment_object_055", "group": "environment_decorations", "frame": { "x": 865, "y": 788, "w": 10, "h": 21 } },
-    { "id": "environment_object_056", "group": "environment_decorations", "frame": { "x": 703, "y": 789, "w": 11, "h": 44 } },
-    { "id": "environment_object_057", "group": "environment_decorations", "frame": { "x": 740, "y": 789, "w": 11, "h": 44 } },
-    { "id": "environment_object_058", "group": "environment_decorations", "frame": { "x": 777, "y": 789, "w": 11, "h": 44 } },
-    { "id": "environment_object_059", "group": "environment_decorations", "frame": { "x": 573, "y": 790, "w": 29, "h": 42 } },
-    { "id": "environment_object_060", "group": "environment_decorations", "frame": { "x": 934, "y": 790, "w": 43, "h": 42 } },
-    { "id": "environment_object_061", "group": "environment_decorations", "frame": { "x": 996, "y": 790, "w": 30, "h": 40 } },
-    { "id": "environment_object_062", "group": "environment_decorations", "frame": { "x": 891, "y": 792, "w": 33, "h": 40 } },
-    { "id": "environment_object_063", "group": "environment_decorations", "frame": { "x": 662, "y": 794, "w": 10, "h": 38 } },
-    { "id": "environment_object_064", "group": "environment_decorations", "frame": { "x": 533, "y": 802, "w": 27, "h": 15 } },
-    { "id": "environment_object_065", "group": "environment_decorations", "frame": { "x": 617, "y": 802, "w": 24, "h": 29 } },
-    { "id": "environment_object_066", "group": "environment_decorations", "frame": { "x": 1030, "y": 807, "w": 12, "h": 21 } },
-    { "id": "environment_object_067", "group": "environment_decorations", "frame": { "x": 673, "y": 810, "w": 14, "h": 17 } },
-    { "id": "environment_object_068", "group": "environment_decorations", "frame": { "x": 987, "y": 814, "w": 18, "h": 17 } },
-    { "id": "environment_object_069", "group": "environment_decorations", "frame": { "x": 573, "y": 815, "w": 12, "h": 17 } },
-    { "id": "environment_object_070", "group": "environment_decorations", "frame": { "x": 542, "y": 818, "w": 9, "h": 14 } },
-    { "id": "interactable_object_001", "group": "interactable_objects", "frame": { "x": 1082, "y": 601, "w": 40, "h": 55 } },
-    { "id": "interactable_object_002", "group": "interactable_objects", "frame": { "x": 1139, "y": 603, "w": 56, "h": 59 } },
-    { "id": "interactable_object_003", "group": "interactable_objects", "frame": { "x": 1088, "y": 609, "w": 28, "h": 47 } },
-    { "id": "interactable_object_004", "group": "interactable_objects", "frame": { "x": 1148, "y": 610, "w": 41, "h": 39 } },
-    { "id": "interactable_object_005", "group": "interactable_objects", "frame": { "x": 1488, "y": 610, "w": 11, "h": 10 } },
-    { "id": "interactable_object_006", "group": "interactable_objects", "frame": { "x": 1321, "y": 611, "w": 36, "h": 18 } },
-    { "id": "interactable_object_007", "group": "interactable_objects", "frame": { "x": 1269, "y": 614, "w": 35, "h": 13 } },
-    { "id": "interactable_object_008", "group": "interactable_objects", "frame": { "x": 1381, "y": 615, "w": 30, "h": 16 } },
-    { "id": "interactable_object_009", "group": "interactable_objects", "frame": { "x": 1326, "y": 616, "w": 28, "h": 16 } },
-    { "id": "interactable_object_010", "group": "interactable_objects", "frame": { "x": 1189, "y": 618, "w": 8, "h": 44 } },
-    { "id": "interactable_object_011", "group": "interactable_objects", "frame": { "x": 1219, "y": 618, "w": 33, "h": 24 } },
-    { "id": "interactable_object_012", "group": "interactable_objects", "frame": { "x": 1273, "y": 620, "w": 27, "h": 12 } },
-    { "id": "interactable_object_013", "group": "interactable_objects", "frame": { "x": 1449, "y": 628, "w": 9, "h": 19 } },
-    { "id": "interactable_object_014", "group": "interactable_objects", "frame": { "x": 1238, "y": 633, "w": 14, "h": 23 } },
-    { "id": "interactable_object_015", "group": "interactable_objects", "frame": { "x": 1269, "y": 633, "w": 36, "h": 23 } },
-    { "id": "interactable_object_016", "group": "interactable_objects", "frame": { "x": 1321, "y": 633, "w": 36, "h": 23 } },
-    { "id": "interactable_object_017", "group": "interactable_objects", "frame": { "x": 1374, "y": 633, "w": 38, "h": 23 } },
-    { "id": "interactable_object_018", "group": "interactable_objects", "frame": { "x": 1481, "y": 633, "w": 24, "h": 15 } },
-    { "id": "interactable_object_019", "group": "interactable_objects", "frame": { "x": 1437, "y": 636, "w": 14, "h": 11 } },
-    { "id": "interactable_object_020", "group": "interactable_objects", "frame": { "x": 1102, "y": 637, "w": 15, "h": 19 } },
-    { "id": "interactable_object_021", "group": "interactable_objects", "frame": { "x": 1214, "y": 639, "w": 30, "h": 17 } },
-    { "id": "interactable_object_022", "group": "interactable_objects", "frame": { "x": 1220, "y": 639, "w": 27, "h": 12 } },
-    { "id": "interactable_object_023", "group": "interactable_objects", "frame": { "x": 1274, "y": 639, "w": 25, "h": 12 } },
-    { "id": "interactable_object_024", "group": "interactable_objects", "frame": { "x": 1479, "y": 647, "w": 29, "h": 9 } },
-    { "id": "interactable_object_025", "group": "interactable_objects", "frame": { "x": 1429, "y": 648, "w": 33, "h": 8 } },
-    { "id": "interactable_object_026", "group": "interactable_objects", "frame": { "x": 1223, "y": 681, "w": 41, "h": 35 } },
-    { "id": "interactable_object_027", "group": "interactable_objects", "frame": { "x": 1301, "y": 685, "w": 19, "h": 13 } },
-    { "id": "interactable_object_028", "group": "interactable_objects", "frame": { "x": 1082, "y": 686, "w": 30, "h": 30 } },
-    { "id": "interactable_object_029", "group": "interactable_objects", "frame": { "x": 1129, "y": 686, "w": 30, "h": 29 } },
-    { "id": "interactable_object_030", "group": "interactable_objects", "frame": { "x": 1177, "y": 686, "w": 29, "h": 29 } },
-    { "id": "interactable_object_031", "group": "interactable_objects", "frame": { "x": 1367, "y": 690, "w": 22, "h": 16 } },
-    { "id": "interactable_object_032", "group": "interactable_objects", "frame": { "x": 1468, "y": 690, "w": 31, "h": 25 } },
-    { "id": "interactable_object_033", "group": "interactable_objects", "frame": { "x": 1421, "y": 692, "w": 23, "h": 14 } },
-    { "id": "interactable_object_034", "group": "interactable_objects", "frame": { "x": 1282, "y": 699, "w": 53, "h": 9 } },
-    { "id": "interactable_object_035", "group": "interactable_objects", "frame": { "x": 1351, "y": 701, "w": 47, "h": 14 } },
-    { "id": "interactable_object_036", "group": "interactable_objects", "frame": { "x": 1416, "y": 702, "w": 33, "h": 13 } },
-    { "id": "interactable_object_037", "group": "interactable_objects", "frame": { "x": 1405, "y": 738, "w": 48, "h": 20 } },
-    { "id": "interactable_object_038", "group": "interactable_objects", "frame": { "x": 1469, "y": 738, "w": 31, "h": 37 } },
-    { "id": "interactable_object_039", "group": "interactable_objects", "frame": { "x": 1146, "y": 740, "w": 12, "h": 18 } },
-    { "id": "interactable_object_040", "group": "interactable_objects", "frame": { "x": 1084, "y": 742, "w": 30, "h": 33 } },
-    { "id": "interactable_object_041", "group": "interactable_objects", "frame": { "x": 1233, "y": 744, "w": 31, "h": 19 } },
-    { "id": "interactable_object_042", "group": "interactable_objects", "frame": { "x": 1368, "y": 745, "w": 22, "h": 30 } },
-    { "id": "interactable_object_043", "group": "interactable_objects", "frame": { "x": 1296, "y": 748, "w": 17, "h": 9 } },
-    { "id": "interactable_object_044", "group": "interactable_objects", "frame": { "x": 1285, "y": 755, "w": 31, "h": 20 } },
-    { "id": "interactable_object_045", "group": "interactable_objects", "frame": { "x": 1129, "y": 756, "w": 32, "h": 19 } },
-    { "id": "interactable_object_046", "group": "interactable_objects", "frame": { "x": 1177, "y": 756, "w": 32, "h": 19 } },
-    { "id": "interactable_object_047", "group": "interactable_objects", "frame": { "x": 1316, "y": 757, "w": 13, "h": 11 } },
-    { "id": "interactable_object_048", "group": "interactable_objects", "frame": { "x": 1346, "y": 760, "w": 23, "h": 15 } },
-    { "id": "interactable_object_049", "group": "interactable_objects", "frame": { "x": 1235, "y": 764, "w": 28, "h": 10 } },
-    { "id": "interactable_object_050", "group": "interactable_objects", "frame": { "x": 1405, "y": 796, "w": 33, "h": 38 } },
-    { "id": "interactable_object_051", "group": "interactable_objects", "frame": { "x": 1454, "y": 796, "w": 22, "h": 22 } },
-    { "id": "interactable_object_052", "group": "interactable_objects", "frame": { "x": 1285, "y": 797, "w": 47, "h": 37 } },
-    { "id": "interactable_object_053", "group": "interactable_objects", "frame": { "x": 1083, "y": 799, "w": 28, "h": 36 } },
-    { "id": "interactable_object_054", "group": "interactable_objects", "frame": { "x": 1243, "y": 799, "w": 38, "h": 35 } },
-    { "id": "interactable_object_055", "group": "interactable_objects", "frame": { "x": 1130, "y": 801, "w": 35, "h": 34 } },
-    { "id": "interactable_object_056", "group": "interactable_objects", "frame": { "x": 1183, "y": 802, "w": 43, "h": 33 } },
-    { "id": "interactable_object_057", "group": "interactable_objects", "frame": { "x": 1348, "y": 803, "w": 40, "h": 32 } },
-    { "id": "interactable_object_058", "group": "interactable_objects", "frame": { "x": 1483, "y": 807, "w": 25, "h": 28 } },
-    { "id": "interactable_object_059", "group": "interactable_objects", "frame": { "x": 1454, "y": 818, "w": 19, "h": 16 } }
-  ]
+  "backgrounds": {
+    "bg_dungeon_hall": {
+      "frame": {
+        "x": 682,
+        "y": 0,
+        "w": 854,
+        "h": 164
+      },
+      "type": "background",
+      "parallax": 0.35
+    },
+    "bg_dungeon_sewer": {
+      "frame": {
+        "x": 682,
+        "y": 164,
+        "w": 342,
+        "h": 180
+      },
+      "type": "background",
+      "parallax": 0.35
+    },
+    "bg_dungeon_throne_room": {
+      "frame": {
+        "x": 1024,
+        "y": 164,
+        "w": 512,
+        "h": 180
+      },
+      "type": "background",
+      "parallax": 0.35
+    },
+    "bg_castle_moon": {
+      "frame": {
+        "x": 704,
+        "y": 344,
+        "w": 394,
+        "h": 296
+      },
+      "type": "background",
+      "parallax": 0.2
+    },
+    "bg_castle_sunset": {
+      "frame": {
+        "x": 1100,
+        "y": 344,
+        "w": 436,
+        "h": 296
+      },
+      "type": "background",
+      "parallax": 0.2
+    },
+    "bg_forest_bridge": {
+      "frame": {
+        "x": 587,
+        "y": 640,
+        "w": 362,
+        "h": 256
+      },
+      "type": "background",
+      "parallax": 0.3
+    },
+    "bg_haunted_forest_gate": {
+      "frame": {
+        "x": 949,
+        "y": 640,
+        "w": 587,
+        "h": 384
+      },
+      "type": "background",
+      "parallax": 0.25
+    }
+  },
+  "tilesetRegions": {
+    "dungeon_tiles_main": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 384,
+        "h": 344
+      },
+      "tileSize": 32,
+      "category": "tiles/dungeon"
+    },
+    "dungeon_props_sheet": {
+      "frame": {
+        "x": 384,
+        "y": 0,
+        "w": 298,
+        "h": 344
+      },
+      "tileSize": 32,
+      "category": "props/dungeon"
+    },
+    "castle_tiles_facades": {
+      "frame": {
+        "x": 0,
+        "y": 344,
+        "w": 704,
+        "h": 296
+      },
+      "tileSize": 32,
+      "category": "tiles/castle"
+    },
+    "forest_tiles_props": {
+      "frame": {
+        "x": 0,
+        "y": 640,
+        "w": 587,
+        "h": 384
+      },
+      "tileSize": 32,
+      "category": "tiles/forest"
+    },
+    "cemetery_props_sheet": {
+      "frame": {
+        "x": 587,
+        "y": 852,
+        "w": 437,
+        "h": 172
+      },
+      "tileSize": 32,
+      "category": "props/cemetery"
+    }
+  },
+  "frames": {
+    "dungeon_room_block_01": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 128,
+        "h": 344
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "dungeon_prison_wall": {
+      "frame": {
+        "x": 140,
+        "y": 0,
+        "w": 116,
+        "h": 160
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "dungeon_spiked_wall": {
+      "frame": {
+        "x": 258,
+        "y": 0,
+        "w": 126,
+        "h": 256
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "dungeon_ice_spikes": {
+      "frame": {
+        "x": 142,
+        "y": 174,
+        "w": 113,
+        "h": 65
+      },
+      "type": "hazard",
+      "damage": 1
+    },
+    "dungeon_spike_fence_01": {
+      "frame": {
+        "x": 142,
+        "y": 282,
+        "w": 112,
+        "h": 58
+      },
+      "type": "hazard",
+      "damage": 1
+    },
+    "dungeon_spike_fence_02": {
+      "frame": {
+        "x": 258,
+        "y": 282,
+        "w": 80,
+        "h": 58
+      },
+      "type": "hazard",
+      "damage": 1
+    },
+    "dungeon_ladder_01": {
+      "frame": {
+        "x": 350,
+        "y": 110,
+        "w": 28,
+        "h": 146
+      },
+      "type": "ladder",
+      "solid": false
+    },
+    "dungeon_ladder_02": {
+      "frame": {
+        "x": 350,
+        "y": 268,
+        "w": 28,
+        "h": 74
+      },
+      "type": "ladder",
+      "solid": false
+    },
+    "prop_shelf_small": {
+      "frame": {
+        "x": 386,
+        "y": 0,
+        "w": 34,
+        "h": 36
+      },
+      "type": "prop"
+    },
+    "prop_purple_banner": {
+      "frame": {
+        "x": 433,
+        "y": 0,
+        "w": 28,
+        "h": 64
+      },
+      "type": "decoration"
+    },
+    "prop_magic_altar": {
+      "frame": {
+        "x": 475,
+        "y": 0,
+        "w": 36,
+        "h": 66
+      },
+      "type": "decoration",
+      "light": "purple"
+    },
+    "prop_skull_lamp": {
+      "frame": {
+        "x": 535,
+        "y": 0,
+        "w": 26,
+        "h": 50
+      },
+      "type": "decoration"
+    },
+    "prop_chain_01": {
+      "frame": {
+        "x": 566,
+        "y": 0,
+        "w": 30,
+        "h": 66
+      },
+      "type": "chain"
+    },
+    "prop_chain_02": {
+      "frame": {
+        "x": 609,
+        "y": 0,
+        "w": 30,
+        "h": 66
+      },
+      "type": "chain"
+    },
+    "prop_blue_lantern": {
+      "frame": {
+        "x": 647,
+        "y": 5,
+        "w": 34,
+        "h": 48
+      },
+      "type": "light",
+      "light": "blue"
+    },
+    "prop_crate_small": {
+      "frame": {
+        "x": 389,
+        "y": 68,
+        "w": 36,
+        "h": 32
+      },
+      "type": "crate",
+      "breakable": true
+    },
+    "prop_table_books": {
+      "frame": {
+        "x": 431,
+        "y": 66,
+        "w": 62,
+        "h": 32
+      },
+      "type": "prop"
+    },
+    "prop_wood_cabinet": {
+      "frame": {
+        "x": 512,
+        "y": 68,
+        "w": 56,
+        "h": 42
+      },
+      "type": "prop"
+    },
+    "prop_candle_shelf": {
+      "frame": {
+        "x": 592,
+        "y": 60,
+        "w": 66,
+        "h": 50
+      },
+      "type": "light",
+      "light": "warm"
+    },
+    "prop_gold_urn": {
+      "frame": {
+        "x": 650,
+        "y": 53,
+        "w": 34,
+        "h": 64
+      },
+      "type": "prop"
+    },
+    "prop_bookshelf": {
+      "frame": {
+        "x": 386,
+        "y": 198,
+        "w": 62,
+        "h": 62
+      },
+      "type": "prop"
+    },
+    "prop_stone_door_small": {
+      "frame": {
+        "x": 462,
+        "y": 198,
+        "w": 50,
+        "h": 62
+      },
+      "type": "door"
+    },
+    "prop_crystal_pillar": {
+      "frame": {
+        "x": 518,
+        "y": 198,
+        "w": 35,
+        "h": 62
+      },
+      "type": "light",
+      "light": "purple"
+    },
+    "prop_torch_red": {
+      "frame": {
+        "x": 562,
+        "y": 196,
+        "w": 33,
+        "h": 64
+      },
+      "type": "light",
+      "light": "red"
+    },
+    "prop_torch_purple": {
+      "frame": {
+        "x": 606,
+        "y": 196,
+        "w": 34,
+        "h": 64
+      },
+      "type": "light",
+      "light": "purple"
+    },
+    "prop_demonic_shrine": {
+      "frame": {
+        "x": 642,
+        "y": 196,
+        "w": 40,
+        "h": 64
+      },
+      "type": "decoration"
+    },
+    "prop_hanging_chain_01": {
+      "frame": {
+        "x": 392,
+        "y": 270,
+        "w": 22,
+        "h": 72
+      },
+      "type": "chain"
+    },
+    "prop_hanging_chain_02": {
+      "frame": {
+        "x": 430,
+        "y": 270,
+        "w": 22,
+        "h": 72
+      },
+      "type": "chain"
+    },
+    "prop_hanging_chain_03": {
+      "frame": {
+        "x": 472,
+        "y": 270,
+        "w": 22,
+        "h": 72
+      },
+      "type": "chain"
+    },
+    "prop_hanging_chain_04": {
+      "frame": {
+        "x": 520,
+        "y": 270,
+        "w": 22,
+        "h": 72
+      },
+      "type": "chain"
+    },
+    "prop_hanging_chain_05": {
+      "frame": {
+        "x": 560,
+        "y": 270,
+        "w": 22,
+        "h": 72
+      },
+      "type": "chain"
+    },
+    "prop_hanging_chain_06": {
+      "frame": {
+        "x": 600,
+        "y": 270,
+        "w": 22,
+        "h": 72
+      },
+      "type": "chain"
+    },
+    "castle_scaffold_wood": {
+      "frame": {
+        "x": 6,
+        "y": 348,
+        "w": 60,
+        "h": 64
+      },
+      "type": "prop"
+    },
+    "castle_wall_small_01": {
+      "frame": {
+        "x": 71,
+        "y": 376,
+        "w": 58,
+        "h": 36
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "castle_wall_block_01": {
+      "frame": {
+        "x": 7,
+        "y": 410,
+        "w": 122,
+        "h": 78
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "castle_wall_column_01": {
+      "frame": {
+        "x": 133,
+        "y": 348,
+        "w": 62,
+        "h": 152
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "castle_wall_gate_01": {
+      "frame": {
+        "x": 260,
+        "y": 350,
+        "w": 112,
+        "h": 156
+      },
+      "type": "door"
+    },
+    "castle_blue_tower_01": {
+      "frame": {
+        "x": 384,
+        "y": 346,
+        "w": 64,
+        "h": 168
+      },
+      "type": "facade"
+    },
+    "castle_blue_tower_02": {
+      "frame": {
+        "x": 448,
+        "y": 346,
+        "w": 64,
+        "h": 168
+      },
+      "type": "facade"
+    },
+    "castle_blue_tower_03": {
+      "frame": {
+        "x": 512,
+        "y": 344,
+        "w": 64,
+        "h": 170
+      },
+      "type": "facade"
+    },
+    "castle_blue_tower_04": {
+      "frame": {
+        "x": 576,
+        "y": 346,
+        "w": 64,
+        "h": 168
+      },
+      "type": "facade"
+    },
+    "castle_blue_tower_05": {
+      "frame": {
+        "x": 640,
+        "y": 346,
+        "w": 64,
+        "h": 168
+      },
+      "type": "facade"
+    },
+    "castle_platform_stone": {
+      "frame": {
+        "x": 0,
+        "y": 540,
+        "w": 122,
+        "h": 58
+      },
+      "type": "platform",
+      "solid": true
+    },
+    "castle_purple_gate": {
+      "frame": {
+        "x": 258,
+        "y": 540,
+        "w": 62,
+        "h": 70
+      },
+      "type": "gate"
+    },
+    "castle_gargoyle_left": {
+      "frame": {
+        "x": 344,
+        "y": 542,
+        "w": 42,
+        "h": 76
+      },
+      "type": "statue"
+    },
+    "castle_gargoyle_right": {
+      "frame": {
+        "x": 391,
+        "y": 542,
+        "w": 42,
+        "h": 76
+      },
+      "type": "statue"
+    },
+    "forest_moss_wall_01": {
+      "frame": {
+        "x": 0,
+        "y": 640,
+        "w": 128,
+        "h": 128
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "forest_hanging_vines": {
+      "frame": {
+        "x": 0,
+        "y": 640,
+        "w": 190,
+        "h": 96
+      },
+      "type": "decoration"
+    },
+    "forest_dead_tree": {
+      "frame": {
+        "x": 202,
+        "y": 640,
+        "w": 96,
+        "h": 132
+      },
+      "type": "prop"
+    },
+    "forest_root_tree": {
+      "frame": {
+        "x": 384,
+        "y": 640,
+        "w": 128,
+        "h": 128
+      },
+      "type": "prop"
+    },
+    "forest_twisted_tree": {
+      "frame": {
+        "x": 512,
+        "y": 640,
+        "w": 75,
+        "h": 132
+      },
+      "type": "prop"
+    },
+    "forest_platform_long": {
+      "frame": {
+        "x": 0,
+        "y": 768,
+        "w": 256,
+        "h": 64
+      },
+      "type": "platform",
+      "solid": true
+    },
+    "forest_platform_small_01": {
+      "frame": {
+        "x": 256,
+        "y": 796,
+        "w": 64,
+        "h": 36
+      },
+      "type": "platform",
+      "solid": true
+    },
+    "forest_platform_small_02": {
+      "frame": {
+        "x": 336,
+        "y": 798,
+        "w": 64,
+        "h": 34
+      },
+      "type": "platform",
+      "solid": true
+    },
+    "forest_signpost": {
+      "frame": {
+        "x": 442,
+        "y": 768,
+        "w": 36,
+        "h": 126
+      },
+      "type": "sign"
+    },
+    "forest_wood_sign": {
+      "frame": {
+        "x": 542,
+        "y": 798,
+        "w": 36,
+        "h": 32
+      },
+      "type": "sign"
+    },
+    "forest_ground_block_01": {
+      "frame": {
+        "x": 0,
+        "y": 894,
+        "w": 64,
+        "h": 128
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "forest_ground_block_02": {
+      "frame": {
+        "x": 128,
+        "y": 894,
+        "w": 64,
+        "h": 128
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "forest_ground_block_03": {
+      "frame": {
+        "x": 256,
+        "y": 958,
+        "w": 128,
+        "h": 64
+      },
+      "type": "tile_block",
+      "solid": true
+    },
+    "forest_grave_01": {
+      "frame": {
+        "x": 311,
+        "y": 838,
+        "w": 36,
+        "h": 58
+      },
+      "type": "grave"
+    },
+    "forest_grave_02": {
+      "frame": {
+        "x": 352,
+        "y": 838,
+        "w": 46,
+        "h": 58
+      },
+      "type": "grave"
+    },
+    "forest_crypt": {
+      "frame": {
+        "x": 384,
+        "y": 910,
+        "w": 64,
+        "h": 78
+      },
+      "type": "building"
+    },
+    "forest_statue_knight": {
+      "frame": {
+        "x": 514,
+        "y": 894,
+        "w": 42,
+        "h": 100
+      },
+      "type": "statue"
+    },
+    "forest_mushrooms_red": {
+      "frame": {
+        "x": 0,
+        "y": 766,
+        "w": 64,
+        "h": 34
+      },
+      "type": "decoration"
+    },
+    "forest_rock_01": {
+      "frame": {
+        "x": 64,
+        "y": 918,
+        "w": 64,
+        "h": 36
+      },
+      "type": "decoration"
+    },
+    "cemetery_gothic_arch": {
+      "frame": {
+        "x": 589,
+        "y": 852,
+        "w": 80,
+        "h": 84
+      },
+      "type": "arch"
+    },
+    "cemetery_tall_tomb_01": {
+      "frame": {
+        "x": 686,
+        "y": 852,
+        "w": 58,
+        "h": 84
+      },
+      "type": "grave"
+    },
+    "cemetery_robed_statue": {
+      "frame": {
+        "x": 744,
+        "y": 852,
+        "w": 50,
+        "h": 84
+      },
+      "type": "statue"
+    },
+    "cemetery_fence": {
+      "frame": {
+        "x": 590,
+        "y": 934,
+        "w": 108,
+        "h": 46
+      },
+      "type": "fence"
+    },
+    "cemetery_tomb_cluster": {
+      "frame": {
+        "x": 796,
+        "y": 852,
+        "w": 128,
+        "h": 80
+      },
+      "type": "grave"
+    },
+    "cemetery_cross_pillar": {
+      "frame": {
+        "x": 936,
+        "y": 850,
+        "w": 42,
+        "h": 84
+      },
+      "type": "grave"
+    },
+    "cemetery_angel_statue": {
+      "frame": {
+        "x": 981,
+        "y": 850,
+        "w": 43,
+        "h": 84
+      },
+      "type": "statue"
+    },
+    "cemetery_tombstone_small_01": {
+      "frame": {
+        "x": 621,
+        "y": 976,
+        "w": 28,
+        "h": 36
+      },
+      "type": "grave"
+    },
+    "cemetery_tombstone_small_02": {
+      "frame": {
+        "x": 654,
+        "y": 976,
+        "w": 36,
+        "h": 36
+      },
+      "type": "grave"
+    },
+    "cemetery_candles": {
+      "frame": {
+        "x": 714,
+        "y": 976,
+        "w": 56,
+        "h": 48
+      },
+      "type": "light",
+      "light": "warm"
+    },
+    "cemetery_coffin_01": {
+      "frame": {
+        "x": 975,
+        "y": 974,
+        "w": 36,
+        "h": 50
+      },
+      "type": "coffin"
+    },
+    "cemetery_coffin_02": {
+      "frame": {
+        "x": 1012,
+        "y": 974,
+        "w": 42,
+        "h": 50
+      },
+      "type": "coffin"
+    }
+  },
+  "groups": {
+    "solidPlatforms": [
+      "castle_platform_stone",
+      "forest_platform_long",
+      "forest_platform_small_01",
+      "forest_platform_small_02"
+    ],
+    "hazards": [
+      "dungeon_ice_spikes",
+      "dungeon_spike_fence_01",
+      "dungeon_spike_fence_02"
+    ],
+    "lights": [
+      "prop_magic_altar",
+      "prop_blue_lantern",
+      "prop_candle_shelf",
+      "prop_crystal_pillar",
+      "prop_torch_red",
+      "prop_torch_purple",
+      "cemetery_candles"
+    ],
+    "backgrounds": [
+      "bg_dungeon_hall",
+      "bg_dungeon_sewer",
+      "bg_dungeon_throne_room",
+      "bg_castle_moon",
+      "bg_castle_sunset",
+      "bg_forest_bridge",
+      "bg_haunted_forest_gate"
+    ]
+  }
 }

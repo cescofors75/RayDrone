@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "commando_weapons_topdown",
-    "image": "commando_weapons.png",
+    "image": "comando_weapons.png",
     "version": "1.0",
     "author": "OpenAI",
     "spriteWidth": 128,
