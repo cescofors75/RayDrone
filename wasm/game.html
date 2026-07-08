@@ -5136,6 +5136,7 @@
     // de clinch, rodillazo/derribo.
     // ════════════════════════════════════════════════════════════════════════
     const MMA_W = 900, MMA_H = 520, MMA_GROUND = 430;
+    const MMA_LEFT = 46, MMA_RIGHT = MMA_W - 46, MMA_MIN_SEP = 42;
     const ZONES_MMA = [
         { name: 'CAMPANA',        tint: [255, 214, 110] },
         { name: 'INTERCAMBIO',    tint: [255, 150, 90] },
@@ -5186,16 +5187,18 @@
             .catch(() => {});
     }
     // Duración total (s), ventana de impacto [inicio,fin] (fracción de la
-    // duración), alcance (u), daño, empuje. `dash` = embestida hacia delante.
+    // duración), alcance frontal (u), daño, empuje y stun. `zone` permite que
+    // las colisiones dejen de ser "distancia mágica": low no caza saltos, grab
+    // exige clinch, y la guardia solo sirve si mira al atacante.
     const MMA_MOVES = {
-        jab:        { dur: 0.32, hit: [0.25, 0.6],  range: 78,  dmg: 3,  push: 30 },
-        low_kick:   { dur: 0.36, hit: [0.3, 0.65],  range: 82,  dmg: 4,  push: 40 },
-        mid_kick:   { dur: 0.38, hit: [0.3, 0.65],  range: 86,  dmg: 6,  push: 55 },
-        high_kick:  { dur: 0.42, hit: [0.35, 0.7],  range: 88,  dmg: 8,  push: 65 },
-        roundhouse: { dur: 0.6,  hit: [0.45, 0.75], range: 104, dmg: 15, push: 130 },
-        dash_punch: { dur: 0.5,  hit: [0.3, 0.55],  range: 130, dmg: 12, push: 100, dash: 340 },
-        knee:       { dur: 0.3,  hit: [0.2, 0.55],  range: 46,  dmg: 10, push: 70 },
-        takedown:   { dur: 0.7,  hit: [0.3, 0.55],  range: 48,  dmg: 18, push: 0, knockdown: true },
+        jab:        { dur: 0.26, hit: [0.24, 0.52], range: 78,  dmg: 4,  push: 34,  stun: 0.18, zone: 'mid' },
+        low_kick:   { dur: 0.38, hit: [0.34, 0.62], range: 92,  dmg: 5,  push: 44,  stun: 0.20, zone: 'low' },
+        mid_kick:   { dur: 0.42, hit: [0.32, 0.62], range: 98,  dmg: 7,  push: 58,  stun: 0.23, zone: 'mid' },
+        high_kick:  { dur: 0.46, hit: [0.36, 0.66], range: 94,  dmg: 9,  push: 66,  stun: 0.25, zone: 'high' },
+        roundhouse: { dur: 0.64, hit: [0.43, 0.72], range: 112, dmg: 15, push: 126, stun: 0.34, zone: 'high' },
+        dash_punch: { dur: 0.56, hit: [0.32, 0.58], range: 82,  dmg: 12, push: 96,  stun: 0.30, zone: 'mid', dash: 430, dashUntil: 0.34 },
+        knee:       { dur: 0.30, hit: [0.20, 0.54], range: 54,  dmg: 10, push: 68,  stun: 0.26, zone: 'mid', clinch: true },
+        takedown:   { dur: 0.72, hit: [0.28, 0.52], range: 52,  dmg: 16, push: 18,  stun: 0.30, zone: 'low', clinch: true, knockdown: true },
     };
     function mmaFighter(x, dir, isCPU) {
         return {
@@ -5227,13 +5230,65 @@
         relabelButtons();
         updateHud();
     }
-    function mmaStartAttack(F, kind) {
+    function mmaFace(A, B) {
+        A.dir = B.x >= A.x ? 1 : -1;
+    }
+    function mmaAttackFrac(F, mv) {
+        return mv ? clamp(1 - F.attackT / mv.dur, 0, 1) : 0;
+    }
+    function mmaCanSteer(F) {
+        return F.hurtT <= 0 && F.koT <= 0 && F.blockT <= 0 && !(F.attackT > 0 && F.onGround);
+    }
+    function mmaInFront(A, D) {
+        return (D.x - A.x) * A.dir;
+    }
+    function mmaGuarding(D, A, mv) {
+        if (D.blockT <= 0 || !D.onGround || D.hurtT > 0 || D.koT > 0 || mv.knockdown) return false;
+        return mmaInFront(D, A) > -6;
+    }
+    function mmaMoveCanReach(A, D, mv) {
+        const ahead = mmaInFront(A, D);
+        if (ahead < 14 || ahead > mv.range) return false;
+        const feetGap = Math.abs(A.y - D.y);
+        if (mv.clinch && ahead > 58) return false;
+        if (mv.zone === 'low' && !D.onGround) return false;
+        if (!A.onGround && mv.zone === 'low') return false;
+        if (feetGap > (mv.zone === 'high' ? 118 : 92)) return false;
+        return true;
+    }
+    function mmaApplyBodySeparation(p1, p2) {
+        const dx = p2.x - p1.x;
+        const dir = dx >= 0 ? 1 : -1;
+        const gap = Math.abs(dx);
+        if (gap >= MMA_MIN_SEP) return;
+        const overlap = MMA_MIN_SEP - gap;
+        const p1Locked = p1.koT > 0 || p1.hurtT > 0;
+        const p2Locked = p2.koT > 0 || p2.hurtT > 0;
+        let p1Share = 0.5, p2Share = 0.5;
+        if (p1Locked && !p2Locked) { p1Share = 0.25; p2Share = 0.75; }
+        else if (p2Locked && !p1Locked) { p1Share = 0.75; p2Share = 0.25; }
+        p1.x = clamp(p1.x - dir * overlap * p1Share, MMA_LEFT, MMA_RIGHT);
+        p2.x = clamp(p2.x + dir * overlap * p2Share, MMA_LEFT, MMA_RIGHT);
+        if (dir > 0) {
+            p1.vx = Math.min(p1.vx, 0);
+            p2.vx = Math.max(p2.vx, 0);
+        } else {
+            p1.vx = Math.max(p1.vx, 0);
+            p2.vx = Math.min(p2.vx, 0);
+        }
+        if (p1.x <= MMA_LEFT) p1.vx = Math.max(p1.vx, 24);
+        if (p2.x >= MMA_RIGHT) p2.vx = Math.min(p2.vx, -24);
+    }
+    function mmaStartAttack(F, kind, opp = null) {
         if (F.attackT > 0 || F.hurtT > 0 || F.koT > 0) return false;
         const mv = MMA_MOVES[kind];
+        if (!mv) return false;
+        if (opp) mmaFace(F, opp);
         F.attackKind = kind;
         F.attackT = mv.dur;
         F.animT = 0;
         F.hitDone = false;
+        F.blockT = 0;
         if (mv.dash) F.vx = F.dir * mv.dash;
         return true;
     }
@@ -5249,14 +5304,14 @@
             p1.comboStep = p1.comboT > 0 ? Math.min(2, p1.comboStep + 1) : 0;
             p1.comboT = 0.55;
         }
-        if (mmaStartAttack(p1, kind)) { hitFx(2 + (kind === 'jab' ? p1.comboStep : 0)); vibrate(kind === 'knee' ? 12 : 8 + p1.comboStep * 3); }
+        if (mmaStartAttack(p1, kind, p2)) { hitFx(2 + (kind === 'jab' ? p1.comboStep : 0)); vibrate(kind === 'knee' ? 12 : 8 + p1.comboStep * 3); }
     }
     function mmaKick() {
         const M = st.mma;
         if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
         const p1 = M.p1;
         const kind = !p1.onGround ? 'high_kick' : (keys.d ? 'low_kick' : 'mid_kick');
-        if (mmaStartAttack(p1, kind)) { hitFx(2); vibrate(10); }
+        if (mmaStartAttack(p1, kind, M.p2)) { hitFx(2); vibrate(10); }
     }
     function mmaSpecial() {
         const M = st.mma;
@@ -5264,38 +5319,48 @@
         const p1 = M.p1, p2 = M.p2;
         const dist = Math.abs(p1.x - p2.x);
         const kind = dist < 54 ? 'takedown' : (dist < 90 ? 'roundhouse' : 'dash_punch');
-        if (mmaStartAttack(p1, kind)) { hitFx(3); vibrate(kind === 'takedown' ? [20, 20, 30] : 14); }
+        if (mmaStartAttack(p1, kind, p2)) { hitFx(3); vibrate(kind === 'takedown' ? [20, 20, 30] : 14); }
     }
     function mmaJump() {
         const M = st.mma;
         if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
         const p1 = M.p1;
         if (!p1.onGround || p1.attackT > 0 || p1.hurtT > 0) return;
-        p1.vy = -760; p1.onGround = false; hitFx(1); vibrate(6);
+        p1.vy = -690; p1.onGround = false; hitFx(1); vibrate(6);
     }
     function mmaAI(F, opp, dt) {
         F.aiCd = Math.max(0, F.aiCd - dt);
         const dist = Math.abs(opp.x - F.x);
-        F.vx = 0;
+        const toward = Math.sign(opp.x - F.x) || F.dir;
+        mmaFace(F, opp);
+        F.vx *= Math.pow(0.12, dt);
         if (F.attackT > 0 || F.hurtT > 0 || F.koT > 0) return;
+        if (opp.attackT > 0 && dist < 118 && F.aiCd <= 0.12 && Math.random() < 0.72) {
+            F.blockT = 0.28;
+            F.vx = -toward * 82;
+            F.aiCd = 0.42;
+            return;
+        }
         if (dist > 260) {
-            F.vx = Math.sign(opp.x - F.x) * 150;
-        } else if (dist > 90) {
+            F.vx = toward * 168;
+        } else if (dist > 118) {
             if (F.aiCd <= 0) {
                 const r = Math.random();
-                if (r < 0.5) { mmaStartAttack(F, 'mid_kick'); F.aiCd = 1.1; }
-                else if (r < 0.7) { mmaStartAttack(F, 'high_kick'); F.aiCd = 1.3; }
-                else if (r < 0.85) { mmaStartAttack(F, 'roundhouse'); F.aiCd = 1.8; }
-                else { F.vx = Math.sign(opp.x - F.x) * 150; F.aiCd = 0.3; }
+                if (r < 0.45) { mmaStartAttack(F, 'mid_kick', opp); F.aiCd = 1.05; }
+                else if (r < 0.62) { mmaStartAttack(F, 'high_kick', opp); F.aiCd = 1.25; }
+                else if (r < 0.76) { mmaStartAttack(F, 'roundhouse', opp); F.aiCd = 1.7; }
+                else { F.vx = toward * 138; F.aiCd = 0.28; }
             } else {
-                F.vx = Math.sign(opp.x - F.x) * 90;
+                F.vx = toward * 84;
             }
+        } else if (dist < 46 && F.aiCd > 0.2) {
+            F.vx = -toward * 96;
         } else if (F.aiCd <= 0) {
             const r = Math.random();
-            if (r < 0.35) { mmaStartAttack(F, 'jab'); F.aiCd = 0.6; }
-            else if (r < 0.55) { mmaStartAttack(F, 'low_kick'); F.aiCd = 0.9; }
-            else if (r < 0.7) { mmaStartAttack(F, dist < 50 ? 'knee' : 'jab'); F.aiCd = 1.0; }
-            else if (r < 0.85 && dist < 50) { mmaStartAttack(F, 'takedown'); F.aiCd = 2.2; }
+            if (r < 0.34) { mmaStartAttack(F, 'jab', opp); F.aiCd = 0.55; }
+            else if (r < 0.52) { mmaStartAttack(F, 'low_kick', opp); F.aiCd = 0.9; }
+            else if (r < 0.68) { mmaStartAttack(F, dist < 58 ? 'knee' : 'jab', opp); F.aiCd = 0.95; }
+            else if (r < 0.82 && dist < 58) { mmaStartAttack(F, 'takedown', opp); F.aiCd = 2.1; }
             else { F.blockT = 0.5; F.aiCd = 0.6; }
         }
     }
@@ -5307,7 +5372,29 @@
         F.comboT = Math.max(0, F.comboT - dt);
         if (F.comboT <= 0) F.comboStep = 0;
         if (!F.isCPU && keys.d && F.onGround && F.attackT <= 0 && F.hurtT <= 0 && F.koT <= 0) F.blockT = 0.1;
-        if (F.koT > 0) { F.koT -= dt; F.animT += dt; return; }
+        if (F.koT > 0) {
+            F.koT -= dt;
+            F.vy += 2200 * dt;
+            F.y += F.vy * dt;
+            F.onGround = false;
+            if (F.y >= MMA_GROUND) { F.y = MMA_GROUND; F.vy = 0; F.onGround = true; }
+            F.animT += dt;
+            return;
+        }
+        if (F.attackT > 0) {
+            const mv = MMA_MOVES[F.attackKind];
+            const frac = mmaAttackFrac(F, mv);
+            if (mv && mv.dash && frac < mv.dashUntil) {
+                const t = frac / mv.dashUntil;
+                F.vx = F.dir * mv.dash * (1 - 0.35 * t);
+            } else if (F.onGround) {
+                F.vx *= Math.pow(0.08, dt);
+            }
+        } else if (F.onGround && (F.blockT > 0 || F.hurtT > 0)) {
+            F.vx *= Math.pow(0.05, dt);
+        } else if (F.onGround && Math.abs(F.vx) < 4) {
+            F.vx = 0;
+        }
         F.vy += 2200 * dt;
         F.y += F.vy * dt;
         F.onGround = false;
@@ -5338,20 +5425,16 @@
         const p1 = M.p1, p2 = M.p2;
         let dir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
         if (st.touchTargetX !== null) dir = st.touchTargetX > 0.15 ? 1 : st.touchTargetX < -0.15 ? -1 : 0;
-        if ((p1.attackT > 0 && p1.onGround) || p1.blockT > 0 || p1.hurtT > 0) dir = 0;
-        const SPD = 190;
-        p1.vx += (dir * SPD - p1.vx) * Math.min(1, 12 * dt);
+        if (!mmaCanSteer(p1)) dir = 0;
+        const SPD = p1.onGround ? 205 : 130;
+        if (mmaCanSteer(p1)) p1.vx += (dir * SPD - p1.vx) * Math.min(1, 13 * dt);
+        else if (!(p1.attackT > 0 && MMA_MOVES[p1.attackKind]?.dash)) p1.vx *= Math.pow(0.06, dt);
         mmaAI(p2, p1, dt);
         mmaStepFighter(p1, dt, p2);
         mmaStepFighter(p2, dt, p1);
-        p1.x = clamp(p1.x + p1.vx * dt, 40, MMA_W - 40);
-        p2.x = clamp(p2.x + p2.vx * dt, 40, MMA_W - 40);
-        const minSep = 46;
-        if (Math.abs(p1.x - p2.x) < minSep) {
-            const mid = (p1.x + p2.x) / 2, sgn = p1.x < p2.x ? -1 : 1;
-            p1.x = clamp(mid + sgn * minSep / 2, 40, MMA_W - 40);
-            p2.x = clamp(mid - sgn * minSep / 2, 40, MMA_W - 40);
-        }
+        p1.x = clamp(p1.x + p1.vx * dt, MMA_LEFT, MMA_RIGHT);
+        p2.x = clamp(p2.x + p2.vx * dt, MMA_LEFT, MMA_RIGHT);
+        mmaApplyBodySeparation(p1, p2);
         for (const F of [p1, p2]) {
             if (F.koT > 0) { F.state = F.koKind || 'ko_back'; continue; }
             if (F.hurtT > 0) { F.state = 'hit_back'; continue; }
@@ -5365,23 +5448,30 @@
         for (const [A, D] of [[p1, p2], [p2, p1]]) {
             if (A.attackT <= 0 || A.hitDone || A.koT > 0) continue;
             const mv = MMA_MOVES[A.attackKind];
+            if (!mv) continue;
             const frac = 1 - A.attackT / mv.dur;
             if (frac < mv.hit[0] || frac > mv.hit[1]) continue;
-            if (Math.abs(A.x - D.x) > mv.range) continue;
+            if (!mmaMoveCanReach(A, D, mv)) continue;
             A.hitDone = true;
-            const blocked = D.blockT > 0;
+            const blocked = mmaGuarding(D, A, mv);
             // Combo de jab: el 2º y 3er golpe pegan y empujan más fuerte.
             const comboMul = A.attackKind === 'jab' ? [1, 1.25, 1.6][A.comboStep] || 1 : 1;
             const dmg = blocked ? Math.max(1, Math.round(mv.dmg * 0.15)) : Math.round(mv.dmg * comboMul);
             D.hp = Math.max(0, D.hp - dmg);
             D.hitT = 0.18;
-            D.vx = (blocked ? mv.push * 0.3 : mv.push * comboMul) * Math.sign(D.x - A.x || 1);
-            if (!blocked) D.hurtT = 0.28;
+            const hitDir = Math.sign(D.x - A.x) || A.dir;
+            D.vx = (blocked ? mv.push * 0.32 : mv.push * comboMul) * hitDir;
+            A.vx *= blocked ? 0.5 : 0.35;
+            if (blocked) D.blockT = Math.max(D.blockT, 0.16);
+            else D.hurtT = mv.stun || 0.25;
             burst(D.x * sc6, (D.y - 90) * sc6, blocked ? [140, 180, 255] : [255, 120, 90], blocked ? 6 : 12);
             hitFx(blocked ? 1 : 3);
             vibrate(blocked ? 6 : 16);
             st.shake = Math.max(st.shake, blocked ? 0.08 : 0.18);
-            if (mv.knockdown && !blocked) { D.koT = 0.7; D.koKind = 'ground_roll'; D.getUpPending = true; D.state = D.koKind; D.animT = 0; }
+            if (mv.knockdown && !blocked) {
+                D.koT = 0.75; D.koKind = 'ground_roll'; D.getUpPending = true; D.state = D.koKind; D.animT = 0;
+                D.vx = 95 * hitDir; D.vy = -210; D.onGround = false;
+            }
             if (D.hp <= 0 && !M.roundOver) {
                 D.koT = 1.6; D.koKind = Math.sign(D.x - A.x) === D.dir ? 'ko_front' : 'ko_back';
                 // Fijar el estado YA: en cuanto roundOver sea true, el bucle
