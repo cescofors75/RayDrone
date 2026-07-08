@@ -5135,6 +5135,7 @@
     // roundhouse (pesado), dash_punch (especial con embestida) y, a distancia
     // de clinch, rodillazo/derribo.
     // ════════════════════════════════════════════════════════════════════════
+    const MMA_ASSET_ROOT = 'sprites/generated_mma';
     const MMA_W = 900, MMA_H = 520, MMA_GROUND = 430;
     const MMA_LEFT = 46, MMA_RIGHT = MMA_W - 46, MMA_MIN_SEP = 42;
     const ZONES_MMA = [
@@ -5174,9 +5175,9 @@
     function ensureMmaAssets() {
         if (mmaAssetsLoaded) return;
         mmaAssetsLoaded = true;
-        loadSheet('sprites/warrior1.png', 'sprites/warrior1_mma_atlas.json', buildMmaSheet('p1'));
-        loadSheet('sprites/warrior.png', 'sprites/warrior1_mma_atlas.json', buildMmaSheet('p2'));
-        fetch('sprites/ocotogono.png', { cache: 'no-store' })
+        loadSheet(`${MMA_ASSET_ROOT}/warrior1.png`, `${MMA_ASSET_ROOT}/warrior1_mma_atlas.json`, buildMmaSheet('p1'));
+        loadSheet(`${MMA_ASSET_ROOT}/warrior.png`, `${MMA_ASSET_ROOT}/warrior1_mma_atlas.json`, buildMmaSheet('p2'));
+        fetch(`${MMA_ASSET_ROOT}/ocotogono.png`, { cache: 'no-store' })
             .then((r) => (r.ok ? r.blob() : null))
             .then((blob) => {
                 if (!blob) return;
