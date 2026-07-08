@@ -102,6 +102,7 @@
                background:rgba(255,255,255,0.025); }
         .move-pad { grid-template-columns:1fr 1fr; }
         .action-pad { grid-template-columns:1fr 1fr; }
+        .mma-only { display:none; }
         .kbtn { min-height:56px; min-width:0; padding:12px 8px; border-radius:8px; border:1px solid var(--line-hot);
                 background:#0f1320; color:var(--text); font-size:1.2rem; cursor:pointer; user-select:none;
                 touch-action:none; box-shadow:inset 0 1px 0 rgba(255,255,255,0.05); }
@@ -165,6 +166,29 @@
                      font-size:1.4rem; text-transform:none; letter-spacing:0; }
         .train-lvl b { font-size:0.92rem; color:var(--text); }
         .train-lvl span { font-size:0.72rem; color:#8a99ad; font-weight:normal; }
+
+        /* Modal "Elige luchadores" (Nivel 6 · MMA): mismo look, rejilla de miniaturas. */
+        #mma-select-backdrop { position:fixed; inset:0; background:rgba(5,6,11,0.78); z-index:20;
+                          display:none; align-items:center; justify-content:center; padding:16px; }
+        #mma-select-backdrop.show { display:flex; }
+        #mma-select-modal { position:relative; background:linear-gradient(180deg,var(--panel-2),var(--panel));
+                       border:1px solid rgba(69,228,213,0.32); border-radius:8px; padding:22px; max-width:560px; width:100%;
+                       max-height:88vh; overflow:auto; box-shadow:0 24px 70px rgba(0,0,0,0.5); }
+        #mma-select-modal h2 { margin:0 0 6px; font-size:1.05rem; letter-spacing:0; color:var(--cyan);
+                          text-transform:uppercase; padding-right:30px; }
+        #mma-select-modal h3 { margin:12px 0 8px; font-size:0.8rem; color:#8a99ad; text-transform:uppercase; letter-spacing:0.5px; }
+        #mma-select-close { position:absolute; top:12px; right:12px; width:34px; height:34px; border-radius:8px;
+                       border:1px solid rgba(47,211,255,0.3); background:#0f1320; color:var(--text);
+                       font-size:1rem; cursor:pointer; line-height:1; }
+        #mma-select-close:hover { background:rgba(47,211,255,0.2); }
+        .mma-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+        .mma-thumb { display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px;
+                     background:#0f1320; border:1px solid rgba(255,255,255,0.1); border-radius:8px; cursor:pointer; }
+        .mma-thumb:hover { border-color:rgba(47,211,255,0.5); }
+        .mma-thumb.selected { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(47,211,255,0.35) inset; }
+        .mma-thumb-art { width:64px; height:78px; background-repeat:no-repeat; image-rendering:pixelated; }
+        .mma-thumb span { font-size:0.66rem; color:#c7d0dd; text-align:center; line-height:1.15; }
+        #mma-select-start { display:block; margin:16px auto 0; }
 
         @media (max-width: 700px) {
             body { padding:8px 6px; }
@@ -299,6 +323,8 @@
         <div class="pad action-pad">
             <button class="kbtn" id="btn-fire">🚀</button>
             <button class="kbtn" id="btn-bomb">💣</button>
+            <button class="kbtn mma-only" id="btn-guard" title="Guardia (mantener)">🛡</button>
+            <button class="kbtn mma-only" id="btn-special" title="Especial">⚡</button>
         </div>
     </div>
 
@@ -390,6 +416,23 @@
             <button class="btn sec train-lvl" data-lvl="5">🪖 <b>Nivel 5</b><span>Komandos (cenital)</span></button>
             <button class="btn sec train-lvl" data-lvl="6">🥊 <b>Nivel 6</b><span>MMA · Octógono</span></button>
         </div>
+    </div>
+</div>
+
+<div id="mma-select-backdrop">
+    <div id="mma-select-modal">
+        <button id="mma-select-close" title="Cerrar (Esc)">✕</button>
+        <h2>🥊 Elige luchadores</h2>
+        <div class="how" style="font-size:0.82rem; margin-bottom:10px;">Elige tu personaje y el rival para el combate en el octógono.</div>
+        <div class="mma-pick-section">
+            <h3>Tú</h3>
+            <div class="mma-grid" id="mma-grid-p1"></div>
+        </div>
+        <div class="mma-pick-section">
+            <h3>Rival</h3>
+            <div class="mma-grid" id="mma-grid-p2"></div>
+        </div>
+        <button class="btn" id="mma-select-start">▶ Combate</button>
     </div>
 </div>
 
@@ -823,6 +866,10 @@
         // táctil no hay teclado): los handlers miran st.level para redirigir.
         $('btn-fire').innerText = st.level === 4 ? '⚔' : st.level === 6 ? '👊' : '🚀';
         $('btn-bomb').innerText = st.level === 4 ? '⬆' : st.level === 6 ? '🦵' : '💣';
+        // Guardia y especial del MMA no tienen tecla táctil equivalente a
+        // ArrowDown/'c' — solo existían en teclado; se muestran solo en N6.
+        const mmaShow = st.level === 6 ? '' : 'none';
+        for (const el of document.querySelectorAll('.mma-only')) el.style.display = mmaShow;
     }
     const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
     function banner(text) { st.banner = text; st.bannerTtl = 1; }
@@ -855,6 +902,7 @@
     const hideTrain = () => trainBackdrop.classList.remove('show');
     async function trainLevel(n) {
         hideTrain();
+        if (n === 6) { showMmaPicker(); return; } // el combate arranca al confirmar en el selector de luchadores
         await startRound();                 // arranca la partida (en nivel 1)
         st.training = true;                 // modo entreno: la puntuación no se guarda
         if (n === 2) switchToLevel2();
@@ -872,6 +920,53 @@
     for (const btn of document.querySelectorAll('.train-lvl')) {
         btn.addEventListener('click', () => trainLevel(parseInt(btn.dataset.lvl, 10)));
     }
+
+    // ── Modal "Elige luchadores" (Nivel 6 · MMA): rejilla con los 4 del
+    // roster para Tú/Rival — la miniatura recorta la pose "idle" directo del
+    // PNG real vía CSS background-position (sin generar imágenes aparte).
+    const mmaSelectBackdrop = $('mma-select-backdrop');
+    let mmaPickP1 = null, mmaPickP2 = null; // se fijan a los valores por defecto la primera vez que se abre
+    function mmaThumbStyle(def) {
+        const TW = 64, TH = 78;
+        const scale2 = Math.max(TW / def.thumb.frame.w, TH / def.thumb.frame.h);
+        const bw = def.thumb.w * scale2, bh = def.thumb.h * scale2;
+        const bx = -def.thumb.frame.x * scale2, by = -def.thumb.frame.y * scale2;
+        return `background-image:url('${MMA_ASSET_ROOT}/${def.png}'); background-size:${bw}px ${bh}px; background-position:${bx}px ${by}px;`;
+    }
+    function buildMmaGrid(elId, pickedId, onPick) {
+        const el = $(elId);
+        el.innerHTML = '';
+        for (const def of MMA_ROSTER) {
+            const btn = document.createElement('button');
+            btn.className = 'mma-thumb' + (def.id === pickedId ? ' selected' : '');
+            btn.innerHTML = `<div class="mma-thumb-art" style="${mmaThumbStyle(def)}"></div><span>${def.name}</span>`;
+            btn.addEventListener('click', () => onPick(def.id));
+            el.appendChild(btn);
+        }
+    }
+    function refreshMmaPicker() {
+        buildMmaGrid('mma-grid-p1', mmaPickP1, (id) => { mmaPickP1 = id; refreshMmaPicker(); });
+        buildMmaGrid('mma-grid-p2', mmaPickP2, (id) => { mmaPickP2 = id; refreshMmaPicker(); });
+    }
+    function showMmaPicker() {
+        if (!mmaPickP1) mmaPickP1 = MMA_DEFAULT_P1;
+        if (!mmaPickP2) mmaPickP2 = MMA_DEFAULT_P2;
+        refreshMmaPicker();
+        mmaSelectBackdrop.classList.add('show');
+    }
+    function hideMmaPicker() { mmaSelectBackdrop.classList.remove('show'); }
+    $('mma-select-close').addEventListener('click', hideMmaPicker);
+    mmaSelectBackdrop.addEventListener('click', (e) => { if (e.target === mmaSelectBackdrop) hideMmaPicker(); });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && mmaSelectBackdrop.classList.contains('show')) hideMmaPicker();
+    });
+    $('mma-select-start').addEventListener('click', async () => {
+        const p1 = mmaPickP1 || MMA_DEFAULT_P1, p2 = mmaPickP2 || MMA_DEFAULT_P2;
+        hideMmaPicker();
+        await startRound();
+        st.training = true;
+        switchToLevel6(p1, p2);
+    });
     // Primera visita: se abre solo una vez (luego siempre accesible con el botón)
     try { if (!localStorage.getItem(HOWTO_SEEN_KEY)) showHowto(); } catch (_) { showHowto(); }
 
@@ -1315,6 +1410,9 @@
     };
     holdBtn('btn-a', 'a');
     holdBtn('btn-b', 'b');
+    // Guardia MMA: mantener pulsado = keys.d (igual que ArrowDown en teclado).
+    holdBtn('btn-guard', 'd');
+    $('btn-special').addEventListener('pointerdown', (e) => { e.preventDefault(); if (st.level === 6) mmaSpecial(); });
     // En la mazmorra (N4) los botones centrales se reetiquetan a ⚔/⬆ y pasan
     // a ser espada y salto — en táctil no hay teclado (ver relabelButtons).
     $('btn-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); if (st.level === 4) heroAttack(); else if (st.level === 6) mmaPunch(); else fireMissile(); });
@@ -1382,10 +1480,10 @@
     document.addEventListener('webkitfullscreenchange', resizeCanvas);
     window.addEventListener('resize', resizeCanvas);
 
-    function burst(x, y, col, n) {
+    function burst(x, y, col, n, grav = 0) {
         for (let i = 0; i < n; i++) {
             const a = Math.random() * 6.283, sp = (40 + Math.random() * 160) * k;
-            st.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, col });
+            st.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, col, grav });
         }
     }
 
@@ -2661,6 +2759,49 @@
             }
             if (!toClear.length) break;
             for (let k = 0; k < toClear.length; k++) { px[toClear[k] + 3] = 0; removed++; }
+        }
+        x.putImageData(d, 0, 0);
+        return { canvas: c, px, w: W2, h: H2, bg, removedFrac: removed / (W2 * H2) };
+    }
+    // Como stripBg() pero con un color de fondo EXPLÍCITO (no muestreado de las
+    // esquinas). Necesario para hojas con chroma-key declarado en el propio
+    // JSON (p.ej. warrior2.json: verde puro 0,255,0): si la celda 1 empieza
+    // casi en el borde (x=1,y=1), la muestra de esquina de stripBg() puede
+    // caer sobre el propio personaje o sobre un verde con matiz distinto, y
+    // el fondo entero se queda sin quitar (se ve un rectángulo verde detrás
+    // del sprite en vez de transparencia).
+    function stripBgColor(img, bg, tol) {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(img, 0, 0);
+        const W2 = c.width, H2 = c.height;
+        const d = x.getImageData(0, 0, W2, H2), px = d.data;
+        const TOL2 = tol * tol;
+        let removed = 0;
+        for (let i4 = 0; i4 < px.length; i4 += 4) {
+            const dr = px[i4] - bg[0], dg = px[i4 + 1] - bg[1], db = px[i4 + 2] - bg[2];
+            if (dr * dr + dg * dg + db * db < TOL2) { px[i4 + 3] = 0; removed++; }
+        }
+        const HALO2 = (tol * 1.8) * (tol * 1.8);
+        for (let pass = 0; pass < 2; pass++) {
+            const toClear = [];
+            for (let y = 0; y < H2; y++) {
+                const rowo = y * W2;
+                for (let xx = 0; xx < W2; xx++) {
+                    const i4 = (rowo + xx) * 4;
+                    if (px[i4 + 3] === 0) continue;
+                    const up = y > 0 ? px[((rowo - W2) + xx) * 4 + 3] : 0;
+                    const dn = y < H2 - 1 ? px[((rowo + W2) + xx) * 4 + 3] : 0;
+                    const lf = xx > 0 ? px[(rowo + xx - 1) * 4 + 3] : 0;
+                    const rt = xx < W2 - 1 ? px[(rowo + xx + 1) * 4 + 3] : 0;
+                    if (up && dn && lf && rt) continue;
+                    const dr = px[i4] - bg[0], dg = px[i4 + 1] - bg[1], db = px[i4 + 2] - bg[2];
+                    if (dr * dr + dg * dg + db * db < HALO2) toClear.push(i4);
+                }
+            }
+            if (!toClear.length) break;
+            for (let kk3 = 0; kk3 < toClear.length; kk3++) { px[toClear[kk3] + 3] = 0; removed++; }
         }
         x.putImageData(d, 0, 0);
         return { canvas: c, px, w: W2, h: H2, bg, removedFrac: removed / (W2 * H2) };
@@ -5137,46 +5278,121 @@
     // ════════════════════════════════════════════════════════════════════════
     const MMA_ASSET_ROOT = 'sprites';
     const MMA_W = 900, MMA_H = 520, MMA_GROUND = 430;
-    const MMA_LEFT = 46, MMA_RIGHT = MMA_W - 46, MMA_MIN_SEP = 42;
+    const MMA_LEFT = 46, MMA_RIGHT = MMA_W - 46, MMA_MIN_SEP = 60;
     const ZONES_MMA = [
         { name: 'CAMPANA',        tint: [255, 214, 110] },
         { name: 'INTERCAMBIO',    tint: [255, 150, 90] },
         { name: 'PRESIÓN',        tint: [255, 90, 90] },
         { name: 'ÚLTIMO ASALTO',  tint: [255, 60, 90] },
     ];
-    let mmaP1Sheet = null, mmaP2Sheet = null; // {canvas, rows, ref}
+    // Roster de luchadores seleccionables (menú "Entrenar" → Nivel 6): 2
+    // formatos de atlas conviven — 'exact' (warrior1_mma_atlas.json: varios
+    // frames por movimiento, nombres "estado_N") y 'action' (warrior2.json/
+    // warriorTrump.json: TexturePacker JSON Hash, una pose por acción,
+    // chroma-key verde declarado). `thumb` da las coords para recortar el
+    // icono del selector directamente del PNG real (sin generar miniaturas).
+    const MMA_ROSTER = [
+        { id: 'warrior1', name: 'Warrior I', png: 'warrior1.png', json: 'warrior1_mma_atlas.json', kind: 'exact',
+          thumb: { w: 1448, h: 1086, frame: { x: 41, y: 6, w: 84, h: 141 } } },
+        { id: 'warrior', name: 'Retador', png: 'warrior.png', json: 'warrior1_mma_atlas.json', kind: 'exact',
+          thumb: { w: 1448, h: 1086, frame: { x: 41, y: 6, w: 84, h: 141 } } },
+        { id: 'warrior2', name: 'Warrior II', png: 'warrior2.png', json: 'warrior2.json', kind: 'action',
+          thumb: { w: 1254, h: 1254, frame: { x: 1, y: 1, w: 172, h: 167 } } },
+        { id: 'warriorTrump', name: 'Warrior Trump', png: 'warriorTrump.png', json: 'warriorTrump.json', kind: 'action',
+          thumb: { w: 1254, h: 1254, frame: { x: 1, y: 1, w: 172, h: 167 } } },
+    ];
+    const MMA_DEFAULT_P1 = 'warrior2', MMA_DEFAULT_P2 = 'warrior';
     let octagonBg = null; // {canvas, w, h}
-    let mmaAssetsLoaded = false;
+    let mmaOctagonLoading = false;
+    // caché de hojas construidas: id -> {canvas, rows, ref} | null (cargando)
+    const mmaSheetCache = {};
     // warrior1_mma_atlas.json trae COORDENADAS EXACTAS en píxeles (frame:{x,y,w,h})
     // ya verificadas — solo hace falta el chroma-key (stripBg) y un recorte fino.
-    function buildMmaSheet(which) {
-        return (img, atlas) => {
-            const p = stripBg(img);
-            const rows = {};
-            for (const name in atlas.frames) {
-                // Greedy: "hit_back_01" -> estado "hit_back", índice 1. Con
-                // `[a-zA-Z]+` (sin guion bajo) se perdían TODOS los estados
-                // compuestos (hit_back, low/mid/high_kick, crouch_guard,
-                // ko_front/back, ground_hit, get_up, dash_punch, ground_roll)
-                // y el dibujo caía al rectángulo de repuesto ("cuadrados").
-                const m = name.match(/^(.+)_(\d+)$/);
-                if (!m) continue;
-                const state = m[1], idx = Math.max(0, (+m[2]) - 1);
-                const fr = atlas.frames[name] && atlas.frames[name].frame;
-                if (!fr) continue;
-                const rect = trimFrame(p, fr.x, fr.y, fr.w, fr.h, 1);
-                if (rect) (rows[state] || (rows[state] = []))[idx] = rect;
-            }
-            for (const s2 in rows) rows[s2] = rows[s2].filter(Boolean);
-            const sheet = { canvas: p.canvas, rows, ref: (rows.idle && rows.idle[0] ? rows.idle[0].h : 140) };
-            if (which === 'p1') mmaP1Sheet = sheet; else mmaP2Sheet = sheet;
-        };
+    function buildExactSheet(img, atlas) {
+        const p = stripBg(img);
+        const rows = {};
+        for (const name in atlas.frames) {
+            // Greedy: "hit_back_01" -> estado "hit_back", índice 1. Con
+            // `[a-zA-Z]+` (sin guion bajo) se perdían TODOS los estados
+            // compuestos (hit_back, low/mid/high_kick, crouch_guard,
+            // ko_front/back, ground_hit, get_up, dash_punch, ground_roll)
+            // y el dibujo caía al rectángulo de repuesto ("cuadrados").
+            const m = name.match(/^(.+)_(\d+)$/);
+            if (!m) continue;
+            const state = m[1], idx = Math.max(0, (+m[2]) - 1);
+            const fr = atlas.frames[name] && atlas.frames[name].frame;
+            if (!fr) continue;
+            const rect = trimFrame(p, fr.x, fr.y, fr.w, fr.h, 1);
+            if (rect) (rows[state] || (rows[state] = []))[idx] = rect;
+        }
+        for (const s2 in rows) rows[s2] = rows[s2].filter(Boolean);
+        return { canvas: p.canvas, rows, ref: (rows.idle && rows.idle[0] ? rows.idle[0].h : 140) };
     }
-    function ensureMmaAssets() {
-        if (mmaAssetsLoaded) return;
-        mmaAssetsLoaded = true;
-        loadSheet(`${MMA_ASSET_ROOT}/warrior1.png`, `${MMA_ASSET_ROOT}/warrior1_mma_atlas.json`, buildMmaSheet('p1'));
-        loadSheet(`${MMA_ASSET_ROOT}/warrior.png`, `${MMA_ASSET_ROOT}/warrior1_mma_atlas.json`, buildMmaSheet('p2'));
+    // warrior2.json / warriorTrump.json (TexturePacker JSON Hash): 49 POSES
+    // sueltas (una por acción, sin ciclo de varios frames por movimiento) con
+    // chroma-key VERDE declarado en meta.chroma_key. Cada `custom.action` es
+    // el nombre limpio de la pose; se cura a mano el mapeo acción→estado de
+    // combate (superset de alias: ambos personajes comparten vocabulario,
+    // cada uno rellena lo que tenga — lo que falte cae al fallback warrior1).
+    function buildActionSheet(img, atlas) {
+        const ck = (atlas.meta && atlas.meta.chroma_key) || { r: 0, g: 255, b: 0 };
+        const p = stripBgColor(img, [ck.r, ck.g, ck.b], 110);
+        const byAction = {};
+        for (const name in atlas.frames) {
+            const f = atlas.frames[name];
+            const action = f && f.custom && f.custom.action;
+            const fr = f && f.frame;
+            if (!action || !fr) continue;
+            const rect = trimFrame(p, fr.x, fr.y, fr.w, fr.h, 1);
+            if (rect) byAction[action] = rect;
+        }
+        const pick = (...actions) => actions.map((a) => byAction[a]).filter(Boolean);
+        const rows = {};
+        const add = (state, ...actions) => { const list = pick(...actions); if (list.length) rows[state] = list; };
+        add('idle', 'idle_guard_01', 'idle_guard_02', 'idle_guard_03');
+        add('ready', 'idle_guard_01');
+        add('walk', 'dash_run_01', 'dash_run_02');
+        add('run', 'dash_run_01', 'dash_run_03');
+        add('crouch_guard', 'crouch_guard_01', 'crouch_guard_02', 'low_guard_01', 'guard_stance_01', 'high_block_01', 'guard_block_01', 'cover_guard_01');
+        add('jump', 'knee_raise_01', 'jump_knee_01', 'jump_tuck_01', 'flying_side_kick_01');
+        add('jab', 'straight_punch_01', 'straight_punch_02', 'lunge_punch_01', 'jab_01', 'jab_02', 'reaching_jab_01', 'reaching_jab_02');
+        add('taunt', 'taunt_flex_01', 'taunt_sign_01', 'taunt_podium_01', 'taunt_flag_01', 'taunt_eagle_01', 'taunt_money_01', 'taunt_point_01', 'taunt_point_02');
+        add('low_kick', 'low_sweep_01');
+        add('mid_kick', 'front_kick_01', 'side_kick_01', 'side_kick_02', 'side_kick_alt_01');
+        add('high_kick', 'high_kick_01', 'air_front_kick_01');
+        add('roundhouse', 'spinning_kick_01', 'flying_roundhouse_01', 'aerial_spinning_kick_01', 'roundhouse_01', 'roundhouse_02');
+        add('dash_punch', 'dash_punch_01', 'body_hook_01', 'spinning_elbow_01');
+        add('knee', 'knee_raise_01', 'jump_knee_01');
+        add('ground_roll', 'ground_roll_01');
+        add('ko_front', 'landing_impact_01');
+        add('ko_back', 'landing_impact_01');
+        add('hit_back', 'hit_reaction_01', 'air_hit_reaction_01', 'dodge_back_01', 'block_reaction_01', 'cover_guard_01', 'cover_guard_02', 'deep_crouch_01');
+        add('get_up', 'ground_recovery_01', 'deep_crouch_01');
+        add('victory', 'victory_open_arms_01', 'victory_open_arms_02', 'victory_flex_01', 'victory_arms_up_01', 'victory_arms_up_02', 'victory_arms_up_03', 'victory_confetti_01');
+        // clinch/takedown/ground_hit: sin pose propia en esta hoja — caen al
+        // fallback (warrior1.png) automáticamente en drawMmaFighter().
+        if (!rows.idle) return null;
+        return { canvas: p.canvas, rows, ref: rows.idle[0].h };
+    }
+    // Carga (con caché) la hoja de un personaje del roster por id. `cb` se
+    // llama cuando ya está lista (o de inmediato si ya estaba en caché).
+    function ensureMmaCharacter(id, cb) {
+        if (id in mmaSheetCache) { if (mmaSheetCache[id] && cb) cb(); return; }
+        const def = MMA_ROSTER.find((c) => c.id === id);
+        if (!def) return;
+        mmaSheetCache[id] = null; // marca "pedido" para no repetir el fetch
+        const build = def.kind === 'action' ? buildActionSheet : buildExactSheet;
+        loadSheet(`${MMA_ASSET_ROOT}/${def.png}`, `${MMA_ASSET_ROOT}/${def.json}`, (img, atlas) => {
+            mmaSheetCache[id] = build(img, atlas);
+            if (mmaSheetCache[id] && cb) cb();
+        });
+    }
+    function ensureMmaAssets(p1Id, p2Id) {
+        ensureMmaCharacter('warrior1'); // fallback universal (clinch/takedown/ko) para las hojas 'action'
+        ensureMmaCharacter(p1Id || MMA_DEFAULT_P1);
+        ensureMmaCharacter(p2Id || MMA_DEFAULT_P2);
+        if (mmaOctagonLoading || octagonBg) return;
+        mmaOctagonLoading = true;
         fetch(`${MMA_ASSET_ROOT}/ocotogono.png`, { cache: 'no-store' })
             .then((r) => (r.ok ? r.blob() : null))
             .then((blob) => {
@@ -5198,31 +5414,35 @@
         high_kick:  { dur: 0.46, hit: [0.36, 0.66], range: 94,  dmg: 9,  push: 66,  stun: 0.25, zone: 'high' },
         roundhouse: { dur: 0.64, hit: [0.43, 0.72], range: 112, dmg: 15, push: 126, stun: 0.34, zone: 'high' },
         dash_punch: { dur: 0.56, hit: [0.32, 0.58], range: 82,  dmg: 12, push: 96,  stun: 0.30, zone: 'mid', dash: 430, dashUntil: 0.34 },
-        knee:       { dur: 0.30, hit: [0.20, 0.54], range: 54,  dmg: 10, push: 68,  stun: 0.26, zone: 'mid', clinch: true },
-        takedown:   { dur: 0.72, hit: [0.28, 0.52], range: 52,  dmg: 16, push: 18,  stun: 0.30, zone: 'low', clinch: true, knockdown: true },
+        knee:       { dur: 0.30, hit: [0.20, 0.54], range: 74,  dmg: 10, push: 68,  stun: 0.26, zone: 'mid', clinch: true },
+        takedown:   { dur: 0.72, hit: [0.28, 0.52], range: 70,  dmg: 16, push: 18,  stun: 0.30, zone: 'low', clinch: true, knockdown: true },
     };
-    function mmaFighter(x, dir, isCPU) {
+    function mmaFighter(x, dir, isCPU, charId) {
         return {
-            x, y: MMA_GROUND, vx: 0, vy: 0, dir, isCPU,
+            x, y: MMA_GROUND, vx: 0, vy: 0, dir, isCPU, charId,
             hp: 100, maxHp: 100, state: 'ready', animT: 0,
             attackT: 0, attackKind: null, hitDone: false,
             hitT: 0, hurtT: 0, blockT: 0, onGround: true,
             koT: 0, koKind: null, getUpPending: false,
             comboStep: 0, comboT: 0,
             aiCd: 0.8,
+            blood: [], // manchas de sangre que quedan pegadas al cuerpo (se dibujan con drawMmaFighter)
         };
     }
-    function switchToLevel6() {
+    function switchToLevel6(p1Id, p2Id) {
         st.level = 6;
         st.zone = 0;
         st.camX = 0;
         st.victory = false;
-        ensureMmaAssets();
+        p1Id = p1Id || MMA_DEFAULT_P1;
+        p2Id = p2Id || MMA_DEFAULT_P2;
+        ensureMmaAssets(p1Id, p2Id);
         loadTerrain('komandos'); // reutiliza la música de acción (sin pista nueva)
         st.mma = {
-            p1: mmaFighter(MMA_W * 0.26, 1, false),
-            p2: mmaFighter(MMA_W * 0.74, -1, true),
-            timer: 90, roundOver: false, roundOverT: 0, winner: null, readyT: 1.6,
+            p1: mmaFighter(MMA_W * 0.26, 1, false, p1Id),
+            p2: mmaFighter(MMA_W * 0.74, -1, true, p2Id),
+            timer: 90, roundOver: false, roundOverT: 0, winner: null, readyT: 1.6, hitStop: 0,
+            floorBlood: [], // manchas permanentes en el tatami (se dibujan bajo los luchadores)
         };
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
@@ -5251,7 +5471,6 @@
         const ahead = mmaInFront(A, D);
         if (ahead < 14 || ahead > mv.range) return false;
         const feetGap = Math.abs(A.y - D.y);
-        if (mv.clinch && ahead > 58) return false;
         if (mv.zone === 'low' && !D.onGround) return false;
         if (!A.onGround && mv.zone === 'low') return false;
         if (feetGap > (mv.zone === 'high' ? 118 : 92)) return false;
@@ -5280,6 +5499,64 @@
         if (p1.x <= MMA_LEFT) p1.vx = Math.max(p1.vx, 24);
         if (p2.x >= MMA_RIGHT) p2.vx = Math.min(p2.vx, -24);
     }
+    // Sangre: chorro direccional (se aleja del atacante) con gravedad propia —
+    // usa el mismo st.particles que el resto del juego (grav/sz/decay/shape
+    // opcionales, se aplican en stepCommon y en el dibujado), así que no hace
+    // falta un sistema de partículas aparte. Dos capas: gotas grandes que caen
+    // despacio (dan la sensación de "splat" y MANCHAN el tatami al aterrizar,
+    // ver groundY/onLand) + niebla fina rápida (el estallido inicial, se
+    // dibuja alargada según su velocidad — parece spray, no confeti).
+    function mmaBlood(x, y, dir, n) {
+        const groundY = MMA_GROUND * (H / MMA_H);
+        for (let i = 0; i < n; i++) {
+            const spread = (Math.random() - 0.5) * 2.6;
+            const big = Math.random() < 0.42;
+            const vx = dir * (big ? 30 + Math.random() * 110 : 100 + Math.random() * 240) * k + spread * (big ? 40 : 95) * k;
+            const vy = -(big ? 50 + Math.random() * 130 : 150 + Math.random() * 230) * k;
+            const shade = 150 + Math.random() * 70;
+            st.particles.push({
+                x, y, vx, vy, life: 1,
+                col: [shade, 6 + Math.random() * 16, 10 + Math.random() * 8],
+                grav: (big ? 640 + Math.random() * 220 : 950 + Math.random() * 320) * k,
+                sz: (big ? 5 + Math.random() * 4.5 : 2 + Math.random() * 2) * k,
+                decay: big ? 1.0 + Math.random() * 0.5 : 2.6 + Math.random() * 0.9,
+                shape: 'drop', groundY,
+                onLand: (p) => {
+                    const M = st.mma;
+                    if (!M || Math.random() > (big ? 0.75 : 0.3)) return;
+                    const wx = p.x / (H / MMA_H);
+                    const rx = big ? 5 + Math.random() * 9 : 2.4 + Math.random() * 4;
+                    M.floorBlood.push({ x: wx, y: MMA_GROUND + (Math.random() * 4 - 1), rx, ry: rx * 0.34, a: (big ? 0.34 : 0.22) + Math.random() * 0.26, col: Math.random() < 0.5 ? [124, 10, 14] : [80, 6, 9] });
+                    if (M.floorBlood.length > 110) M.floorBlood.splice(0, M.floorBlood.length - 110);
+                },
+            });
+        }
+    }
+    // Manchas persistentes: unas caen en el tatami (bajo los pies del
+    // golpeado, se dibujan en coordenadas de mundo antes de los luchadores)
+    // y otras quedan pegadas al propio cuerpo golpeado (coords LOCALES del
+    // sprite — el flip de drawMmaFighter ya las espeja solo). No decaen: se
+    // acumulan durante todo el combate, con un tope para no crecer sin fin.
+    function mmaAddBloodStains(M, D, hitDir) {
+        const groundN = 2 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < groundN; i++) {
+            const x = D.x + hitDir * (4 + Math.random() * 28) + (Math.random() - 0.5) * 22;
+            const rx = 7 + Math.random() * 17, ry = rx * (0.3 + Math.random() * 0.16);
+            M.floorBlood.push({ x, y: MMA_GROUND + (Math.random() * 6 - 2), rx, ry, a: 0.38 + Math.random() * 0.34, col: Math.random() < 0.5 ? [124, 10, 14] : [80, 6, 9] });
+        }
+        if (M.floorBlood.length > 70) M.floorBlood.splice(0, M.floorBlood.length - 70);
+        const bodyN = 2 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < bodyN; i++) {
+            D.blood.push({
+                lx: (Math.random() - 0.3) * 46,
+                ly: -130 + Math.random() * 100,
+                r: 2.6 + Math.random() * 4.6,
+                a: 0.55 + Math.random() * 0.35,
+                col: Math.random() < 0.5 ? [150, 14, 18] : [102, 8, 10],
+            });
+        }
+        if (D.blood.length > 18) D.blood.splice(0, D.blood.length - 18);
+    }
     function mmaStartAttack(F, kind, opp = null) {
         if (F.attackT > 0 || F.hurtT > 0 || F.koT > 0) return false;
         const mv = MMA_MOVES[kind];
@@ -5297,7 +5574,7 @@
         const M = st.mma;
         if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
         const p1 = M.p1, p2 = M.p2;
-        const kind = Math.abs(p1.x - p2.x) < 54 ? 'knee' : 'jab';
+        const kind = Math.abs(p1.x - p2.x) < 68 ? 'knee' : 'jab';
         if (kind === 'jab') {
             // Combo de 2-3 golpes: pulsar de nuevo dentro de la ventana
             // (0.55s tras el último jab) encadena y el 3er golpe pega más
@@ -5319,7 +5596,7 @@
         if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
         const p1 = M.p1, p2 = M.p2;
         const dist = Math.abs(p1.x - p2.x);
-        const kind = dist < 54 ? 'takedown' : (dist < 90 ? 'roundhouse' : 'dash_punch');
+        const kind = dist < 68 ? 'takedown' : (dist < 100 ? 'roundhouse' : 'dash_punch');
         if (mmaStartAttack(p1, kind, p2)) { hitFx(3); vibrate(kind === 'takedown' ? [20, 20, 30] : 14); }
     }
     function mmaJump() {
@@ -5354,14 +5631,14 @@
             } else {
                 F.vx = toward * 84;
             }
-        } else if (dist < 46 && F.aiCd > 0.2) {
+        } else if (dist < 52 && F.aiCd > 0.2) {
             F.vx = -toward * 96;
         } else if (F.aiCd <= 0) {
             const r = Math.random();
             if (r < 0.34) { mmaStartAttack(F, 'jab', opp); F.aiCd = 0.55; }
             else if (r < 0.52) { mmaStartAttack(F, 'low_kick', opp); F.aiCd = 0.9; }
-            else if (r < 0.68) { mmaStartAttack(F, dist < 58 ? 'knee' : 'jab', opp); F.aiCd = 0.95; }
-            else if (r < 0.82 && dist < 58) { mmaStartAttack(F, 'takedown', opp); F.aiCd = 2.1; }
+            else if (r < 0.68) { mmaStartAttack(F, dist < 68 ? 'knee' : 'jab', opp); F.aiCd = 0.95; }
+            else if (r < 0.82 && dist < 68) { mmaStartAttack(F, 'takedown', opp); F.aiCd = 2.1; }
             else { F.blockT = 0.5; F.aiCd = 0.6; }
         }
     }
@@ -5408,6 +5685,10 @@
         if (!M) return;
         st.worldT = (st.worldT + dt) % TERRAIN_SECS;
         if (M.readyT > 0) { M.readyT -= dt; if (M.readyT <= 0) banner('¡FIGHT!'); return; }
+        // Hit-stop: micro-pausa de la física en el instante del impacto (los
+        // golpes fuertes se "sienten" más) — las partículas de sangre siguen
+        // animándose porque stepCommon() se llama aparte, fuera de este corte.
+        if (M.hitStop > 0) { M.hitStop = Math.max(0, M.hitStop - dt); return; }
         if (M.roundOver) {
             M.roundOverT -= dt;
             // Celebración: el ganador alterna victoria/taunt; el perdedor, si
@@ -5459,16 +5740,21 @@
             const comboMul = A.attackKind === 'jab' ? [1, 1.25, 1.6][A.comboStep] || 1 : 1;
             const dmg = blocked ? Math.max(1, Math.round(mv.dmg * 0.15)) : Math.round(mv.dmg * comboMul);
             D.hp = Math.max(0, D.hp - dmg);
-            D.hitT = 0.18;
+            D.hitT = 0.22;
             const hitDir = Math.sign(D.x - A.x) || A.dir;
             D.vx = (blocked ? mv.push * 0.32 : mv.push * comboMul) * hitDir;
             A.vx *= blocked ? 0.5 : 0.35;
             if (blocked) D.blockT = Math.max(D.blockT, 0.16);
             else D.hurtT = mv.stun || 0.25;
-            burst(D.x * sc6, (D.y - 90) * sc6, blocked ? [140, 180, 255] : [255, 120, 90], blocked ? 6 : 12);
+            burst(D.x * sc6, (D.y - 90) * sc6, blocked ? [140, 180, 255] : [255, 210, 160], blocked ? 6 : 10);
+            if (!blocked) {
+                mmaBlood(D.x * sc6, (D.y - 95) * sc6, hitDir, 16 + Math.round(dmg * 1.1));
+                mmaAddBloodStains(M, D, hitDir);
+            }
             hitFx(blocked ? 1 : 3);
             vibrate(blocked ? 6 : 16);
-            st.shake = Math.max(st.shake, blocked ? 0.08 : 0.18);
+            st.shake = Math.max(st.shake, blocked ? 0.08 : Math.min(0.32, 0.16 + dmg * 0.01));
+            M.hitStop = Math.max(M.hitStop, blocked ? 0.02 : Math.min(0.12, 0.035 + dmg * 0.006));
             if (mv.knockdown && !blocked) {
                 D.koT = 0.75; D.koKind = 'ground_roll'; D.getUpPending = true; D.state = D.koKind; D.animT = 0;
                 D.vx = 95 * hitDir; D.vy = -210; D.onGround = false;
@@ -5495,8 +5781,12 @@
             banner(M.winner === 'p1' ? '¡TIEMPO! · VICTORIA' : '¡TIEMPO! · DERROTA');
         }
     }
-    function drawMmaFighter(F, sheet, sc) {
+    function drawMmaFighter(F, sc) {
         const px = F.x * sc, py = F.y * sc;
+        const own = mmaSheetCache[F.charId];
+        const fallback = mmaSheetCache.warrior1;
+        const list = own === fallback ? [own] : [own, fallback];
+        const sheet = list.find((s2) => s2 && s2.rows[F.state]) || list.find(Boolean);
         if (!sheet || !sheet.rows[F.state]) {
             g.save(); g.translate(px, py); g.fillStyle = F.isCPU ? '#c85a5a' : '#5a8ac8';
             g.fillRect(-16 * sc, -90 * sc, 32 * sc, 90 * sc); g.restore();
@@ -5513,6 +5803,14 @@
         if (F.dir < 0) g.scale(-1, 1);
         g.imageSmoothingEnabled = false;
         g.drawImage(sheet.canvas, f.x, f.y, f.w, f.h, -f.w * s2 / 2, -f.h * s2, f.w * s2, f.h * s2);
+        if (F.blood && F.blood.length) {
+            // Salpicaduras pegadas al cuerpo: en coords LOCALES (antes del
+            // flip ya aplicado arriba), así que giran solas con el luchador.
+            for (const b of F.blood) {
+                g.fillStyle = `rgba(${b.col[0]},${b.col[1]},${b.col[2]},${b.a})`;
+                g.beginPath(); g.arc(b.lx * sc, b.ly * sc, b.r * sc, 0, 7); g.fill();
+            }
+        }
         g.restore();
     }
     function draw6(t) {
@@ -5536,11 +5834,17 @@
             g.fillStyle = 'rgba(0,0,0,0.4)';
             g.beginPath(); g.ellipse(F.x * sc, gy + 4 * sc, 30 * sc, 8 * sc, 0, 0, 7); g.fill();
         }
-        drawMmaFighter(M.p1, mmaP1Sheet, sc);
-        drawMmaFighter(M.p2, mmaP2Sheet, sc);
+        // Manchas de sangre en el tatami: permanentes durante todo el combate,
+        // se pintan antes de los luchadores para que queden "bajo" sus pies.
+        for (const b of M.floorBlood) {
+            g.fillStyle = `rgba(${b.col[0]},${b.col[1]},${b.col[2]},${b.a})`;
+            g.beginPath(); g.ellipse(b.x * sc, b.y * sc, b.rx * sc, b.ry * sc, 0, 0, 7); g.fill();
+        }
+        drawMmaFighter(M.p1, sc);
+        drawMmaFighter(M.p2, sc);
         for (const p of st.particles) {
             g.fillStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.life})`;
-            const sz = 3 * k; g.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
+            const sz = p.sz || 3 * k; g.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
         }
         const barW = W * 0.38, barH = 16 * k;
         const drawBar = (hp, maxHp, x0, flip) => {
@@ -5622,7 +5926,13 @@
         }
         for (let i = st.particles.length - 1; i >= 0; i--) {
             const p = st.particles[i];
-            p.x += p.vx * dt; p.y += p.vy * dt; p.life -= 2.2 * dt;
+            if (p.grav) p.vy += p.grav * dt; // sangre/impacto MMA: cae con gravedad, el resto usa grav=0
+            p.x += p.vx * dt; p.y += p.vy * dt; p.life -= (p.decay || 2.2) * dt;
+            if (p.groundY !== undefined && p.vy > 0 && p.y >= p.groundY) {
+                if (p.onLand) p.onLand(p); // gota de sangre MMA: mancha el tatami al aterrizar
+                st.particles.splice(i, 1);
+                continue;
+            }
             if (p.life <= 0) st.particles.splice(i, 1);
         }
         st.blastCd = Math.max(0, st.blastCd - dt);
@@ -6406,7 +6716,7 @@
     function drawFxOverlays(t, tint) {
         for (const p of st.particles) {
             g.fillStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.life})`;
-            const sz = 3 * k;
+            const sz = p.sz || 3 * k;
             g.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
         }
         if (st.zoneFlash > 0) {
