@@ -5,101 +5,158 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RayRunner · RayDrone</title>
     <style>
-        :root { --bg:#0c0809; --panel:#170f12; --accent:#ff355e; --accent-dim:#b3132f; --cyan:#28e6dc; --text:#f0e2e6; }
+        :root {
+            --bg:#07090f; --panel:#11131b; --panel-2:#171a24; --stage:#05060b;
+            --accent:#ff3f68; --accent-dim:#d72f55; --cyan:#45e4d5; --gold:#ffd166;
+            --text:#f4eef2; --muted:#a9b4c7; --muted-2:#738095;
+            --line:rgba(220,230,255,0.11); --line-hot:rgba(255,63,104,0.34);
+        }
         * { box-sizing:border-box; }
-        body { background:radial-gradient(1200px 600px at 50% -10%, #1a0e13, var(--bg)); color:var(--text);
+        body { background:
+                   linear-gradient(180deg, rgba(255,63,104,0.08), transparent 34%),
+                   linear-gradient(115deg, rgba(69,228,213,0.05), transparent 42%, rgba(255,63,104,0.04)),
+                   linear-gradient(180deg, #090b12 0%, var(--bg) 100%);
+               color:var(--text);
                font-family:'Segoe UI',Tahoma,sans-serif; display:flex; justify-content:center;
-               padding:24px 16px; margin:0; min-height:100vh; }
-        .container { background:var(--panel); padding:24px; border-radius:18px; width:min(1020px,100%);
-                     border:1px solid rgba(255,53,94,0.12); box-shadow:0 20px 60px rgba(255,53,94,0.06); }
-        h1 { font-size:1.5rem; text-align:center; margin:0; letter-spacing:3px; text-transform:uppercase;
-             color:var(--accent); text-shadow:0 0 12px rgba(255,53,94,0.35); }
-        .sub { text-align:center; color:#8a99ad; font-size:0.82rem; margin:6px 0 14px; }
-        #stage { position:relative; }
-        canvas { display:block; width:100%; height:340px; background:#05060b; border-radius:10px;
-                 border:1px solid rgba(255,53,94,0.15); touch-action:none; }
+               padding:28px 16px; margin:0; min-height:100vh; }
+        .container { background:linear-gradient(180deg, rgba(17,19,27,0.96), rgba(10,12,18,0.98));
+                     padding:22px; border-radius:8px; width:min(1040px,100%);
+                     border:1px solid var(--line); box-shadow:0 26px 80px rgba(0,0,0,0.42); }
+        h1 { font-size:1.85rem; text-align:center; margin:0; letter-spacing:0;
+             text-transform:uppercase; color:var(--text); }
+        h1::after { content:""; display:block; width:96px; height:2px; margin:10px auto 0;
+                    background:linear-gradient(90deg, transparent, var(--accent), var(--cyan), transparent); }
+        .sub { text-align:center; color:var(--muted); font-size:0.9rem; margin:10px 0 16px; }
+        #stage { position:relative; border:1px solid var(--line-hot); border-radius:8px; overflow:hidden;
+                 background:var(--stage); box-shadow:0 18px 55px rgba(0,0,0,0.36); }
+        canvas { display:block; width:100%; height:340px; background:var(--stage); border-radius:0;
+                 border:none; touch-action:none; }
         /* Nivel 2 (3D): el WebGL vive debajo y el canvas 2D queda encima como
            overlay transparente (HUD, partículas, banners). */
         #game3d { position:absolute; left:0; top:0; z-index:0; display:none; border:none; }
         #game { position:relative; z-index:1; }
         #stage.mode3d #game3d { display:block; }
         #stage.mode3d #game { background:transparent; border-color:transparent; }
-        .hud { display:flex; justify-content:space-between; gap:10px; font-family:monospace;
-               font-size:0.88rem; margin:10px 0; flex-wrap:wrap; }
-        .hud b { color:var(--accent); }
+        .hud { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; margin:0 0 12px;
+               font-family:ui-monospace, SFMono-Regular, Consolas, monospace; }
+        .hud-chip { min-height:44px; display:flex; flex-direction:column; justify-content:center; gap:3px;
+                    padding:8px 10px; border:1px solid var(--line); border-radius:8px;
+                    background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015)); }
+        .hud-k { color:var(--muted-2); font-size:0.64rem; letter-spacing:0; text-transform:uppercase; }
+        .hud b { color:var(--accent); font-size:0.95rem; line-height:1.1; }
         .hud .n b, .hud .zone b { color:var(--cyan); }
+        .hud .score b { color:var(--gold); }
+        .hud .resources { flex-direction:row; align-items:center; justify-content:space-around; gap:8px; }
+        .hud-res { display:inline-flex; align-items:center; gap:4px; color:var(--muted); }
+        .hud-res b { color:var(--text); }
         .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
-                   justify-content:center; gap:12px; background:rgba(5,6,11,0.92); border-radius:10px; z-index:5;
-                   text-align:center; padding:18px; overflow-y:auto; }
-        .btn { border:none; padding:13px 26px; border-radius:10px; font-size:1rem; font-weight:bold;
-               text-transform:uppercase; letter-spacing:1px; cursor:pointer;
-               background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608; }
-        .btn.sec { background:#0f1320; color:var(--text); border:1px solid rgba(255,53,94,0.3); }
-        #fs-btn { position:absolute; right:8px; top:8px; z-index:6; padding:4px 10px; font-size:15px;
-                  border-radius:8px; border:1px solid rgba(255,53,94,0.3); background:rgba(15,19,32,0.7);
-                  color:var(--text); cursor:pointer; }
-        #cam-btn { position:absolute; right:52px; top:8px; z-index:6; padding:4px 10px; font-size:15px;
-                   border-radius:8px; border:1px solid rgba(47,211,255,0.35); background:rgba(15,19,32,0.7);
-                   color:var(--text); cursor:pointer; display:none; }
-        #stage.mode3d #cam-btn { display:block; }
-        #keys-btn { position:absolute; right:96px; top:8px; z-index:6; padding:4px 10px; font-size:15px;
-                    border-radius:8px; border:1px solid rgba(93,255,200,0.35); background:rgba(15,19,32,0.7);
-                    color:var(--text); cursor:pointer; }
+                   justify-content:center; gap:13px; background:rgba(5,6,11,0.91); z-index:5;
+                   text-align:center; padding:20px; overflow-y:auto; }
+        .start-screen { background:
+                   linear-gradient(180deg, rgba(5,6,11,0.68), rgba(5,6,11,0.95)),
+                   repeating-linear-gradient(115deg, rgba(255,63,104,0.08) 0 1px, transparent 1px 18px); }
+        .start-art { width:min(360px,86%); height:88px; border:1px solid var(--line);
+                     border-radius:8px; position:relative; overflow:hidden;
+                     background:linear-gradient(180deg, rgba(69,228,213,0.05), rgba(255,63,104,0.08)); }
+        .start-art::before { content:""; position:absolute; left:50%; bottom:-18px; width:86%; height:72px;
+                             transform:translateX(-50%) perspective(160px) rotateX(58deg);
+                             border-left:2px solid rgba(69,228,213,0.45); border-right:2px solid rgba(255,63,104,0.45);
+                             background:repeating-linear-gradient(90deg, transparent 0 31px, rgba(255,255,255,0.16) 31px 33px),
+                                        repeating-linear-gradient(0deg, rgba(255,255,255,0.12) 0 2px, transparent 2px 14px); }
+        .start-art::after { content:"RAY"; position:absolute; left:50%; top:16px; transform:translateX(-50%);
+                            font-weight:900; letter-spacing:0; color:rgba(255,255,255,0.11); font-size:2.2rem; }
+        .start-brand { font-size:1.45rem; font-weight:900; letter-spacing:0; text-transform:uppercase; }
+        .start-copy { max-width:520px; color:#c3ccdc; line-height:1.45; }
+        .overlay-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+        .btn { border:1px solid transparent; padding:13px 24px; border-radius:8px; font-size:0.95rem; font-weight:800;
+               text-transform:uppercase; letter-spacing:0; cursor:pointer;
+               background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:#050608;
+               transition:transform .18s, border-color .18s, background .18s; }
+        .btn:hover { transform:translateY(-1px); }
+        .btn.sec { background:rgba(15,19,32,0.84); color:var(--text); border-color:var(--line-hot); }
+        .btn.sec:hover { background:rgba(255,63,104,0.13); }
+        .stage-tools { position:absolute; right:8px; top:8px; z-index:6; display:flex; gap:6px; }
+        .stage-tools button { min-width:36px; height:34px; display:inline-flex; align-items:center; justify-content:center;
+                              padding:0 10px; font-size:15px; border-radius:8px; border:1px solid var(--line);
+                              background:rgba(10,13,22,0.72); color:var(--text); cursor:pointer; }
+        .stage-tools button:hover { background:rgba(255,255,255,0.10); }
+        #cam-btn { display:none; }
+        #stage.mode3d #cam-btn { display:inline-flex; }
         /* Sidebar de teclas (H): overlay semi-transparente sobre el propio juego,
            no le quita sitio al lienzo — sin pointer-events, para no tapar clics. */
         #keys-sidebar { position:absolute; right:0; top:0; bottom:0; width:min(240px,62%); z-index:7;
-                        background:rgba(10,8,20,0.5); border-left:1px solid rgba(255,53,94,0.25);
+                        background:rgba(8,10,18,0.78); border-left:1px solid var(--line-hot);
                         padding:44px 14px 14px 16px; overflow-y:auto; pointer-events:none;
-                        font-size:0.76rem; line-height:1.65; color:#e8e0e6; display:none; border-radius:0 10px 10px 0; }
+                        font-size:0.76rem; line-height:1.65; color:#e8e0e6; display:none; }
         #stage.show-keys #keys-sidebar { display:block; }
-        #keys-sidebar h3 { margin:0 0 8px; font-size:0.8rem; letter-spacing:1px; color:var(--cyan); text-transform:uppercase; }
+        #keys-sidebar h3 { margin:0 0 8px; font-size:0.8rem; letter-spacing:0; color:var(--cyan); text-transform:uppercase; }
         #keys-sidebar .grp { margin-top:12px; }
         #keys-sidebar .grp:first-of-type { margin-top:0; }
-        #keys-sidebar .grp b { color:var(--accent); display:block; margin-bottom:4px; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.5px; }
+        #keys-sidebar .grp b { color:var(--accent); display:block; margin-bottom:4px; font-size:0.72rem; text-transform:uppercase; letter-spacing:0; }
         #keys-sidebar kbd { background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2);
                              border-radius:4px; padding:0 5px; font-family:monospace; color:#fff; }
         #stage:fullscreen, #stage:-webkit-full-screen { background:#05060b; width:100vw; height:100vh; }
         #stage:fullscreen canvas, #stage:-webkit-full-screen canvas { height:100vh; border-radius:0; border:none; }
-        .keys { display:flex; gap:8px; justify-content:center; margin-top:10px; }
-        .kbtn { min-width:70px; padding:14px 8px; border-radius:10px; border:1px solid rgba(255,53,94,0.3);
-                background:#0f1320; color:var(--text); font-size:1.1rem; cursor:pointer; user-select:none;
-                touch-action:none; }
-        .kbtn:active { background:rgba(255,53,94,0.25); }
-        .how { font-size:0.8rem; color:#8a99ad; line-height:1.55; margin-top:14px; }
+        .keys { display:grid; grid-template-columns:minmax(160px,1fr) minmax(160px,1fr); gap:12px; margin-top:12px; }
+        .pad { display:grid; gap:8px; padding:8px; border:1px solid var(--line); border-radius:8px;
+               background:rgba(255,255,255,0.025); }
+        .move-pad { grid-template-columns:1fr 1fr; }
+        .action-pad { grid-template-columns:1fr 1fr; }
+        .kbtn { min-height:56px; min-width:0; padding:12px 8px; border-radius:8px; border:1px solid var(--line-hot);
+                background:#0f1320; color:var(--text); font-size:1.2rem; cursor:pointer; user-select:none;
+                touch-action:none; box-shadow:inset 0 1px 0 rgba(255,255,255,0.05); }
+        .kbtn:active { background:rgba(255,63,104,0.28); transform:translateY(1px); }
+        .how { font-size:0.82rem; color:var(--muted); line-height:1.6; margin-top:16px; }
         .how b { color:var(--cyan); }
-        .status { text-align:center; font-family:monospace; font-size:0.74rem; color:#c6d2e5; min-height:1em; margin-top:8px; }
-        a.back { color:var(--accent-dim); font-size:0.75rem; text-decoration:none; display:block; text-align:center; margin-top:12px; }
+        .status { text-align:center; font-family:ui-monospace, SFMono-Regular, Consolas, monospace;
+                  font-size:0.76rem; color:#c6d2e5; min-height:1em; margin-top:10px; }
+        a.back { color:#ff8fa6; font-size:0.78rem; text-decoration:none; display:block; text-align:center; margin-top:14px; }
+        a.back:hover { color:#fff; }
         /* Ranking */
-        #lb-list { font-family:monospace; font-size:0.82rem; text-align:left; line-height:1.7; min-width:min(340px,86vw); }
+        #lb-list { font-family:ui-monospace, SFMono-Regular, Consolas, monospace; font-size:0.82rem; text-align:left; line-height:1.7; min-width:min(340px,86vw); }
         #lb-list .me { color:var(--cyan); }
-        #lb-list .pos { color:#8a99ad; display:inline-block; width:2.2em; }
-        #nick-form input { background:#0f1320; border:1px solid rgba(255,53,94,0.4); border-radius:8px;
+        #lb-list .pos { color:var(--muted-2); display:inline-block; width:2.2em; }
+        .pause-title, .end-title { font-size:1.25rem; font-weight:850; letter-spacing:0; }
+        .end-title { font-size:1.35rem; }
+        .end-summary { color:var(--muted); }
+        .end-score-val { color:var(--gold); font-size:1.65rem; }
+        #nick-form { margin-top:4px; }
+        .nick-note { margin-bottom:8px; color:var(--muted); }
+        #nick-form input { background:#0f1320; border:1px solid var(--line-hot); border-radius:8px;
                            color:var(--text); font-size:1rem; padding:10px 12px; text-align:center; width:200px; }
         #nick-form input:focus { outline:none; border-color:var(--accent); }
+        #nick-save { margin-left:8px; padding:10px 16px; }
+        #lb-position { color:var(--cyan); font-family:ui-monospace, SFMono-Regular, Consolas, monospace; }
+        .how-modal-body { font-size:0.85rem; }
+        .modal-primary { margin-top:16px; }
+        .train-note { font-size:0.82rem; margin:0 0 14px; }
+        :where(button, input, a):focus-visible { outline:2px solid var(--gold); outline-offset:3px; }
+        h1, .hud-k, .start-brand, .btn, #keys-sidebar h3, #keys-sidebar .grp b,
+        #howto-modal h2, #train-modal h2, .pause-title, .end-title { letter-spacing:0; }
         /* Modal de instrucciones (portada) */
         #howto-backdrop { position:fixed; inset:0; background:rgba(5,6,11,0.78); z-index:20;
                            display:none; align-items:center; justify-content:center; padding:16px; }
         #howto-backdrop.show { display:flex; }
-        #howto-modal { position:relative; background:var(--panel); border:1px solid rgba(255,53,94,0.25);
-                       border-radius:14px; padding:22px 22px 18px; max-width:600px; width:100%;
+        #howto-modal { position:relative; background:linear-gradient(180deg,var(--panel-2),var(--panel));
+                       border:1px solid var(--line-hot); border-radius:8px; padding:22px 22px 18px; max-width:620px; width:100%;
                        max-height:85vh; overflow-y:auto; box-shadow:0 24px 70px rgba(0,0,0,0.5); }
-        #howto-modal h2 { margin:0 0 12px; font-size:1.05rem; letter-spacing:1px; color:var(--accent);
+        #howto-modal h2 { margin:0 0 12px; font-size:1.05rem; letter-spacing:0; color:var(--accent);
                            text-transform:uppercase; padding-right:30px; }
         #howto-modal .how { margin-top:0; }
-        #howto-close { position:absolute; top:12px; right:12px; width:32px; height:32px; border-radius:8px;
-                       border:1px solid rgba(255,53,94,0.3); background:#0f1320; color:var(--text);
+        #howto-close { position:absolute; top:12px; right:12px; width:34px; height:34px; border-radius:8px;
+                       border:1px solid var(--line-hot); background:#0f1320; color:var(--text);
                        font-size:1rem; cursor:pointer; line-height:1; }
         #howto-close:hover { background:rgba(255,53,94,0.2); }
         /* Modal Entrenar: mismo look que "Cómo jugar" + rejilla de 4 niveles. */
         #train-backdrop { position:fixed; inset:0; background:rgba(5,6,11,0.78); z-index:20;
                           display:none; align-items:center; justify-content:center; padding:16px; }
         #train-backdrop.show { display:flex; }
-        #train-modal { position:relative; background:var(--panel); border:1px solid rgba(47,211,255,0.3);
-                       border-radius:14px; padding:22px; max-width:520px; width:100%;
+        #train-modal { position:relative; background:linear-gradient(180deg,var(--panel-2),var(--panel));
+                       border:1px solid rgba(69,228,213,0.32); border-radius:8px; padding:22px; max-width:540px; width:100%;
                        box-shadow:0 24px 70px rgba(0,0,0,0.5); }
-        #train-modal h2 { margin:0 0 12px; font-size:1.05rem; letter-spacing:1px; color:var(--cyan);
+        #train-modal h2 { margin:0 0 12px; font-size:1.05rem; letter-spacing:0; color:var(--cyan);
                           text-transform:uppercase; padding-right:30px; }
-        #train-close { position:absolute; top:12px; right:12px; width:32px; height:32px; border-radius:8px;
+        #train-close { position:absolute; top:12px; right:12px; width:34px; height:34px; border-radius:8px;
                        border:1px solid rgba(47,211,255,0.3); background:#0f1320; color:var(--text);
                        font-size:1rem; cursor:pointer; line-height:1; }
         #train-close:hover { background:rgba(47,211,255,0.2); }
@@ -111,16 +168,21 @@
 
         @media (max-width: 700px) {
             body { padding:8px 6px; }
-            .container { padding:12px 10px; border-radius:12px; }
+            .container { padding:12px 10px; border-radius:8px; }
             h1 { font-size:1.15rem; }
             .sub { font-size:0.72rem; margin:4px 0 10px; }
             canvas { height:min(56vh, 460px); }
             #game3d { height:min(56vh, 460px); }
-            .hud { font-size:0.7rem; gap:6px; }
-            .keys { gap:8px; }
-            .kbtn { flex:1; min-width:0; padding:18px 6px; font-size:1.3rem; }
+            .hud { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+            .hud-chip { min-height:40px; padding:7px 8px; }
+            .hud-k { font-size:0.58rem; }
+            .hud b { font-size:0.84rem; }
+            .keys { grid-template-columns:1fr; gap:8px; }
+            .kbtn { min-height:58px; padding:16px 6px; font-size:1.3rem; }
             .overlay { padding:12px; gap:10px; font-size:0.85rem; }
+            .start-art { height:72px; }
             .how { font-size:0.72rem; }
+            #keys-sidebar { width:min(260px,82%); }
         }
     </style>
     <!-- Vercel Web Analytics (sitio estático, sin build): snippet directo, no el
@@ -133,22 +195,28 @@
     <h1>◢ RayRunner</h1>
     <p class="sub">Cinco niveles, power-ups y ranking — y toda la música <b>renderizada en vivo</b> por RayDrone</p>
 
-    <div class="hud">
-        <span>Nivel: <b id="hud-level">1</b></span>
-        <span class="zone">Zona: <b id="hud-zone">—</b></span>
-        <span class="n">N = <b id="hud-n">0</b> rayos/s</span>
-        <span>Combo: <b id="hud-combo">0</b></span>
-        <span>Puntos: <b id="hud-score">0</b></span>
-        <span>🛡<b id="hud-shield">0</b> 🚀<b id="hud-missiles">0</b> 💣<b id="hud-bombs">0</b></span>
-        <span>Vidas: <b id="hud-lives">♥♥♥</b></span>
+    <div class="hud" aria-label="Estado de partida">
+        <span class="hud-chip"><span class="hud-k">Nivel</span><b id="hud-level">1</b></span>
+        <span class="hud-chip zone"><span class="hud-k">Zona</span><b id="hud-zone">—</b></span>
+        <span class="hud-chip n"><span class="hud-k">Rayos/s</span><b id="hud-n">0</b></span>
+        <span class="hud-chip"><span class="hud-k">Combo</span><b id="hud-combo">0</b></span>
+        <span class="hud-chip score"><span class="hud-k">Puntos</span><b id="hud-score">0</b></span>
+        <span class="hud-chip resources">
+            <span class="hud-res">🛡<b id="hud-shield">0</b></span>
+            <span class="hud-res">🚀<b id="hud-missiles">0</b></span>
+            <span class="hud-res">💣<b id="hud-bombs">0</b></span>
+            <span class="hud-res">♥<b id="hud-lives">3</b></span>
+        </span>
     </div>
 
     <div id="stage">
         <canvas id="game3d" width="1000" height="340"></canvas>
         <canvas id="game" width="1000" height="340"></canvas>
-        <button id="fs-btn" title="Pantalla completa">⛶</button>
-        <button id="cam-btn" title="Cámara (V): persecución / dentro / frontal">📷</button>
-        <button id="keys-btn" title="Teclas (H)">⌨</button>
+        <div class="stage-tools">
+            <button id="keys-btn" title="Teclas (H)">⌨</button>
+            <button id="cam-btn" title="Cámara (V): persecución / dentro / frontal">📷</button>
+            <button id="fs-btn" title="Pantalla completa">⛶</button>
+        </div>
         <div id="keys-sidebar">
             <h3>⌨ Teclas</h3>
             <div class="grp">
@@ -189,14 +257,15 @@
                 <div><kbd>X</kbd> patada (↓+X = baja) · <kbd>C</kbd> especial/derribo</div>
             </div>
         </div>
-        <div class="overlay" id="start-overlay">
-            <div style="font-size:1.15rem; font-weight:bold; letter-spacing:1px;">🏍 RAYRUNNER</div>
-            <div style="max-width:480px; color:#b7c2d4;">
+        <div class="overlay start-screen" id="start-overlay">
+            <div class="start-art" aria-hidden="true"></div>
+            <div class="start-brand">🏍 RayRunner</div>
+            <div class="start-copy">
                 Esquiva, dispara y conduce — la banda sonora la genera RayDrone en vivo,
                 según cómo juegues.
             </div>
             <button class="btn" id="start-btn">▶ Despegar</button>
-            <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+            <div class="overlay-actions">
                 <button class="btn sec" id="train-btn">🎯 Entrenar</button>
                 <button class="btn sec" id="howto-btn">❓ Cómo jugar</button>
                 <button class="btn sec" id="lb-show-btn">🏆 Ranking</button>
@@ -204,29 +273,33 @@
             <div id="lb-list-start" style="display:none;"></div>
         </div>
         <div class="overlay" id="pause-overlay" style="display:none;">
-            <div style="font-size:1.2rem;">⏸ Pausa</div>
+            <div class="pause-title">⏸ Pausa</div>
             <button class="btn" id="resume-btn">▶ Seguir</button>
         </div>
         <div class="overlay" id="end-overlay" style="display:none;">
-            <div style="font-size:1.3rem;" id="end-title">💥 Fin de la partida</div>
-            <div>Puntuación: <b id="end-score" style="color:var(--accent); font-size:1.5rem;">0</b>
+            <div class="end-title" id="end-title">💥 Fin de la partida</div>
+            <div class="end-summary">Puntuación: <b class="end-score-val" id="end-score">0</b>
                  · Nivel <b id="end-level">1</b></div>
             <div id="nick-form" style="display:none;">
-                <div style="margin-bottom:8px; color:#8a99ad;">Tu nombre para el ranking (solo se pide una vez):</div>
+                <div class="nick-note">Tu nombre para el ranking (solo se pide una vez):</div>
                 <input id="nick-input" maxlength="12" placeholder="tu nick" autocomplete="off">
-                <button class="btn" id="nick-save" style="margin-left:8px; padding:10px 16px;">Guardar</button>
+                <button class="btn" id="nick-save">Guardar</button>
             </div>
-            <div id="lb-position" style="color:var(--cyan); font-family:monospace;"></div>
+            <div id="lb-position"></div>
             <div id="lb-list"></div>
             <button class="btn" id="restart-btn">↻ Otra vez</button>
         </div>
     </div>
 
     <div class="keys">
-        <button class="kbtn" id="btn-a">▲</button>
-        <button class="kbtn" id="btn-fire">🚀</button>
-        <button class="kbtn" id="btn-bomb">💣</button>
-        <button class="kbtn" id="btn-b">▼</button>
+        <div class="pad move-pad">
+            <button class="kbtn" id="btn-a">▲</button>
+            <button class="kbtn" id="btn-b">▼</button>
+        </div>
+        <div class="pad action-pad">
+            <button class="kbtn" id="btn-fire">🚀</button>
+            <button class="kbtn" id="btn-bomb">💣</button>
+        </div>
     </div>
 
     <div class="how">
@@ -250,7 +323,7 @@
     <div id="howto-modal">
         <button id="howto-close" title="Cerrar (Esc)">✕</button>
         <h2>Cómo jugar</h2>
-        <div class="how" style="font-size:0.85rem;">
+        <div class="how how-modal-body">
             <b>Nivel 1 · Espacio</b> — pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides y
             <b style="color:#7bdcff">fantasmas</b> 👻, recoge cristales <b style="color:var(--cyan)">◆</b> y power-ups
             (🛡 escudo · 🚀 misil con <b>X</b> · 💣 bomba con <b>C</b>). Dispara el <b>bláster</b> —ilimitado— con
@@ -300,7 +373,7 @@
             <br><br>
             <b>Tecla H</b> (o el botón ⌨) abre/cierra un panel con todas las teclas, por si se te olvidan a mitad de partida.
         </div>
-        <button class="btn" id="howto-ok" style="margin-top:16px;">Entendido</button>
+        <button class="btn modal-primary" id="howto-ok">Entendido</button>
     </div>
 </div>
 
@@ -308,7 +381,7 @@
     <div id="train-modal">
         <button id="train-close" title="Cerrar (Esc)">✕</button>
         <h2>🎯 Entrenar</h2>
-        <div class="how" style="font-size:0.82rem; margin-bottom:14px;">Salta directo a cualquier nivel para practicarlo.</div>
+        <div class="how train-note">Salta directo a cualquier nivel para practicarlo.</div>
         <div class="train-grid">
             <button class="btn sec train-lvl" data-lvl="1">🚀 <b>Nivel 1</b><span>Espacio</span></button>
             <button class="btn sec train-lvl" data-lvl="2">🏍 <b>Nivel 2</b><span>Circuito neón (noche)</span></button>
@@ -565,6 +638,11 @@
     // ── Motor (mismo patrón que index.html: worklet + wasm cache-busted) ─────
     let actx = null, node = null, gainNode = null;
     let terrainSpace = null, terrainNeon = null, terrainDungeon = null, terrainKomandos = null;
+    async function fetchArrayBuffer(url, opts = {}) {
+        const res = await fetch(url, opts);
+        if (!res.ok) throw new Error(`${url} respondio ${res.status}`);
+        return await res.arrayBuffer();
+    }
     async function ensureEngine() {
         if (node) return;
         actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -574,7 +652,7 @@
         if (actx.state === 'suspended') await actx.resume();
         if (!actx.audioWorklet) throw new Error(`AudioWorklet no disponible en ${location.origin}: hace falta HTTPS o localhost.`);
         const bust = `?v=${Date.now()}`;
-        const wasmBytes = await fetch('raydrone.wasm' + bust, { cache: 'no-store' }).then(r => r.arrayBuffer());
+        const wasmBytes = await fetchArrayBuffer('raydrone.wasm' + bust, { cache: 'no-store' });
         await actx.audioWorklet.addModule('processor.js' + bust);
         node = new AudioWorkletNode(actx, 'raydrone', {
             numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
@@ -732,7 +810,7 @@
         hudLevel.innerText = st.level;
         hudCombo.innerText = st.combo;
         hudScore.innerText = Math.round(st.score);
-        hudLives.innerText = '♥'.repeat(Math.max(0, st.lives)) || '—';
+        hudLives.innerText = Math.max(0, st.lives);
         hudN.innerText = Math.round(st.rate);
         hudShield.innerText = st.shield;
         hudMissiles.innerText = st.missiles;
@@ -803,7 +881,7 @@
     // como en producción. `lb.global` dice cuál se usó la última vez.
     const LB_KEY = 'raydrone_scores', NICK_KEY = 'raydrone_nick';
     const LB_API = '/api/leaderboard'; // absoluta: resuelve al origen, sirva game.html desde donde sirva
-    async function fetchJSON(url, opts, ms = 3500) {
+    async function fetchJSON(url, opts = {}, ms = 3500) {
         const ac = new AbortController();
         const timer = setTimeout(() => ac.abort(), ms);
         try {
@@ -831,8 +909,23 @@
     }
     const lb = {
         global: false,
+        token: null,
+        runSeq: 0,
         all() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || []; } catch (_) { return []; } },
         save(a) { try { localStorage.setItem(LB_KEY, JSON.stringify(a.slice(0, 100))); } catch (_) {} },
+        async startRun() {
+            const seq = ++this.runSeq;
+            this.token = null;
+            const remote = await fetchJSON(`${LB_API}?start=1`);
+            if (seq !== this.runSeq) return false;
+            if (remote && typeof remote.token === 'string') {
+                this.token = remote.token;
+                this.global = true;
+                return true;
+            }
+            this.global = false;
+            return false;
+        },
         submitLocal(nick, score, level) {
             const a = this.all();
             const entry = { n: nick, s: score, l: level, d: Date.now() };
@@ -843,10 +936,12 @@
         },
         async submit(nick, score, level) {
             const localRes = this.submitLocal(nick, score, level); // siempre, es la copia offline
+            const token = this.token;
+            this.token = null;
             const remote = await fetchJSON(LB_API, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nick, score, level }),
+                body: JSON.stringify({ nick, score, level, token }),
             });
             if (remote && typeof remote.pos === 'number') { this.global = true; return remote; }
             this.global = false;
@@ -1097,6 +1192,7 @@
         }
         resizeCanvas();
         resetRound();
+        lb.startRun();
         ensureThree().catch((err) => { statusEl.innerText = `3D no disponible: ${(err && err.message) || err}`; });
         st.playing = true; st.paused = false;
         banner('NIVEL 1 · ESPACIO');

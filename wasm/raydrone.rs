@@ -230,6 +230,47 @@ fn ensure_voice_init() {
     }
 }
 
+fn reset_runtime_state() {
+    unsafe {
+        for i in 0..MAX_VOICES {
+            VOICES[i].active = false;
+            FREE[i] = (MAX_VOICES - 1 - i) as u16;
+        }
+        NFREE = MAX_VOICES;
+        NACTIVE = 0;
+        VINIT = true;
+
+        SPAWN_ACC = 0.0;
+        QMC = 0.5;
+        STRAT_I = 0;
+        SCALE_I = 0;
+        QMC_P = 0.5;
+        KEYS_I = 0;
+        QMC_KEY = 0.5;
+        ENV = 0.0;
+        EVO = 0.5;
+        EVO_DIR = 1.0;
+        FOCI_ACC = 0.0;
+        AMB_DIRTY = true;
+        for i in 0..FMAX {
+            FPOS[i] = 0.0;
+            FVEL[i] = 0.0;
+            FW[i] = 0.0;
+            FWT[i] = 0.0;
+            FDEPTH[i] = 0;
+            FAGE[i] = 0.0;
+            FTTL[i] = 0.0;
+            FACT[i] = false;
+        }
+        SLOG_W = 0;
+        SPAWN_COUNT = 0;
+
+        REVERB.reset();
+        DC.reset();
+        FILTER.reset();
+    }
+}
+
 #[inline]
 fn rng01() -> f32 {
     unsafe { raydrone_core::rng01(&mut RNG) }
@@ -329,9 +370,9 @@ pub extern "C" fn set_sample(len: usize, sr: f32) {
     unsafe {
         SAMPLE_LEN = if len > SAMPLE_CAP { SAMPLE_CAP } else { len };
         SR = if sr > 1.0 { sr } else { 44100.0 };
-        AMB_DIRTY = true; // recolocar las semillas al span del nuevo sample
     }
     update_coeffs();
+    reset_runtime_state();
     build_energy();
 }
 
