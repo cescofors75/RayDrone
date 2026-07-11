@@ -28,6 +28,8 @@ const check = (name, cond, extra = '') => {
 
 // 1) Hann window (2048) — without it win_at() returns 0 and the engine is silent.
 const WIN = 2048;
+check('exports the fixed window capacity', ex.window_capacity() === WIN, `${ex.window_capacity()} samples`);
+check('exports a block capacity >= AudioWorklet quantum', ex.block_capacity() >= BLOCK, `${ex.block_capacity()} samples`);
 const win = new Float32Array(WIN);
 for (let i = 0; i < WIN; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (WIN - 1));
 f32(ex.window_ptr(), WIN).set(win);
@@ -38,6 +40,7 @@ const len = Math.min(SR * 2, cap);
 const sample = f32(ex.sample_ptr(), len);
 for (let i = 0; i < len; i++) sample[i] = 0.6 * Math.sin((2 * Math.PI * 220 * i) / SR);
 ex.seed(0x9e3779b9);
+ex.set_output_sample_rate(SR);
 ex.set_sample(len, SR);
 
 // 3) Params: a continuous drone. set_params(focus_s, aperture_s, grain_ms, grain_rate, gain, master)
@@ -119,6 +122,7 @@ function freshInstance() {
     const e2 = i2.exports;
     const m2 = e2.memory;
     const g32 = (ptr, n) => new Float32Array(m2.buffer, ptr, n);
+    e2.set_output_sample_rate(SR);
     g32(e2.window_ptr(), WIN).set(win);
     const s2 = g32(e2.sample_ptr(), len);
     for (let i = 0; i < len; i++) s2[i] = 0.6 * Math.sin((2 * Math.PI * 220 * i) / SR);
@@ -220,6 +224,29 @@ for (const sd of [1, 0x9e3779b9, 0xdeadbeef]) {
     impErr = e;
 }
 check('importance stays finite at N=65536 (edge-bin 0/0 regression)', impFiniteOk, `err=${impErr.toExponential(2)}`);
+
+console.log('\n[ABI guards]');
+ex.process(0);
+check('empty process block preserves a finite meter', Number.isFinite(ex.out_level()), `level=${ex.out_level()}`);
+ex.set_params(1, 0.25, 150, Infinity, 0.3, 1);
+ex.process(BLOCK);
+check('non-finite grain rate is rejected without hanging', Number.isFinite(ex.out_level()));
+ex.set_pitch(Infinity);
+ex.set_params(1, 0.25, 150, 220, 0.3, 1);
+const guarded = run(4);
+check('non-finite pitch falls back to finite audio', guarded.nonFinite === 0);
+f32(ex.scale_ptr(), 2).set([NaN, Infinity]);
+f32(ex.keys_ptr(), 2).set([-Infinity, 0]);
+ex.set_scale(2);
+ex.set_keys(2);
+ex.set_reverb(NaN);
+ex.set_filter(NaN, Infinity);
+ex.set_filter_lfo(Infinity, NaN);
+ex.set_fx(NaN, 99, Infinity, NaN);
+ex.set_space(NaN, Infinity);
+ex.set_ambient(1, 3, 2, NaN, Infinity, NaN);
+const allGuarded = run(8);
+check('all floating-point ABI setters reject non-finite values', allGuarded.nonFinite === 0);
 
 console.log(`\n${failures === 0 ? '✅ ALL PASSED' : '❌ ' + failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

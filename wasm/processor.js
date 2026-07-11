@@ -12,6 +12,8 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.mem = this.ex.memory;
         this.outL = this.ex.out_l_ptr();
         this.outR = this.ex.out_r_ptr();
+        this.blockCapacity = this.ex.block_capacity();
+        this.ex.set_output_sample_rate(sampleRate);
         this.ready = false;
         this.ex.seed(0x9e3779b9);
         this.lastW = 0;
@@ -25,12 +27,13 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.cpuBlocks = 0;
         this.lastSpawn = 0;
         // Grabación de la salida del motor (export WAV); tope de seguridad 5 min.
-        // Se vacía por chunks para no retener/duplicar minutos enteros en el worklet.
+        // Dos buffers reutilizables evitan slice()/arrays por quantum en el hilo de audio.
         this.recOn = false;
-        this.recL = [];
-        this.recR = [];
+        this.recCapacity = Math.ceil(sampleRate);
+        this.recL = new Float32Array(this.recCapacity);
+        this.recR = new Float32Array(this.recCapacity);
+        this.recWrite = 0;
         this.recFrames = 0;
-        this.recChunkFrames = 0;
         this.port.onmessage = (e) => this.onMsg(e.data);
     }
 
@@ -64,16 +67,19 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         } else if (d.type === 'record') {
             if (d.on) {
                 this.recOn = true;
-                this.recL = [];
-                this.recR = [];
+                this.recWrite = 0;
                 this.recFrames = 0;
-                this.recChunkFrames = 0;
             } else if (this.recOn) {
                 this.recOn = false;
                 this.flushRec(true, false);
             }
         } else if (d.type === 'window') {
-            new Float32Array(this.mem.buffer, ex.window_ptr(), d.data.length).set(d.data);
+            const cap = ex.window_capacity();
+            const len = Math.min(d.data.length, cap);
+            new Float32Array(this.mem.buffer, ex.window_ptr(), len).set(d.data.subarray(0, len));
+            if (d.data.length !== cap) {
+                this.port.postMessage({ type: 'windowinfo', used: len, total: d.data.length, expected: cap });
+            }
         } else if (d.type === 'params') {
             ex.set_params(d.focus, d.aperture, d.grainMs, d.grainRate, d.gain, d.master);
         } else if (d.type === 'mode') {
@@ -112,26 +118,29 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         }
     }
 
-    // Concatenar solo el chunk actual y enviarlo a la página (buffers transferidos).
+    // Copiar una vez por segundo y transferir el chunk; no asigna por quantum.
     flushRec(done = false, limited = false) {
-        let total = 0;
-        for (const a of this.recL) total += a.length;
-        if (total > 0) {
-            const L = new Float32Array(total);
-            const R = new Float32Array(total);
-            let o = 0;
-            for (let i = 0; i < this.recL.length; i++) {
-                L.set(this.recL[i], o);
-                R.set(this.recR[i], o);
-                o += this.recL[i].length;
-            }
+        if (this.recWrite > 0) {
+            const L = this.recL.slice(0, this.recWrite);
+            const R = this.recR.slice(0, this.recWrite);
             this.port.postMessage({ type: 'recdata', l: L, r: R, sr: sampleRate, done, limited }, [L.buffer, R.buffer]);
         } else if (done) {
             this.port.postMessage({ type: 'recdata', l: new Float32Array(0), r: new Float32Array(0), sr: sampleRate, done, limited });
         }
-        this.recL = [];
-        this.recR = [];
-        this.recChunkFrames = 0;
+        this.recWrite = 0;
+    }
+
+    recordBlock(left, right) {
+        let sourceOffset = 0;
+        while (sourceOffset < left.length) {
+            const count = Math.min(left.length - sourceOffset, this.recCapacity - this.recWrite);
+            this.recL.set(left.subarray(sourceOffset, sourceOffset + count), this.recWrite);
+            this.recR.set(right.subarray(sourceOffset, sourceOffset + count), this.recWrite);
+            this.recWrite += count;
+            this.recFrames += count;
+            sourceOffset += count;
+            if (this.recWrite === this.recCapacity) this.flushRec(false, false);
+        }
     }
 
     process(inputs, outputs) {
@@ -140,18 +149,16 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         if (this.ready) {
             // Cronometrar el render del motor (carga real del hilo de audio).
             const t0 = this.now ? this.now() : 0;
-            this.ex.process(frames);
+            for (let offset = 0; offset < frames; offset += this.blockCapacity) {
+                const count = Math.min(this.blockCapacity, frames - offset);
+                this.ex.process(count);
+                out[0].set(new Float32Array(this.mem.buffer, this.outL, count), offset);
+                if (out[1]) out[1].set(new Float32Array(this.mem.buffer, this.outR, count), offset);
+            }
             if (this.now) { this.cpuAcc += this.now() - t0; this.cpuBlocks++; }
 
-            out[0].set(new Float32Array(this.mem.buffer, this.outL, frames));
-            if (out[1]) out[1].set(new Float32Array(this.mem.buffer, this.outR, frames));
-
             if (this.recOn) {
-                this.recL.push(out[0].slice());
-                this.recR.push((out[1] || out[0]).slice());
-                this.recFrames += frames;
-                this.recChunkFrames += frames;
-                if (this.recChunkFrames >= sampleRate) this.flushRec(false, false);
+                this.recordBlock(out[0], out[1] || out[0]);
                 if (this.recFrames >= sampleRate * 300) { // tope 5 min
                     this.recOn = false;
                     this.flushRec(true, true);

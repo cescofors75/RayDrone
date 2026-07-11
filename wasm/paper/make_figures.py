@@ -66,7 +66,7 @@ def plot_run(meta, cols, title, out):
             label=r"ideal $1/\sqrt{N}$ (slope $-0.5$)", zorder=1)
     for key, color, label, mk in SERIES:
         y = cols[key]
-        s = meta.get("slope_" + key, fit_slope(N, y))
+        s = fit_slope(N, y)
         ax.plot(N, y, marker=mk, ms=4, lw=1.6, color=color,
                 label=f"{label}  ({s:+.2f})")
     ax.set_xscale("log", base=2)
@@ -93,8 +93,8 @@ def main():
         title = f"Convergence — aperture {ap} ms, focus {foc} s"
         out = os.path.join(FIGS, os.path.basename(p).replace(".csv", ".png"))
         plot_run(meta, cols, title, out)
-        row = [os.path.basename(p), ap, foc] + [meta.get("slope_" + k[0], float('nan'))
-                                                for k in SERIES]
+        row = [os.path.basename(p), ap, foc] + [fit_slope(cols["N"], cols[k[0]])
+                            for k in SERIES]
         table.append(row)
 
     # Figura resumen: todas las curvas, mostrando consistencia. El grid se
@@ -130,9 +130,10 @@ def main():
         cells = [str(row[0]), str(row[1]), str(row[2])] + [f"{v:+.3f}" for v in row[3:]]
         print("  ".join(f"{c:>12}" for c in cells))
     # promedios
-    arr = np.array([[r[i] for r in table] for i in range(3, 3 + len(SERIES))], dtype=float)
+    real_rows = [r for r in table if not str(r[0]).startswith("run5-")]
+    arr = np.array([[r[i] for r in real_rows] for i in range(3, 3 + len(SERIES))], dtype=float)
     means = arr.mean(axis=1)
-    print("  ".join(f"{c:>12}" for c in ["MEAN", "", ""] + [f"{m:+.3f}" for m in means]))
+    print("  ".join(f"{c:>12}" for c in ["MEAN REAL", "", ""] + [f"{m:+.3f}" for m in means]))
     print(f"\nFiguras escritas en {FIGS}")
 
 

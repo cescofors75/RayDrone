@@ -100,11 +100,11 @@ pub fn rng01(state: &mut u32) -> f32 {
 #[inline]
 pub fn sample_at(sample: &[f32], pos: f32) -> f32 {
     let len = sample.len();
-    if len < 4 {
+    if len < 4 || !pos.is_finite() || pos < 0.0 {
         return 0.0;
     }
     let i = pos as usize;
-    if i + 2 >= len {
+    if i.checked_add(2).map_or(true, |end| end >= len) {
         return 0.0;
     }
     let frac = pos - (i as f32);
@@ -124,7 +124,7 @@ pub fn sample_at(sample: &[f32], pos: f32) -> f32 {
 #[inline]
 pub fn win_at(window: &[f32], ph: f32) -> f32 {
     let n = window.len();
-    if n == 0 {
+    if n == 0 || !ph.is_finite() || ph < 0.0 {
         return 0.0;
     }
     let idx = (ph * ((n - 1) as f32)) as usize;
@@ -161,6 +161,7 @@ impl DcBlocker {
 
     /// Recompute the cutoff coefficient for `sr` (keeps the ~10 Hz corner).
     pub fn set_sample_rate(&mut self, sr: f32) {
+        let sr = if sr.is_finite() && sr > 1.0 { sr } else { 44100.0 };
         self.r = clampf(1.0 - TAU * 10.0 / sr, 0.9, 0.99999);
     }
 
@@ -194,11 +195,11 @@ impl Default for DcBlocker {
 // ── Reverb (Freeverb-lite) ──────────────────────────────────────────────────
 // 4 combs + 2 allpass per channel, stereo. Delay-line *capacity* is fixed (so
 // the WASM engine can hold it with no allocator), while the *effective* lengths
-// are scaled to the sample rate at runtime — same tail time at 44.1k/48k/96k.
+// are scaled to the sample rate at runtime — same tail time through 192 kHz.
 pub const NC: usize = 4; // combs per channel
 pub const NA: usize = 2; // allpass per channel
-const CMAX: usize = 3600; // comb capacity (covers up to ~96 kHz)
-const AMAX: usize = 1280; // allpass capacity
+const CMAX: usize = 7200; // longest right comb needs 7141 samples @192 kHz
+const AMAX: usize = 2432; // longest allpass needs 2421 samples @192 kHz
 const CLEN_L: [usize; NC] = [1557, 1617, 1491, 1422]; // @44.1k
 const CLEN_R: [usize; NC] = [1580, 1640, 1514, 1445]; // +stereo spread
 const ALEN: [usize; NA] = [556, 441];
@@ -257,6 +258,7 @@ impl Reverb {
     /// not clear the buffers — matches the WASM engine, which keeps its tail
     /// across sample-rate updates.
     pub fn set_sample_rate(&mut self, sr: f32) {
+        let sr = if sr.is_finite() && sr > 1.0 { sr } else { 44100.0 };
         let k = sr / 44100.0;
         for c in 0..NC {
             self.clen_l[c] = ((CLEN_L[c] as f32 * k) as usize).clamp(4, CMAX);
@@ -358,6 +360,47 @@ impl Reverb {
 impl Default for Reverb {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod reverb_tests {
+    use super::*;
+
+    #[test]
+    fn interpolation_rejects_non_finite_positions() {
+        let sample = [0.0, 1.0, 0.0, -1.0, 0.0];
+        assert_eq!(sample_at(&sample, f32::NAN), 0.0);
+        assert_eq!(sample_at(&sample, f32::INFINITY), 0.0);
+        assert_eq!(sample_at(&sample, f32::NEG_INFINITY), 0.0);
+        assert_eq!(win_at(&sample, f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn reverb_preserves_delay_lengths_at_192khz() {
+        let mut reverb = Reverb::new();
+        reverb.set_sample_rate(192_000.0);
+        let scale = 192_000.0 / 44_100.0;
+        assert_eq!(reverb.clen_r[1], (CLEN_R[1] as f32 * scale) as usize);
+        assert_eq!(reverb.alen[0], (ALEN[0] as f32 * scale) as usize);
+        reverb.set_wet(1.0);
+        for i in 0..20_000 {
+            let input = if i == 0 { 1.0 } else { 0.0 };
+            let (left, right) = reverb.process(input, input);
+            assert!(left.is_finite() && right.is_finite());
+        }
+    }
+
+    #[test]
+    fn invalid_sample_rates_fall_back_to_44100() {
+        let mut reverb = Reverb::new();
+        reverb.set_sample_rate(f32::NAN);
+        assert_eq!(reverb.clen_l, CLEN_L);
+        assert_eq!(reverb.clen_r, CLEN_R);
+
+        let mut dc = DcBlocker::new();
+        dc.set_sample_rate(f32::INFINITY);
+        assert!(dc.process(1.0, -1.0).0.is_finite());
     }
 }
 

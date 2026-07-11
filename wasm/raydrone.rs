@@ -39,7 +39,8 @@ static mut OUTL: [f32; BLOCK] = [0.0; BLOCK];
 static mut OUTR: [f32; BLOCK] = [0.0; BLOCK];
 
 static mut SAMPLE_LEN: usize = 0;
-static mut SR: f32 = 44100.0;
+static mut SOURCE_SR: f32 = 44100.0;
+static mut OUTPUT_SR: f32 = 44100.0;
 
 // Parámetros base
 static mut FOCUS: f32 = 0.3;
@@ -300,12 +301,12 @@ fn next_u() -> f32 {
 fn update_coeffs() {
     unsafe {
         let tp = 6.283_185_5f32;
-        A_LOW = clampf(tp * 500.0 / SR, 0.0, 0.99);
-        A_HIGH = clampf(tp * 2500.0 / SR, 0.0, 0.99);
+        A_LOW = clampf(tp * 500.0 / OUTPUT_SR, 0.0, 0.99);
+        A_HIGH = clampf(tp * 2500.0 / OUTPUT_SR, 0.0, 0.99);
         // DC blocker (~10 Hz) y longitudes de reverb escaladas al SR real.
-        DC.set_sample_rate(SR);
-        REVERB.set_sample_rate(SR);
-        FILTER.set_sample_rate(SR);
+        DC.set_sample_rate(OUTPUT_SR);
+        REVERB.set_sample_rate(OUTPUT_SR);
+        FILTER.set_sample_rate(OUTPUT_SR);
     }
 }
 
@@ -317,6 +318,14 @@ pub extern "C" fn sample_ptr() -> *mut f32 {
 #[no_mangle]
 pub extern "C" fn window_ptr() -> *mut f32 {
     unsafe { WINDOW.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn window_capacity() -> usize {
+    WIN
+}
+#[no_mangle]
+pub extern "C" fn block_capacity() -> usize {
+    BLOCK
 }
 #[no_mangle]
 pub extern "C" fn out_l_ptr() -> *mut f32 {
@@ -369,11 +378,18 @@ pub extern "C" fn spawn_count() -> u32 {
 pub extern "C" fn set_sample(len: usize, sr: f32) {
     unsafe {
         SAMPLE_LEN = if len > SAMPLE_CAP { SAMPLE_CAP } else { len };
-        SR = if sr > 1.0 { sr } else { 44100.0 };
+        SOURCE_SR = if sr.is_finite() && sr > 1.0 { sr } else { 44100.0 };
     }
-    update_coeffs();
     reset_runtime_state();
     build_energy();
+}
+
+#[no_mangle]
+pub extern "C" fn set_output_sample_rate(sr: f32) {
+    unsafe {
+        OUTPUT_SR = if sr.is_finite() && sr > 1.0 { sr } else { 44100.0 };
+    }
+    update_coeffs();
 }
 
 // Envolvente de energía (RMS por bin) de todo el sample, para el trazado inverso.
@@ -412,7 +428,7 @@ fn build_energy() {
 #[inline]
 fn energy_at(sec: f32) -> f32 {
     unsafe {
-        let span = (SAMPLE_LEN as f32) / SR;
+        let span = (SAMPLE_LEN as f32) / SOURCE_SR;
         if span <= 0.0 {
             return 0.0;
         }
@@ -434,7 +450,7 @@ pub extern "C" fn set_smart(on: u32) {
 #[no_mangle]
 pub extern "C" fn set_reverb(wet: f32) {
     unsafe {
-        REVERB.set_wet(wet);
+        REVERB.set_wet(if wet.is_finite() { clampf(wet, 0.0, 1.0) } else { 0.0 });
     }
 }
 
@@ -442,7 +458,9 @@ pub extern "C" fn set_reverb(wet: f32) {
 #[no_mangle]
 pub extern "C" fn set_filter(cutoff_hz: f32, res: f32) {
     unsafe {
-        FILTER.set(cutoff_hz, res);
+        let cutoff = if cutoff_hz.is_finite() { clampf(cutoff_hz, 10.0, OUTPUT_SR * 0.5) } else { OUTPUT_SR * 0.5 };
+        let resonance = if res.is_finite() { clampf(res, 0.0, 1.0) } else { 0.0 };
+        FILTER.set(cutoff, resonance);
     }
 }
 
@@ -451,36 +469,38 @@ pub extern "C" fn set_filter(cutoff_hz: f32, res: f32) {
 #[no_mangle]
 pub extern "C" fn set_filter_lfo(rate_hz: f32, depth_oct: f32) {
     unsafe {
-        FILTER.set_lfo(rate_hz, depth_oct);
+        let rate = if rate_hz.is_finite() { clampf(rate_hz, 0.0, 100.0) } else { 0.0 };
+        let depth = if depth_oct.is_finite() { clampf(depth_oct, 0.0, 12.0) } else { 0.0 };
+        FILTER.set_lfo(rate, depth);
     }
 }
 
 #[no_mangle]
 pub extern "C" fn set_params(focus: f32, aperture: f32, grain_ms: f32, grain_rate: f32, gain: f32, master: f32) {
     unsafe {
-        FOCUS = focus;
-        APERTURE = if aperture < 0.0 { 0.0 } else { aperture };
-        GRAIN_DUR = grain_ms * 0.001;
-        GRAIN_RATE = if grain_rate < 0.0 { 0.0 } else { grain_rate };
-        GAIN = gain;
-        MASTER = master;
+        FOCUS = if focus.is_finite() { focus } else { 0.0 };
+        APERTURE = if aperture.is_finite() { clampf(aperture, 0.0, 3600.0) } else { 0.0 };
+        GRAIN_DUR = if grain_ms.is_finite() { clampf(grain_ms, 1.0, 10_000.0) * 0.001 } else { 0.15 };
+        GRAIN_RATE = if grain_rate.is_finite() { clampf(grain_rate, 0.0, 100_000.0) } else { 0.0 };
+        GAIN = if gain.is_finite() { clampf(gain, 0.0, 8.0) } else { 0.0 };
+        MASTER = if master.is_finite() { clampf(master, 0.0, 8.0) } else { 0.0 };
     }
 }
 
 #[no_mangle]
 pub extern "C" fn set_mode(m: u32) {
     unsafe {
-        MODE = m;
+        MODE = m.min(2);
     }
 }
 
 #[no_mangle]
 pub extern "C" fn set_fx(aber: f32, bounces: u32, refl: f32, feedback: f32) {
     unsafe {
-        ABER = clampf(aber, 0.0, 1.0);
+        ABER = if aber.is_finite() { clampf(aber, 0.0, 1.0) } else { 0.0 };
         BOUNCES = bounces.min(6); // same cap as the VST engine's set_bounce
-        REFL = clampf(refl, 0.0, 1.0);
-        FEEDBACK = clampf(feedback, 0.0, 1.0);
+        REFL = if refl.is_finite() { clampf(refl, 0.0, 1.0) } else { 0.0 };
+        FEEDBACK = if feedback.is_finite() { clampf(feedback, 0.0, 1.0) } else { 0.0 };
         update_coeffs();
     }
 }
@@ -488,8 +508,8 @@ pub extern "C" fn set_fx(aber: f32, bounces: u32, refl: f32, feedback: f32) {
 #[no_mangle]
 pub extern "C" fn set_space(width: f32, oct: f32) {
     unsafe {
-        WIDTH = clampf(width, 0.0, 1.0);
-        OCT = clampf(oct, 0.0, 1.0);
+        WIDTH = if width.is_finite() { clampf(width, 0.0, 1.0) } else { 0.0 };
+        OCT = if oct.is_finite() { clampf(oct, 0.0, 1.0) } else { 0.0 };
     }
 }
 
@@ -497,7 +517,7 @@ pub extern "C" fn set_space(width: f32, oct: f32) {
 #[no_mangle]
 pub extern "C" fn set_pitch(mult: f32) {
     unsafe {
-        PITCH_STEP = if mult > 0.01 { mult } else { 1.0 };
+        PITCH_STEP = if mult.is_finite() { clampf(mult, 0.01, 32.0) } else { 1.0 };
     }
 }
 
@@ -514,6 +534,11 @@ pub extern "C" fn scale_capacity() -> usize {
 pub extern "C" fn set_scale(len: usize) {
     unsafe {
         SCALE_LEN = if len > SCALE_CAP { SCALE_CAP } else { len };
+        for ratio in &mut SCALE[..SCALE_LEN] {
+            if !ratio.is_finite() || *ratio <= 0.0 {
+                *ratio = 1.0;
+            }
+        }
         SCALE_I = 0;
     }
 }
@@ -585,6 +610,11 @@ pub extern "C" fn keys_capacity() -> usize {
 pub extern "C" fn set_keys(len: usize) {
     unsafe {
         KEYS_LEN = if len > KEYS_CAP { KEYS_CAP } else { len };
+        for ratio in &mut KEYS[..KEYS_LEN] {
+            if !ratio.is_finite() || *ratio <= 0.0 {
+                *ratio = 1.0;
+            }
+        }
         KEYS_I = 0;
     }
 }
@@ -630,9 +660,9 @@ pub extern "C" fn set_ambient(on: u32, seeds: u32, depth: u32, spread: f32, drif
         }
         AMB_SEEDS = ns;
         AMB_DEPTH = if depth > 4 { 4 } else { depth };
-        AMB_SPREAD = clampf(spread, 0.0, 1.0);
-        AMB_DRIFT = clampf(drift, 0.0, 1.0);
-        AMB_RATE = clampf(rate, 0.0, 4.0);
+        AMB_SPREAD = if spread.is_finite() { clampf(spread, 0.0, 1.0) } else { 0.0 };
+        AMB_DRIFT = if drift.is_finite() { clampf(drift, 0.0, 1.0) } else { 0.0 };
+        AMB_RATE = if rate.is_finite() { clampf(rate, 0.0, 4.0) } else { 0.0 };
     }
 }
 
@@ -650,7 +680,7 @@ fn powf_i(base: f32, n: u32) -> f32 {
 #[inline]
 fn focus_span() -> f32 {
     unsafe {
-        let s = (SAMPLE_LEN as f32) / SR;
+        let s = (SAMPLE_LEN as f32) / SOURCE_SR;
         if s > 0.0 {
             s
         } else {
@@ -992,8 +1022,7 @@ fn lab_cum_search(len: usize, r: f32) -> usize {
 }
 
 // Una estimación con N rayos. method: 0 random, 1 stratified, 2 QMC (áurea),
-// 3 importance (reponderado, insesgado), 4 reverse (rejection ∝ energía, sesgado
-// — exactamente lo que hace el motor en vivo con los rayos inteligentes).
+// 3 importance (reponderado, insesgado), 4 reverse (q ∝ p·energía, sesgado).
 #[no_mangle]
 pub extern "C" fn lab_estimate(f0: i32, a: i32, n_rays: u32, method: u32, sd: u32) {
     unsafe {
@@ -1006,7 +1035,6 @@ pub extern "C" fn lab_estimate(f0: i32, a: i32, n_rays: u32, method: u32, sd: u3
         let rot = rng01() as f64;
         if method == 3 {
             let len = (2 * a + 1) as usize;
-            let mut ws = 0.0f64;
             for i in 0..n {
                 let u = ((i as f32) + rng01()) / (n as f32);
                 let idx = lab_cum_search(len, u);
@@ -1023,36 +1051,19 @@ pub extern "C" fn lab_estimate(f0: i32, a: i32, n_rays: u32, method: u32, sd: u3
                 }
                 let k = idx as i32 - a;
                 let wi = (LAB_PM[idx] / qm) as f64;
-                ws += wi;
                 let b = f0 as i64 + k as i64;
                 for m in 0..LAB_D {
                     LAB_EST[m] += wi * lab_s(b + m as i64);
                 }
             }
-            let inv = if ws > 0.0 { 1.0 / ws } else { 0.0 };
+            let inv = 1.0 / (n as f64);
             for m in 0..LAB_D {
                 LAB_EST[m] *= inv * (LAB_WIN[m] as f64);
             }
         } else if method == 4 {
-            let len = (2 * a + 1) as i64;
             for _ in 0..n {
-                let mut k = roundi(tri_inv(rng01()) * (a as f32));
-                let mut tries = 0;
-                while tries < 6 {
-                    let mut idx = k + a as i64;
-                    if idx < 0 {
-                        idx = 0;
-                    }
-                    if idx >= len {
-                        idx = len - 1;
-                    }
-                    if LAB_EN[idx as usize] >= LAB_EMAX * rng01() {
-                        break;
-                    }
-                    k = roundi(tri_inv(rng01()) * (a as f32));
-                    tries += 1;
-                }
-                let b = f0 as i64 + k;
+                let idx = lab_cum_search((2 * a + 1) as usize, rng01());
+                let b = f0 as i64 + idx as i64 - a as i64;
                 for m in 0..LAB_D {
                     LAB_EST[m] += lab_s(b + m as i64);
                 }
@@ -1156,7 +1167,7 @@ fn alloc_voice() -> usize {
 // Coloca un grano (usado por granos nuevos y rebotes). Decide octava, transposición y paneo.
 fn place(pos: f32, band: u8, depth: u32) {
     unsafe {
-        let dur_samp = GRAIN_DUR * SR;
+        let dur_samp = GRAIN_DUR * OUTPUT_SR;
         if dur_samp < 1.0 {
             return;
         }
@@ -1167,7 +1178,8 @@ fn place(pos: f32, band: u8, depth: u32) {
         // pulsada, cada grano toca una de esas notas en vez del grado de
         // Microtonal/Voicing — igual que en el VST, tocar anula la textura fija.
         let ratio = if KEYS_LEN > 0 { key_ratio() } else { scale_ratio() };
-        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * ratio * detune;
+        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * ratio * detune
+            * (SOURCE_SR / OUTPUT_SR);
         let pan = (rng01() * 2.0 - 1.0) * WIDTH; // paneo aleatorio según el ancho
         let panl = sqrtf((1.0 - pan) * 0.5); // equal-power
         let panr = sqrtf((1.0 + pan) * 0.5);
@@ -1185,7 +1197,7 @@ fn place(pos: f32, band: u8, depth: u32) {
             panl,
             panr,
         };
-        log_push(pos / SR, band, ratio);
+        log_push(pos / SOURCE_SR, band, ratio);
         SPAWN_COUNT = SPAWN_COUNT.wrapping_add(1);
     }
 }
@@ -1212,7 +1224,7 @@ fn spawn() {
                 _ => 1.0,
             }
         };
-        let span = (SAMPLE_LEN as f32) / SR;
+        let span = (SAMPLE_LEN as f32) / SOURCE_SR;
         // Foco efectivo: en ambient, un foco de la constelación (ponderado por peso),
         // con apertura más cerrada a escala fina (auto-similar). Si no, el FOCUS
         // único de siempre con su autoevolución acotada por FEEDBACK.
@@ -1240,7 +1252,7 @@ fn spawn() {
             }
         }
         let maxp = (SAMPLE_LEN - 2) as f32;
-        let pos = clampf(off_sec * SR, 0.0, maxp);
+        let pos = clampf(off_sec * SOURCE_SR, 0.0, maxp);
         place(pos, band, BOUNCES);
     }
 }
@@ -1249,14 +1261,17 @@ fn spawn() {
 pub extern "C" fn process(frames: usize) {
     unsafe {
         let n = if frames > BLOCK { BLOCK } else { frames };
-        let rate_per_sample = GRAIN_RATE / SR;
+        if n == 0 {
+            return;
+        }
+        let rate_per_sample = GRAIN_RATE / OUTPUT_SR;
         let maxp = if SAMPLE_LEN >= 2 {
             (SAMPLE_LEN - 2) as f32
         } else {
             0.0
         };
         // La constelación de focos avanza una vez por bloque (deriva lenta).
-        update_foci(n as f32 / SR);
+        update_foci(n as f32 / OUTPUT_SR);
         for f in 0..n {
             SPAWN_ACC += rate_per_sample;
             while SPAWN_ACC >= 1.0 {
@@ -1280,7 +1295,7 @@ pub extern "C" fn process(frames: usize) {
                     FREE[NFREE] = i as u16;
                     NFREE += 1;
                     if dep > 0 && rng01() < REFL {
-                        let jitter = (rng01() - 0.5) * 0.1 * SR;
+                        let jitter = (rng01() - 0.5) * 0.1 * SOURCE_SR;
                         let cpos = clampf(endpos + jitter, 0.0, maxp);
                         place(cpos, bnd, dep - 1);
                     }

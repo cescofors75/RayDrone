@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 // Genera paper/data/run5-bias-ap91-foc2.0.csv — el run que evidencia el SESGO
-// del trazado inverso (paper §5.3 / Fig. 4), usando el MISMO motor Rust→wasm
+// del trazado inverso (paper §5.3 / Fig. 4), usando el motor Rust→wasm actual
 // del Convergence Lab.
 //
-// Los runs 1–4 (música real) muestran reverse ≈ random (pendiente ~−0.5, sin
-// meseta): en material cuasi-uniforme el sesgo queda por debajo del ruido del
-// estimador en el rango de N medido. Este run construye el caso donde el sesgo
+// Los runs 1–4 son pilotos históricos de una implementación anterior. Este run,
+// reproducible con el motor actual, construye el caso donde el sesgo
 // DOMINA: una fuente sintética con energía fuertemente no uniforme dentro de
 // la apertura (mitad tono fuerte, mitad casi-silencio, foco en la frontera).
-// Aquí la rejection ∝ energía sin reponderar estima un objetivo distinto, y su
+// Aquí el muestreo exacto q ∝ energía sin reponderar estima un objetivo distinto, y su
 // curva de error se APLANA mientras random sigue cayendo ~1/√N e importance
 // (reponderado, insesgado) cae mucho más rápido.
 //
@@ -20,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const wasmPath = join(here, '..', 'wasm', 'raydrone.wasm');
+const wasmPath = join(here, '..', 'raydrone.wasm');
 const outPath = join(here, 'data', 'run5-bias-ap91-foc2.0.csv');
 
 const bytes = readFileSync(wasmPath);
@@ -42,6 +41,7 @@ for (let i = 0; i < len; i++) {
     s[i] = amp * Math.sin((2 * Math.PI * 220 * i) / SR);
 }
 ex.set_sample(len, SR);
+ex.set_output_sample_rate(SR);
 
 // Ventana Hann del grano del Lab (mismo setup que lab-worker.js).
 const D = ex.lab_grain();

@@ -165,7 +165,11 @@ impl Default for RayDroneParams {
             density: FloatParam::new(
                 "Density",
                 200.0,
-                FloatRange::Skewed { min: 10.0, max: 500.0, factor: FloatRange::skew_factor(-1.0) },
+                FloatRange::Skewed {
+                    min: 10.0,
+                    max: 500.0,
+                    factor: FloatRange::skew_factor(-1.0),
+                },
             )
             .with_unit(" rays/s")
             .with_value_to_string(formatters::v2s_f32_rounded(0)),
@@ -173,7 +177,11 @@ impl Default for RayDroneParams {
             aperture: FloatParam::new(
                 "Aperture",
                 100.0,
-                FloatRange::Skewed { min: 1.0, max: 2000.0, factor: FloatRange::skew_factor(-2.0) },
+                FloatRange::Skewed {
+                    min: 1.0,
+                    max: 2000.0,
+                    factor: FloatRange::skew_factor(-2.0),
+                },
             )
             .with_unit(" ms")
             .with_value_to_string(formatters::v2s_f32_rounded(0)),
@@ -250,7 +258,7 @@ impl Plugin for RayDrone {
     // Accept MIDI notes so you can play the drone from a keyboard.
     const MIDI_INPUT: MidiConfig = MidiConfig::Basic;
     const MIDI_OUTPUT: MidiConfig = MidiConfig::None;
-    const SAMPLE_ACCURATE_AUTOMATION: bool = true;
+    const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
     type SysExMessage = ();
     type BackgroundTask = ();
@@ -275,7 +283,15 @@ impl Plugin for RayDrone {
             |_, _| {},
             move |ctx, setter, _state| {
                 draw_ui(
-                    ctx, setter, &params, &pending, &sample_name, &viz, &keys, &host_sr, &trash,
+                    ctx,
+                    setter,
+                    &params,
+                    &pending,
+                    &sample_name,
+                    &viz,
+                    &keys,
+                    &host_sr,
+                    &trash,
                 );
             },
         )
@@ -288,7 +304,8 @@ impl Plugin for RayDrone {
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         self.engine.set_sample_rate(buffer_config.sample_rate);
-        self.host_sr.store(buffer_config.sample_rate.to_bits(), Ordering::Relaxed);
+        self.host_sr
+            .store(buffer_config.sample_rate.to_bits(), Ordering::Relaxed);
 
         // Restore a persisted scene (DAW project recall), or fall back to a
         // built-in so the plugin makes sound out of the box.
@@ -298,7 +315,9 @@ impl Plugin for RayDrone {
             if matches!(path.as_deref(), Some("live")) {
                 // Not real-time here — initialize() runs before the stream starts.
                 let buf = live_capture_buffer(6.0, buffer_config.sample_rate);
-                let _ = self.engine.begin_live_capture(buf, buffer_config.sample_rate);
+                let _ = self
+                    .engine
+                    .begin_live_capture(buf, buffer_config.sample_rate);
                 if let Ok(mut v) = self.viz.lock() {
                     v.wave = Vec::new();
                 }
@@ -318,10 +337,10 @@ impl Plugin for RayDrone {
                 // A WAV file path was saved.
                 Some(p) => match load_wav(Path::new(&p)) {
                     Ok((d, s)) => (d, s, file_label(&p)),
-                    // File missing/moved → don't leave it silent.
-                    Err(_) => {
+                    // Keep producing audio, but expose the missing/corrupt media.
+                    Err(error) => {
                         let (d, s) = builtin_scene(Scene::Pad);
-                        (d, s, "built-in: Pad".to_string())
+                        (d, s, format!("WAV unavailable ({error}); using Pad"))
                     }
                 },
                 // Fresh instance → default built-in Pad.
@@ -356,32 +375,18 @@ impl Plugin for RayDrone {
         // here — freeing memory on the audio callback is just as real-time-
         // unsafe as allocating it. `draw_ui` (GUI thread) drains `trash` every
         // frame, which is where the actual deallocation happens.
-        if let Ok(mut slot) = self.pending.try_lock() {
-            if let Some(cmd) = slot.take() {
-                let old = match cmd {
-                    SceneCmd::Wav(data, sr) => self.engine.load(data, sr),
-                    SceneCmd::Live(buf, sr) => self.engine.begin_live_capture(buf, sr),
-                };
-                if let Ok(mut trash) = self.trash.try_lock() {
-                    if trash.len() < trash.capacity() {
-                        trash.push(old);
-                    }
-                    // Capacity exhausted (shouldn't happen — see the field doc):
-                    // fall through and let `old` drop here as a last resort
-                    // rather than leaking it.
+        if let (Ok(mut slot), Ok(mut trash)) = (self.pending.try_lock(), self.trash.try_lock()) {
+            if trash.len() < trash.capacity() {
+                if let Some(cmd) = slot.take() {
+                    let old = match cmd {
+                        SceneCmd::Wav(data, sr) => self.engine.load(data, sr),
+                        SceneCmd::Live(buf, sr) => self.engine.begin_live_capture(buf, sr),
+                    };
+                    trash.push(old);
                 }
             }
         }
 
-        // Collect MIDI note on/off (block-accurate is fine for a drone).
-        while let Some(event) = context.next_event() {
-            match event {
-                NoteEvent::NoteOn { note, .. } => self.midi_held[note as usize] = true,
-                NoteEvent::NoteOff { note, .. } => self.midi_held[note as usize] = false,
-                NoteEvent::Choke { note, .. } => self.midi_held[note as usize] = false,
-                _ => {}
-            }
-        }
         // Union of MIDI notes and the on-screen piano → held pitches.
         let mut held = self.midi_held;
         if let Ok(ui_keys) = self.keys.try_lock() {
@@ -390,6 +395,7 @@ impl Plugin for RayDrone {
             }
         }
         self.engine.set_keys(&held, 60);
+        let mut next_event = context.next_event();
 
         // Bypass: pass the input straight through, untouched.
         if self.params.bypass.value() {
@@ -403,10 +409,31 @@ impl Plugin for RayDrone {
         self.engine.set_reverb(self.params.reverb.value());
         self.engine.set_feedback(self.params.evolve.value());
         self.engine.set_octave(self.params.shimmer.value());
-        self.engine.set_bounce(self.params.bounce.value().round() as u32);
+        self.engine
+            .set_bounce(self.params.bounce.value().round() as u32);
         self.engine.set_reflect(self.params.reflect.value());
 
-        for mut frame in buffer.iter_samples() {
+        for (sample_offset, mut frame) in buffer.iter_samples().enumerate() {
+            while next_event
+                .as_ref()
+                .is_some_and(|event| event.timing() as usize <= sample_offset)
+            {
+                match next_event.take().unwrap() {
+                    NoteEvent::NoteOn { note, .. } => self.midi_held[note as usize] = true,
+                    NoteEvent::NoteOff { note, .. } | NoteEvent::Choke { note, .. } => {
+                        self.midi_held[note as usize] = false
+                    }
+                    _ => {}
+                }
+                next_event = context.next_event();
+                let mut held = self.midi_held;
+                if let Ok(ui_keys) = self.keys.try_lock() {
+                    for (state, &pressed) in held.iter_mut().zip(ui_keys.iter()) {
+                        *state |= pressed;
+                    }
+                }
+                self.engine.set_keys(&held, 60);
+            }
             self.engine.set_master(self.params.master.smoothed.next());
             let mix = self.params.mix.smoothed.next();
 
@@ -442,7 +469,11 @@ impl Plugin for RayDrone {
             // Oldest-first snapshot of the actual output, for the GUI's
             // oscilloscope/spectrum panel. A reorder + copy, no allocation —
             // the FFT itself only ever runs on the GUI thread.
-            engine::ring_ordered(self.engine.out_buffer(), self.engine.out_write(), &mut v.out_wave);
+            engine::ring_ordered(
+                self.engine.out_buffer(),
+                self.engine.out_write(),
+                &mut v.out_wave,
+            );
         }
 
         ProcessStatus::Normal
@@ -472,7 +503,9 @@ fn draw_ui(
         t.clear();
     }
 
-    let frame = egui::Frame::new().fill(BG0).inner_margin(egui::Margin::same(14));
+    let frame = egui::Frame::new()
+        .fill(BG0)
+        .inner_margin(egui::Margin::same(14));
     egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
         ui.visuals_mut().override_text_color = Some(egui::Color32::from_gray(225));
         ui.spacing_mut().item_spacing = egui::vec2(8.0, 6.0);
@@ -481,7 +514,10 @@ fn draw_ui(
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("◢◣").color(ACCENT).size(18.0));
             ui.heading(
-                egui::RichText::new("RAYDRONE").strong().color(egui::Color32::WHITE).size(22.0),
+                egui::RichText::new("RAYDRONE")
+                    .strong()
+                    .color(egui::Color32::WHITE)
+                    .size(22.0),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Bypass toggle.
@@ -490,7 +526,11 @@ fn draw_ui(
                     egui::RichText::new(if by { "BYPASSED" } else { "BYPASS" })
                         .size(11.0)
                         .strong()
-                        .color(if by { BG0 } else { egui::Color32::from_gray(200) }),
+                        .color(if by {
+                            BG0
+                        } else {
+                            egui::Color32::from_gray(200)
+                        }),
                 )
                 .fill(if by { ACCENT } else { BG1 })
                 .corner_radius(6)
@@ -516,115 +556,136 @@ fn draw_ui(
         ui.add_space(8.0);
 
         // Scrollable body so no control is ever cut off by the host window size.
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                // ── Ray visualizer (shows the live render + autoevolution) ───────────
+                draw_visualizer(ui, viz, params.focus.value(), params.evolve.value());
+                ui.add_space(6.0);
 
-        // ── Ray visualizer (shows the live render + autoevolution) ───────────
-        draw_visualizer(ui, viz, params.focus.value(), params.evolve.value());
-        ui.add_space(6.0);
+                // ── Output (the rendered signal — what you actually hear) ────────────
+                section_header(
+                    ui,
+                    "OUTPUT  ·  oscilloscope + spectrum of the rendered signal",
+                );
+                draw_output_panel(ui, viz);
+                ui.add_space(10.0);
 
-        // ── Output (the rendered signal — what you actually hear) ────────────
-        section_header(ui, "OUTPUT  ·  oscilloscope + spectrum of the rendered signal");
-        draw_output_panel(ui, viz);
-        ui.add_space(10.0);
-
-        // ── Source / character menus (one wide row) ──────────────────────────
-        ui.horizontal(|ui| {
-            ui.label(menu_tag("SOURCE"));
-            let current = sample_name.lock().unwrap().clone();
-            egui::ComboBox::from_id_salt("scene_menu")
-                .selected_text(egui::RichText::new(current).color(CYAN))
-                .width(150.0)
-                .show_ui(ui, |ui| {
-                    // Live input: process the track audio into an ambient texture.
-                    if ui.selectable_label(false, "◉  Live input (FX)").clicked() {
-                        *sample_name.lock().unwrap() = "live input".to_string();
-                        *params.sample_path.lock().unwrap() = Some("live".to_string());
-                        if let Ok(mut v) = viz.lock() {
-                            v.wave = Vec::new();
-                        }
-                        // Build the (zeroed) capture buffer here, on the GUI
-                        // thread, so process() only ever has to move it in.
-                        let sr = f32::from_bits(host_sr.load(Ordering::Relaxed));
-                        *pending.lock().unwrap() =
-                            Some(SceneCmd::Live(live_capture_buffer(6.0, sr), sr));
+                // ── Source / character menus (one wide row) ──────────────────────────
+                ui.horizontal(|ui| {
+                    ui.label(menu_tag("SOURCE"));
+                    let current = sample_name.lock().unwrap().clone();
+                    egui::ComboBox::from_id_salt("scene_menu")
+                        .selected_text(egui::RichText::new(current).color(CYAN))
+                        .width(150.0)
+                        .show_ui(ui, |ui| {
+                            // Live input: process the track audio into an ambient texture.
+                            if ui.selectable_label(false, "◉  Live input (FX)").clicked() {
+                                *sample_name.lock().unwrap() = "live input".to_string();
+                                *params.sample_path.lock().unwrap() = Some("live".to_string());
+                                if let Ok(mut v) = viz.lock() {
+                                    v.wave = Vec::new();
+                                }
+                                // Build the (zeroed) capture buffer here, on the GUI
+                                // thread, so process() only ever has to move it in.
+                                let sr = f32::from_bits(host_sr.load(Ordering::Relaxed));
+                                *pending.lock().unwrap() =
+                                    Some(SceneCmd::Live(live_capture_buffer(6.0, sr), sr));
+                            }
+                            ui.separator();
+                            for &(label, scene) in &[
+                                ("Pad", Scene::Pad),
+                                ("Choir", Scene::Choir),
+                                ("Bell", Scene::Bell),
+                                ("Noise", Scene::Noise),
+                            ] {
+                                if ui.selectable_label(false, format!("●  {label}")).clicked() {
+                                    load_scene(
+                                        scene,
+                                        pending,
+                                        viz,
+                                        sample_name,
+                                        &params.sample_path,
+                                    );
+                                }
+                            }
+                        });
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("Load WAV…").color(BG0).size(12.0),
+                            )
+                            .fill(CYAN)
+                            .corner_radius(6),
+                        )
+                        .clicked()
+                    {
+                        spawn_wav_dialog(pending, viz, sample_name, &params.sample_path);
                     }
-                    ui.separator();
-                    for &(label, scene) in &[
-                        ("Pad", Scene::Pad),
-                        ("Choir", Scene::Choir),
-                        ("Bell", Scene::Bell),
-                        ("Noise", Scene::Noise),
-                    ] {
-                        if ui.selectable_label(false, format!("●  {label}")).clicked() {
-                            load_scene(scene, pending, viz, sample_name, &params.sample_path);
-                        }
-                    }
+                    ui.add_space(16.0);
+                    ui.label(menu_tag("CHARACTER"));
+                    egui::ComboBox::from_id_salt("character_menu")
+                        .selected_text(egui::RichText::new("Presets…").color(ACCENT))
+                        .width(150.0)
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_label(false, "Tonal — narrow, pitched")
+                                .clicked()
+                            {
+                                apply_preset(setter, params, Preset::Tonal);
+                            }
+                            if ui.selectable_label(false, "Drone — wide, dense").clicked() {
+                                apply_preset(setter, params, Preset::Drone);
+                            }
+                            if ui
+                                .selectable_label(false, "Shimmer — bright, evolving")
+                                .clicked()
+                            {
+                                apply_preset(setter, params, Preset::Shimmer);
+                            }
+                        });
                 });
-            if ui
-                .add(
-                    egui::Button::new(egui::RichText::new("Load WAV…").color(BG0).size(12.0))
-                        .fill(CYAN)
-                        .corner_radius(6),
-                )
-                .clicked()
-            {
-                spawn_wav_dialog(pending, viz, sample_name, &params.sample_path);
-            }
-            ui.add_space(16.0);
-            ui.label(menu_tag("CHARACTER"));
-            egui::ComboBox::from_id_salt("character_menu")
-                .selected_text(egui::RichText::new("Presets…").color(ACCENT))
-                .width(150.0)
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(false, "Tonal — narrow, pitched").clicked() {
-                        apply_preset(setter, params, Preset::Tonal);
-                    }
-                    if ui.selectable_label(false, "Drone — wide, dense").clicked() {
-                        apply_preset(setter, params, Preset::Drone);
-                    }
-                    if ui.selectable_label(false, "Shimmer — bright, evolving").clicked() {
-                        apply_preset(setter, params, Preset::Shimmer);
-                    }
+
+                ui.add_space(8.0);
+
+                // ── Knob panels in a wide row (landscape, pro layout) ────────────────
+                ui.horizontal_top(|ui| {
+                    knob_group(ui, "RENDER", |ui| {
+                        knob(ui, &params.density, setter, "DENSITY", ACCENT);
+                        knob(ui, &params.aperture, setter, "APERTURE", ACCENT);
+                        knob(ui, &params.focus, setter, "FOCUS", ACCENT);
+                    });
+                    knob_group(ui, "MOTION", |ui| {
+                        knob(ui, &params.evolve, setter, "EVOLVE", CYAN);
+                        knob(ui, &params.shimmer, setter, "SHIMMER", CYAN);
+                    });
+                    knob_group(ui, "RECURSIVE RAYS", |ui| {
+                        knob(ui, &params.bounce, setter, "BOUNCE", ACCENT);
+                        knob(ui, &params.reflect, setter, "REFLECT", ACCENT);
+                    });
+                    knob_group(ui, "OUTPUT", |ui| {
+                        knob(ui, &params.reverb, setter, "REVERB", ACCENT);
+                        knob(ui, &params.mix, setter, "MIX", CYAN);
+                        knob(ui, &params.master, setter, "MASTER", ACCENT);
+                    });
                 });
-        });
 
-        ui.add_space(8.0);
+                ui.add_space(8.0);
+                section_header(
+                    ui,
+                    "PLAY  ·  computer keys (A W S E D…), mouse or MIDI pitch the drone",
+                );
+                draw_piano(ui, keys);
 
-        // ── Knob panels in a wide row (landscape, pro layout) ────────────────
-        ui.horizontal_top(|ui| {
-            knob_group(ui, "RENDER", |ui| {
-                knob(ui, &params.density, setter, "DENSITY", ACCENT);
-                knob(ui, &params.aperture, setter, "APERTURE", ACCENT);
-                knob(ui, &params.focus, setter, "FOCUS", ACCENT);
-            });
-            knob_group(ui, "MOTION", |ui| {
-                knob(ui, &params.evolve, setter, "EVOLVE", CYAN);
-                knob(ui, &params.shimmer, setter, "SHIMMER", CYAN);
-            });
-            knob_group(ui, "RECURSIVE RAYS", |ui| {
-                knob(ui, &params.bounce, setter, "BOUNCE", ACCENT);
-                knob(ui, &params.reflect, setter, "REFLECT", ACCENT);
-            });
-            knob_group(ui, "OUTPUT", |ui| {
-                knob(ui, &params.reverb, setter, "REVERB", ACCENT);
-                knob(ui, &params.mix, setter, "MIX", CYAN);
-                knob(ui, &params.master, setter, "MASTER", ACCENT);
-            });
-        });
-
-        ui.add_space(8.0);
-        section_header(ui, "PLAY  ·  computer keys (A W S E D…), mouse or MIDI pitch the drone");
-        draw_piano(ui, keys);
-
-        ui.add_space(6.0);
-        ui.label(
+                ui.add_space(6.0);
+                ui.label(
             egui::RichText::new(
                 "FX on a track: SOURCE ▸ Live input + MIX (dry↔drone) · hold notes to play chords.",
             )
             .size(10.0)
             .color(egui::Color32::from_gray(120)),
         );
-        }); // ScrollArea
+            }); // ScrollArea
     });
 }
 
@@ -678,7 +739,10 @@ fn draw_visualizer(ui: &mut egui::Ui, viz: &Viz, base_focus: f32, evolve: f32) {
         // Feedback orbit (recursion): a dot circling the apex.
         let orbit_r = 9.0 + evolve * 9.0;
         let ang = t * (0.6 + evolve * 2.2);
-        let od = egui::pos2(apex.x + orbit_r * ang.cos(), apex.y + orbit_r * ang.sin() * 0.55);
+        let od = egui::pos2(
+            apex.x + orbit_r * ang.cos(),
+            apex.y + orbit_r * ang.sin() * 0.55,
+        );
         p.circle_stroke(
             apex,
             orbit_r,
@@ -759,7 +823,10 @@ fn draw_visualizer(ui: &mut egui::Ui, viz: &Viz, base_focus: f32, evolve: f32) {
     p.circle_filled(apex, 2.2, egui::Color32::WHITE);
     p.line_segment(
         [apex, egui::pos2(focus_x, base_y)],
-        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 60)),
+        egui::Stroke::new(
+            1.0,
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 60),
+        ),
     );
 
     // Output level meter (top-right).
@@ -822,7 +889,10 @@ fn draw_output_panel(ui: &mut egui::Ui, viz: &Viz) {
         .collect();
     p.add(egui::Shape::line(pts, egui::Stroke::new(1.2, CYAN)));
     p.line_segment(
-        [egui::pos2(left, spec_top), egui::pos2(left + width, spec_top)],
+        [
+            egui::pos2(left, spec_top),
+            egui::pos2(left + width, spec_top),
+        ],
         egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(40, 230, 220, 30)),
     );
 
@@ -1027,7 +1097,10 @@ fn load_scene(
 
 /// Small left-hand tag for a menu row.
 fn menu_tag(text: &str) -> egui::RichText {
-    egui::RichText::new(text).size(10.0).strong().color(egui::Color32::from_gray(120))
+    egui::RichText::new(text)
+        .size(10.0)
+        .strong()
+        .color(egui::Color32::from_gray(120))
 }
 
 /// Section divider: an uppercase label with a thin rule to its right.
@@ -1035,7 +1108,10 @@ fn section_header(ui: &mut egui::Ui, text: &str) {
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         ui.label(
-            egui::RichText::new(text).size(10.0).strong().color(egui::Color32::from_rgb(150, 150, 175)),
+            egui::RichText::new(text)
+                .size(10.0)
+                .strong()
+                .color(egui::Color32::from_rgb(150, 150, 175)),
         );
         let r = ui.available_rect_before_wrap();
         let y = r.center().y;
@@ -1061,10 +1137,18 @@ fn paint_arc(p: &egui::Painter, c: egui::Pos2, r: f32, a0: f32, a1: f32, stroke:
 
 /// A rotary knob bound to a plugin parameter. Vertical drag changes the value
 /// (Shift = fine), double-click resets to default, hover shows the value.
-fn knob(ui: &mut egui::Ui, param: &FloatParam, setter: &ParamSetter, label: &str, accent: egui::Color32) {
+fn knob(
+    ui: &mut egui::Ui,
+    param: &FloatParam,
+    setter: &ParamSetter,
+    label: &str,
+    accent: egui::Color32,
+) {
     let diameter = 52.0;
-    let (rect, resp) =
-        ui.allocate_exact_size(egui::vec2(diameter + 8.0, diameter + 22.0), egui::Sense::click_and_drag());
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(diameter + 8.0, diameter + 22.0),
+        egui::Sense::click_and_drag(),
+    );
     let center = egui::pos2(rect.center().x, rect.top() + diameter * 0.5 + 2.0);
     let radius = diameter * 0.5;
 
@@ -1074,7 +1158,11 @@ fn knob(ui: &mut egui::Ui, param: &FloatParam, setter: &ParamSetter, label: &str
     }
     if resp.dragged() {
         let d = resp.drag_delta();
-        let speed = if ui.input(|i| i.modifiers.shift) { 0.0009 } else { 0.005 };
+        let speed = if ui.input(|i| i.modifiers.shift) {
+            0.0009
+        } else {
+            0.005
+        };
         norm = (norm - d.y * speed + d.x * speed * 0.25).clamp(0.0, 1.0);
         setter.set_parameter_normalized(param, norm);
     }
@@ -1094,15 +1182,29 @@ fn knob(ui: &mut egui::Ui, param: &FloatParam, setter: &ParamSetter, label: &str
     let a1 = 405f32.to_radians();
     let av = a0 + (a1 - a0) * norm;
     // Track, value arc, body, pointer.
-    paint_arc(&p, center, radius, a0, a1, egui::Stroke::new(3.0, egui::Color32::from_gray(42)));
+    paint_arc(
+        &p,
+        center,
+        radius,
+        a0,
+        a1,
+        egui::Stroke::new(3.0, egui::Color32::from_gray(42)),
+    );
     paint_arc(&p, center, radius, a0, av, egui::Stroke::new(3.0, accent));
     p.circle_filled(center, radius - 5.0, egui::Color32::from_rgb(22, 22, 32));
-    p.circle_stroke(center, radius - 5.0, egui::Stroke::new(1.0, egui::Color32::from_gray(58)));
+    p.circle_stroke(
+        center,
+        radius - 5.0,
+        egui::Stroke::new(1.0, egui::Color32::from_gray(58)),
+    );
     if resp.hovered() {
         p.circle_stroke(center, radius - 5.0, egui::Stroke::new(1.0, accent));
     }
     let inner = egui::pos2(center.x + 5.0 * av.cos(), center.y + 5.0 * av.sin());
-    let outer = egui::pos2(center.x + (radius - 8.0) * av.cos(), center.y + (radius - 8.0) * av.sin());
+    let outer = egui::pos2(
+        center.x + (radius - 8.0) * av.cos(),
+        center.y + (radius - 8.0) * av.sin(),
+    );
     p.line_segment([inner, outer], egui::Stroke::new(2.5, egui::Color32::WHITE));
 
     // Caption: name normally, live value while hovered/dragged.
@@ -1148,8 +1250,10 @@ fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>) {
     const LO: i32 = 48; // C3
     const HI: i32 = 76; // exclusive (E5)
     let h = 58.0;
-    let (rect, resp) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), h), egui::Sense::click_and_drag());
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), h),
+        egui::Sense::click_and_drag(),
+    );
     let p = ui.painter_at(rect);
 
     let is_black = |n: i32| matches!(((n % 12) + 12) % 12, 1 | 3 | 6 | 8 | 10);
@@ -1172,10 +1276,21 @@ fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>) {
 
     // Computer keyboard → notes (base C4 = MIDI 60).
     const KB: &[(egui::Key, i32)] = &[
-        (egui::Key::A, 0), (egui::Key::W, 1), (egui::Key::S, 2), (egui::Key::E, 3),
-        (egui::Key::D, 4), (egui::Key::F, 5), (egui::Key::T, 6), (egui::Key::G, 7),
-        (egui::Key::Y, 8), (egui::Key::H, 9), (egui::Key::U, 10), (egui::Key::J, 11),
-        (egui::Key::K, 12), (egui::Key::O, 13), (egui::Key::L, 14),
+        (egui::Key::A, 0),
+        (egui::Key::W, 1),
+        (egui::Key::S, 2),
+        (egui::Key::E, 3),
+        (egui::Key::D, 4),
+        (egui::Key::F, 5),
+        (egui::Key::T, 6),
+        (egui::Key::G, 7),
+        (egui::Key::Y, 8),
+        (egui::Key::H, 9),
+        (egui::Key::U, 10),
+        (egui::Key::J, 11),
+        (egui::Key::K, 12),
+        (egui::Key::O, 13),
+        (egui::Key::L, 14),
     ];
     ui.input(|i| {
         for &(k, off) in KB {
@@ -1215,9 +1330,18 @@ fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>) {
     }
 
     // Draw white keys, then black keys on top.
-    let low = egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 };
+    let low = egui::CornerRadius {
+        nw: 0,
+        ne: 0,
+        sw: 3,
+        se: 3,
+    };
     for (i, &n) in whites.iter().enumerate() {
-        let col = if mask[n as usize] { CYAN } else { egui::Color32::from_gray(232) };
+        let col = if mask[n as usize] {
+            CYAN
+        } else {
+            egui::Color32::from_gray(232)
+        };
         p.rect_filled(white_rect(i), low, col);
         p.rect_stroke(
             white_rect(i),
@@ -1228,7 +1352,11 @@ fn draw_piano(ui: &mut egui::Ui, keys: &Arc<Mutex<[bool; 128]>>) {
     }
     for (i, &n) in whites.iter().enumerate() {
         if is_black(n + 1) {
-            let col = if mask[(n + 1) as usize] { ACCENT } else { egui::Color32::from_gray(16) };
+            let col = if mask[(n + 1) as usize] {
+                ACCENT
+            } else {
+                egui::Color32::from_gray(16)
+            };
             p.rect_filled(black_rect(i), low, col);
         }
     }
@@ -1250,7 +1378,10 @@ fn spawn_wav_dialog(
     let sample_name = sample_name.clone();
     let sample_path = sample_path.clone();
     std::thread::spawn(move || {
-        if let Some(file) = rfd::FileDialog::new().add_filter("WAV audio", &["wav"]).pick_file() {
+        if let Some(file) = rfd::FileDialog::new()
+            .add_filter("WAV audio", &["wav"])
+            .pick_file()
+        {
             match load_wav(&file) {
                 Ok((data, sr)) => {
                     let peaks = wave_peaks(&data, 256);
@@ -1307,18 +1438,39 @@ fn apply_preset(setter: &ParamSetter, params: &Arc<RayDroneParams>, preset: Pres
 fn load_wav(path: &Path) -> Result<(Vec<f32>, f32), String> {
     let mut reader = hound::WavReader::open(path).map_err(|e| e.to_string())?;
     let spec = reader.spec();
+    if spec.sample_rate == 0 || spec.channels == 0 {
+        return Err("invalid WAV sample rate or channel count".to_string());
+    }
     let sr = spec.sample_rate as f32;
-    let ch = spec.channels.max(1) as usize;
+    let ch = spec.channels as usize;
 
     let interleaved: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => {
-            reader.samples::<f32>().map(|s| s.unwrap_or(0.0)).collect()
-        }
+        hound::SampleFormat::Float => reader
+            .samples::<f32>()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("WAV decode error: {e}"))?,
         hound::SampleFormat::Int => {
+            if spec.bits_per_sample == 0 || spec.bits_per_sample > 32 {
+                return Err(format!(
+                    "unsupported WAV bit depth: {}",
+                    spec.bits_per_sample
+                ));
+            }
             let max = (1i64 << (spec.bits_per_sample - 1)) as f32;
-            reader.samples::<i32>().map(|s| (s.unwrap_or(0) as f32) / max).collect()
+            reader
+                .samples::<i32>()
+                .map(|sample| {
+                    sample
+                        .map(|value| value as f32 / max)
+                        .map_err(|e| format!("WAV decode error: {e}"))
+                })
+                .collect::<Result<Vec<_>, _>>()?
         }
     };
+
+    if interleaved.len() % ch != 0 {
+        return Err("truncated WAV frame".to_string());
+    }
 
     // Downmix to mono (the engine works on a single-channel scene).
     let mono: Vec<f32> = if ch <= 1 {

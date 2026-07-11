@@ -32,6 +32,10 @@ function Resolve-CommandPath {
 
 $rustupPath = Resolve-CommandPath -PrimaryPath (Join-Path $env:USERPROFILE '.cargo/bin/rustup.exe') -CommandName 'rustup.exe'
 $rustcPath = Resolve-CommandPath -PrimaryPath (Join-Path $env:USERPROFILE '.cargo/bin/rustc.exe') -CommandName 'rustc.exe'
+$coreTemp = 'libraydrone_core.tmp.rlib'
+$wasmTemp = 'raydrone.tmp.wasm'
+
+Remove-Item $coreTemp, $wasmTemp -Force -ErrorAction SilentlyContinue
 
 if (-not $rustcPath) {
     throw 'rustc no encontrado. Instala Rustup primero.'
@@ -41,18 +45,27 @@ if ($rustupPath) {
     & $rustupPath target add wasm32-unknown-unknown 2>$null
 }
 
-& $rustcPath --edition 2021 `
-    --target wasm32-unknown-unknown `
-    -O -C panic=abort -C lto=fat `
-    --crate-name raydrone_core --crate-type=lib `
-    ..\core\src\lib.rs -o libraydrone_core.rlib
+try {
+    & $rustcPath --edition 2021 `
+        --target wasm32-unknown-unknown `
+        -O -C panic=abort -C lto=fat `
+        --crate-name raydrone_core --crate-type=lib `
+        ..\core\src\lib.rs -o $coreTemp
+    if ($LASTEXITCODE -ne 0) { throw "rustc core fallo con codigo $LASTEXITCODE" }
 
-& $rustcPath --edition 2021 `
-    --target wasm32-unknown-unknown `
-    -O -C panic=abort -C lto=fat `
-    --extern raydrone_core=libraydrone_core.rlib `
-    --crate-type=cdylib `
-    raydrone.rs -o raydrone.wasm
+    & $rustcPath --edition 2021 `
+        --target wasm32-unknown-unknown `
+        -O -C panic=abort -C lto=fat `
+        --extern raydrone_core=$coreTemp `
+        --crate-type=cdylib `
+        raydrone.rs -o $wasmTemp
+    if ($LASTEXITCODE -ne 0) { throw "rustc wasm fallo con codigo $LASTEXITCODE" }
+
+    Move-Item -Force $coreTemp libraydrone_core.rlib
+    Move-Item -Force $wasmTemp raydrone.wasm
+} finally {
+    Remove-Item $coreTemp, $wasmTemp -Force -ErrorAction SilentlyContinue
+}
 
 $size = (Get-Item raydrone.wasm).Length
 Write-Output "OK raydrone.wasm generado ($size bytes)"

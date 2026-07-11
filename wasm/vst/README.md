@@ -78,9 +78,9 @@ quasi-Monte Carlo sampling, triangular dispersion (depth of field), Catmull-Rom
 interpolation, per-grain micro-detune, equal-power stereo spread, Freeverb-lite,
 DC blocker and soft clip.
 
-**Drops** (to stay simple): chromatic aberration, Russian-roulette bounces,
-recursive autoevolution, ambient foci, microtonal scales, inverse tracing and
-the Convergence Lab. Those live in the full WASM build.
+**Drops** (to stay focused): chromatic aberration, ambient foci, microtonal
+scales, inverse tracing and the Convergence Lab. Those live in the full WASM
+build; recursive bounces and autoevolution are included here.
 
 ## Build
 

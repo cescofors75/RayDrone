@@ -82,6 +82,7 @@
         .stage-tools button:hover { background:rgba(255,255,255,0.10); }
         #cam-btn { display:none; }
         #stage.mode3d #cam-btn { display:inline-flex; }
+        #sound-btn.muted { color:var(--muted-2); border-color:rgba(255,255,255,.08); }
         /* Sidebar de teclas (H): overlay semi-transparente sobre el propio juego,
            no le quita sitio al lienzo — sin pointer-events, para no tapar clics. */
         #keys-sidebar { position:absolute; right:0; top:0; bottom:0; width:min(240px,62%); z-index:7;
@@ -208,6 +209,110 @@
             .how { font-size:0.72rem; }
             #keys-sidebar { width:min(260px,82%); }
         }
+
+        /* Cabina 2026: el juego es la interfaz, no una tarjeta dentro de ella. */
+        body { display:block; padding:0; overflow-x:hidden;
+               background:#05070a;
+               background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
+                                linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
+                                radial-gradient(circle at 50% -20%,rgba(255,63,104,.18),transparent 48%);
+               background-size:42px 42px,42px 42px,100% 100%; }
+        .container { width:min(1440px,100%); min-height:100vh; margin:auto; padding:18px clamp(14px,2.6vw,38px) 26px;
+                     border:0; border-left:1px solid var(--line); border-right:1px solid var(--line);
+                     border-radius:0; background:rgba(7,9,14,.82); box-shadow:0 0 120px rgba(0,0,0,.72); }
+        .masthead { min-height:54px; display:flex; align-items:center; justify-content:space-between; gap:24px; }
+        .brand-lockup { display:flex; align-items:baseline; gap:13px; min-width:0; }
+        h1 { font-family:Impact,'Arial Narrow',sans-serif; font-size:clamp(1.5rem,3vw,2.45rem); text-align:left;
+             font-style:italic; line-height:1; white-space:nowrap; }
+        h1::after { display:none; }
+        .sub { margin:0; text-align:left; font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+               font-size:.7rem; text-transform:uppercase; color:var(--muted-2); }
+        .live-pill { flex:none; display:inline-flex; align-items:center; gap:8px; padding:7px 10px;
+                     border:1px solid rgba(69,228,213,.24); background:rgba(5,16,17,.72);
+                     font:700 .65rem/1 ui-monospace,SFMono-Regular,Consolas,monospace; color:var(--cyan); text-transform:uppercase; }
+        .live-dot { width:6px; height:6px; border-radius:50%; background:var(--cyan); box-shadow:0 0 10px var(--cyan); animation:livePulse 1.6s ease-in-out infinite; }
+        @keyframes livePulse { 50% { opacity:.35; transform:scale(.72); } }
+        .play-shell { position:relative; margin-top:12px; }
+        #stage { border-color:rgba(255,63,104,.4); border-radius:6px; isolation:isolate;
+                 box-shadow:0 24px 90px rgba(0,0,0,.62),0 0 0 1px rgba(255,255,255,.035) inset,
+                            0 0 42px rgba(255,63,104,.09); }
+        #stage::before { content:""; position:absolute; inset:0; z-index:3; pointer-events:none;
+                         background:linear-gradient(90deg,rgba(0,0,0,.28),transparent 10%,transparent 90%,rgba(0,0,0,.28)),
+                                    linear-gradient(0deg,rgba(0,0,0,.24),transparent 16%,transparent 76%,rgba(0,0,0,.18)); }
+        #stage::after { content:""; position:absolute; inset:0; z-index:4; pointer-events:none; opacity:.16;
+                        background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(0,0,0,.2) 3px 4px); mix-blend-mode:multiply; }
+        canvas { height:clamp(430px,61vh,700px); }
+        #game3d { height:clamp(430px,61vh,700px); }
+        .hud { position:absolute; z-index:6; left:12px; right:64px; top:10px; margin:0;
+               grid-template-columns:72px minmax(160px,1.4fr) 105px 90px 110px minmax(210px,1fr);
+               pointer-events:none; filter:drop-shadow(0 5px 12px rgba(0,0,0,.45)); }
+        .hud-chip { min-height:40px; padding:7px 9px; border-color:rgba(255,255,255,.13); border-radius:3px;
+                    background:linear-gradient(180deg,rgba(10,13,19,.88),rgba(7,9,14,.68));
+                    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
+        .hud-k { font-size:.56rem; }
+        .hud b { font-size:.88rem; }
+        .hud-chip.combo { position:relative; overflow:hidden; }
+        .hud-chip.combo::after { content:""; position:absolute; left:0; right:calc(100% - var(--combo,0%)); bottom:0; height:2px;
+                     background:linear-gradient(90deg,var(--accent),var(--gold)); box-shadow:0 0 10px var(--accent); transition:right .18s; }
+        .stage-tools { top:60px; }
+        .stage-tools button { border-radius:3px; background:rgba(7,9,14,.76); backdrop-filter:blur(8px); }
+        .overlay { z-index:8; background:rgba(5,7,10,.78); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+        .start-screen { align-items:flex-start; justify-content:flex-end; text-align:left; padding:clamp(28px,5vw,72px);
+                        background:linear-gradient(90deg,rgba(5,7,10,.94) 0%,rgba(5,7,10,.58) 44%,rgba(5,7,10,.08) 74%),
+                                   linear-gradient(0deg,rgba(5,7,10,.82),transparent 54%); }
+        .start-art { display:none; }
+        .start-kicker { color:var(--cyan); font:800 .7rem/1 ui-monospace,SFMono-Regular,Consolas,monospace;
+                        text-transform:uppercase; }
+        .start-brand { max-width:680px; font-family:Impact,'Arial Narrow',sans-serif; font-size:clamp(3rem,8vw,6.7rem);
+                       font-style:italic; line-height:.84; color:#fff; text-shadow:0 0 34px rgba(255,63,104,.28); }
+        .start-copy { max-width:460px; font-size:clamp(.9rem,1.4vw,1.08rem); color:#dce3ed; }
+        .start-copy strong { color:var(--gold); }
+        .start-screen > .btn { min-width:210px; }
+        .btn { border-radius:3px; clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px)); }
+        .keys { position:absolute; z-index:7; left:14px; right:14px; bottom:14px; margin:0; pointer-events:none;
+                display:flex; justify-content:space-between; align-items:flex-end; }
+        .pad { display:flex; border:0; padding:0; background:transparent; gap:8px; }
+        .kbtn { width:58px; height:58px; min-height:0; border-radius:50%; padding:0; pointer-events:auto;
+                background:rgba(7,9,14,.62); border-color:rgba(255,255,255,.24); backdrop-filter:blur(7px);
+                box-shadow:inset 0 0 0 1px rgba(255,255,255,.04),0 8px 24px rgba(0,0,0,.28); }
+        .action-pad .kbtn { border-color:rgba(255,63,104,.45); }
+        .how { max-width:880px; margin:18px auto 0; color:var(--muted-2); font-size:.76rem; }
+        .status { margin-top:8px; }
+        a.back { margin-top:10px; }
+        @media (pointer:fine) and (min-width:901px) {
+            .keys { opacity:.18; transition:opacity .2s; }
+            .play-shell:hover .keys { opacity:.9; }
+        }
+        @media (max-width:900px) {
+            .container { padding:10px 8px 18px; }
+            .masthead { min-height:42px; }
+            .sub { display:none; }
+            .live-pill { font-size:.56rem; padding:6px 8px; }
+            .play-shell { margin-top:6px; }
+            canvas,#game3d { height:min(72vh,680px); min-height:440px; }
+            .hud { left:7px; right:7px; top:7px; grid-template-columns:52px minmax(105px,1fr) 65px 68px 78px minmax(145px,1.2fr); gap:4px; }
+            .hud-chip { min-height:36px; padding:5px 6px; }
+            .hud .n { display:none; }
+            .hud { grid-template-columns:52px minmax(105px,1fr) 68px 78px minmax(145px,1.2fr); }
+            .stage-tools { top:50px; right:6px; }
+            .start-screen { justify-content:center; padding:62px 24px 96px; }
+            .start-brand { font-size:clamp(3.2rem,14vw,5.4rem); }
+            .how { display:none; }
+        }
+        @media (max-width:620px) {
+            h1 { font-size:1.35rem; }
+            canvas,#game3d { height:calc(100svh - 64px); min-height:520px; }
+            .hud { right:6px; grid-template-columns:42px minmax(90px,1fr) 60px 72px; }
+            .hud .n,.hud .resources { display:none; }
+            .hud-k { font-size:.49rem; }
+            .hud b { font-size:.76rem; }
+            .start-screen { padding-inline:18px; }
+            .start-copy { font-size:.84rem; }
+            .overlay-actions { justify-content:flex-start; gap:7px; }
+            .overlay-actions .btn { padding:10px 12px; font-size:.7rem; }
+            .kbtn { width:54px; height:54px; }
+        }
+        @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
     </style>
     <!-- Vercel Web Analytics (sitio estático, sin build): snippet directo, no el
          paquete npm/React — este proyecto no tiene package.json ni framework. -->
@@ -216,14 +321,20 @@
 </head>
 <body>
 <div class="container">
-    <h1>◢ RayRunner</h1>
-    <p class="sub">Cinco niveles, power-ups y ranking — y toda la música <b>renderizada en vivo</b> por RayDrone</p>
+    <header class="masthead">
+        <div class="brand-lockup">
+            <h1>◢ RayRunner</h1>
+            <p class="sub">6 mundos · audio adaptativo · motor RayDrone</p>
+        </div>
+        <div class="live-pill"><span class="live-dot"></span>Audio generado en vivo</div>
+    </header>
 
-    <div class="hud" aria-label="Estado de partida">
+    <div class="play-shell">
+      <div class="hud" aria-label="Estado de partida">
         <span class="hud-chip"><span class="hud-k">Nivel</span><b id="hud-level">1</b></span>
         <span class="hud-chip zone"><span class="hud-k">Zona</span><b id="hud-zone">—</b></span>
         <span class="hud-chip n"><span class="hud-k">Rayos/s</span><b id="hud-n">0</b></span>
-        <span class="hud-chip"><span class="hud-k">Combo</span><b id="hud-combo">0</b></span>
+        <span class="hud-chip combo"><span class="hud-k">Combo</span><b id="hud-combo">0</b></span>
         <span class="hud-chip score"><span class="hud-k">Puntos</span><b id="hud-score">0</b></span>
         <span class="hud-chip resources">
             <span class="hud-res">🛡<b id="hud-shield">0</b></span>
@@ -231,12 +342,13 @@
             <span class="hud-res">💣<b id="hud-bombs">0</b></span>
             <span class="hud-res">♥<b id="hud-lives">3</b></span>
         </span>
-    </div>
+            </div>
 
     <div id="stage">
         <canvas id="game3d" width="1000" height="340"></canvas>
         <canvas id="game" width="1000" height="340"></canvas>
         <div class="stage-tools">
+            <button id="sound-btn" title="Silenciar audio (M)" aria-label="Silenciar audio">◖))</button>
             <button id="keys-btn" title="Teclas (H)">⌨</button>
             <button id="cam-btn" title="Cámara (V): persecución / dentro / frontal">📷</button>
             <button id="fs-btn" title="Pantalla completa">⛶</button>
@@ -283,12 +395,12 @@
         </div>
         <div class="overlay start-screen" id="start-overlay">
             <div class="start-art" aria-hidden="true"></div>
-            <div class="start-brand">🏍 RayRunner</div>
+            <div class="start-kicker">Campaña arcade adaptativa</div>
+            <div class="start-brand">Ray<br>Runner</div>
             <div class="start-copy">
-                Esquiva, dispara y conduce — la banda sonora la genera RayDrone en vivo,
-                según cómo juegues.
+                Seis mundos. Una sola vida sonora. <strong>La música, la velocidad y el impacto reaccionan a cada decisión.</strong>
             </div>
-            <button class="btn" id="start-btn">▶ Despegar</button>
+            <button class="btn" id="start-btn">▶ Iniciar campaña</button>
             <div class="overlay-actions">
                 <button class="btn sec" id="train-btn">🎯 Entrenar</button>
                 <button class="btn sec" id="howto-btn">❓ Cómo jugar</button>
@@ -313,9 +425,9 @@
             <div id="lb-list"></div>
             <button class="btn" id="restart-btn">↻ Otra vez</button>
         </div>
-    </div>
+        </div>
 
-    <div class="keys">
+            <div class="keys">
         <div class="pad move-pad">
             <button class="kbtn" id="btn-a">▲</button>
             <button class="kbtn" id="btn-b">▼</button>
@@ -326,7 +438,8 @@
             <button class="kbtn mma-only" id="btn-guard" title="Guardia (mantener)">🛡</button>
             <button class="kbtn mma-only" id="btn-special" title="Especial">⚡</button>
         </div>
-    </div>
+            </div>
+        </div>
 
     <div class="how">
         <b>Qué está pasando por debajo</b> — el motor granular real (el mismo Rust→wasm del demo) suena todo el
@@ -679,8 +792,9 @@
     }
 
     // ── Motor (mismo patrón que index.html: worklet + wasm cache-busted) ─────
-    let actx = null, node = null, gainNode = null;
-    let terrainSpace = null, terrainNeon = null, terrainDungeon = null, terrainKomandos = null;
+    let actx = null, node = null, gainNode = null, toneNode = null, compressorNode = null;
+    let audioMuted = false;
+    let terrainSpace = null, terrainNeon = null, terrainDungeon = null, terrainKomandos = null, terrainMma = null;
     async function fetchArrayBuffer(url, opts = {}) {
         const res = await fetch(url, opts);
         if (!res.ok) throw new Error(`${url} respondio ${res.status}`);
@@ -690,7 +804,17 @@
         if (node) return;
         actx = new (window.AudioContext || window.webkitAudioContext)();
         gainNode = actx.createGain();
-        gainNode.gain.value = 0.85;
+        toneNode = actx.createBiquadFilter();
+        compressorNode = actx.createDynamicsCompressor();
+        toneNode.type = 'lowpass';
+        toneNode.frequency.value = 18000;
+        toneNode.Q.value = 0.35;
+        compressorNode.threshold.value = -18;
+        compressorNode.knee.value = 18;
+        compressorNode.ratio.value = 3;
+        compressorNode.attack.value = 0.012;
+        compressorNode.release.value = 0.22;
+        gainNode.gain.value = audioMuted ? 0 : 0.82;
         gainNode.connect(actx.destination);
         if (actx.state === 'suspended') await actx.resume();
         if (!actx.audioWorklet) throw new Error(`AudioWorklet no disponible en ${location.origin}: hace falta HTTPS o localhost.`);
@@ -702,7 +826,7 @@
             processorOptions: { wasmBytes },
         });
         node.onprocessorerror = () => { statusEl.innerText = 'Error en el motor de audio (worklet).'; };
-        node.connect(gainNode);
+        node.connect(toneNode).connect(compressorNode).connect(gainNode);
         node.port.onmessage = (e) => {
             if (e.data.type === 'enginemismatch') {
                 statusEl.innerText = `⚠ El motor (.wasm) no reconoce "${e.data.messageType}" — recompílalo: bash wasm/build.sh`;
@@ -719,6 +843,7 @@
         terrainNeon = makeTerrainNeon();
         terrainDungeon = makeTerrainDungeon();
         terrainKomandos = makeTerrainKomandos();
+        terrainMma = makeTerrainMma();
         loadTerrain('space');
     }
     let terrainLoaded = '';
@@ -726,7 +851,7 @@
         if (!node || terrainLoaded === which) return;
         terrainLoaded = which;
         const data = which === 'neon' ? terrainNeon : which === 'dungeon' ? terrainDungeon
-                   : which === 'komandos' ? terrainKomandos : terrainSpace;
+                   : which === 'komandos' ? terrainKomandos : which === 'mma' ? terrainMma : terrainSpace;
         node.port.postMessage({ type: 'sample', data, sampleRate: SR });
     }
 
@@ -797,7 +922,7 @@
         drones: [], spawnSq: 0, sqAlive: {}, sqNext: 0, // nivel 1: escuadrones en onda (R-Type)
     };
     resizeCanvas();
-    for (let i = 0; i < 70; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 });
+    for (let i = 0; i < 130; i++) st.stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.18 + Math.random() * 0.82, hue: Math.random() });
     const keys = { a: false, b: false, u: false, d: false }; // a/b = dirección · u/d = acelerador/freno (niveles 2-3)
 
     const zones = () => st.level === 1 ? ZONES_SPACE : (st.level === 2 || st.level === 3) ? ZONES_NEON
@@ -858,6 +983,7 @@
         hudShield.innerText = st.shield;
         hudMissiles.innerText = st.missiles;
         hudBombs.innerText = st.bombs;
+        hudCombo.closest('.hud-chip').style.setProperty('--combo', `${st.combo * 10}%`);
     }
     function relabelButtons() {
         $('btn-a').innerText = st.level === 1 ? '▲' : '◀';
@@ -1229,6 +1355,11 @@
         node.port.postMessage({ type: 'reverb', wet: ((st.level === 2 || st.level === 3) ? 0.2 : 0.12) + c * 0.2 });
         node.port.postMessage({ type: 'space', width: 0.6, oct: st.shimmer * 0.6 });
         node.port.postMessage({ type: 'pitch', mult: 1 - st.pitchDip * 0.22 });
+        if (toneNode && actx) {
+            const cutoff = 5200 + c * 13800 - st.pitchDip * 2600;
+            toneNode.frequency.setTargetAtTime(clamp(cutoff, 1800, 19000), actx.currentTime, 0.045);
+            toneNode.Q.setTargetAtTime(0.35 + c * 0.7, actx.currentTime, 0.08);
+        }
     }
 
     // ── Fin de partida + ranking ─────────────────────────────────────────────
@@ -1363,6 +1494,17 @@
     $('resume-btn').addEventListener('click', resumeGame);
     document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
 
+    const soundBtn = $('sound-btn');
+    function setAudioMuted(muted) {
+        audioMuted = muted;
+        soundBtn.classList.toggle('muted', muted);
+        soundBtn.textContent = muted ? '×))' : '◖))';
+        soundBtn.title = muted ? 'Activar audio (M)' : 'Silenciar audio (M)';
+        soundBtn.setAttribute('aria-label', soundBtn.title);
+        if (gainNode && actx) gainNode.gain.setTargetAtTime(muted ? 0 : 0.82, actx.currentTime, 0.025);
+    }
+    soundBtn.addEventListener('click', () => setAudioMuted(!audioMuted));
+
     // ── Entrada ───────────────────────────────────────────────────────────────
     // e.key en minúscula para las letras: con Bloq Mayús (o Shift) llegaba
     // 'X'/'W'… y ninguna tecla de acción funcionaba.
@@ -1370,6 +1512,7 @@
     window.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT') return;
         const kk = keyOf(e);
+        if (kk === 'm') { setAudioMuted(!audioMuted); return; }
         const up = kk === 'ArrowUp' || kk === 'w', down = kk === 'ArrowDown' || kk === 's';
         const left = kk === 'ArrowLeft' || kk === 'a', right = kk === 'ArrowRight' || kk === 'd';
         if ((st.level === 1 && up) || (st.level >= 2 && left)) keys.a = true; // volante/andar izq. en N2-N4
@@ -1732,6 +1875,24 @@
             }
         }, 1, 1);
     }
+    function makeDayWindowsTex() {
+        return canvasTex(128, 256, (c2, w, h) => {
+            const wall = c2.createLinearGradient(0, 0, w, 0);
+            wall.addColorStop(0, '#71818a'); wall.addColorStop(.45, '#a8b3b7'); wall.addColorStop(1, '#64747d');
+            c2.fillStyle = wall; c2.fillRect(0, 0, w, h);
+            c2.fillStyle = 'rgba(30,48,58,.22)';
+            for (let x = 0; x < w; x += 32) c2.fillRect(x, 0, 3, h);
+            for (let y = 12; y < h; y += 28) {
+                c2.fillStyle = 'rgba(24,58,73,.78)';
+                for (let x = 8; x < w; x += 24) c2.fillRect(x, y, 12, 15);
+                c2.fillStyle = 'rgba(210,236,240,.14)';
+                for (let x = 9; x < w; x += 24) c2.fillRect(x, y + 1, 10, 3);
+            }
+            const sun = c2.createLinearGradient(0, 0, 0, h);
+            sun.addColorStop(0, 'rgba(255,239,198,.16)'); sun.addColorStop(1, 'rgba(255,239,198,0)');
+            c2.fillStyle = sun; c2.fillRect(0, 0, w, h);
+        }, 1, 1);
+    }
     function makeSunTex(day) {
         return canvasTex(256, 256, (c2, w, h) => {
             const gr = c2.createLinearGradient(0, 0, 0, h);
@@ -1753,7 +1914,7 @@
             // también desplazada ±w para que la costura u=0/1 no la corte.
             return canvasTex(512, 256, (c2, w, h) => {
                 const gr = c2.createLinearGradient(0, 0, 0, h);
-                gr.addColorStop(0, '#2e78c9'); gr.addColorStop(0.5, '#7fc3ee'); gr.addColorStop(0.78, '#cfeaff'); gr.addColorStop(1, '#eaf6ff');
+                gr.addColorStop(0, '#155aa5'); gr.addColorStop(0.48, '#58afe2'); gr.addColorStop(0.78, '#b7e2f4'); gr.addColorStop(1, '#f5dfba');
                 c2.fillStyle = gr; c2.fillRect(0, 0, w, h);
                 const puff = (cx, cy, rx, ry, a) => {
                     for (const ox of [-w, 0, w]) { // copias para la costura
@@ -1807,8 +1968,11 @@
         const cv = $('game3d');
         const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, preserveDrawingBuffer: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.08;
         renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.shadowMap.type = THREE.PCFShadowMap;
         const scene = new THREE.Scene();
         scene.fog = new THREE.Fog(0x140826, 160, 1350);
         const camera = new THREE.PerspectiveCamera(74, 2, 0.1, 3000);
@@ -1864,7 +2028,7 @@
 
         // Cinta de calzada por tramos de superficie (UV: u = través, v = a lo largo)
         const up = new THREE.Vector3(0, 1, 0);
-        function buildRibbon(f0, f1, tex) {
+        function buildRibbon(f0, f1, tex, asphalt = false) {
             const M = Math.max(8, Math.round((f1 - f0) * 700));
             const pos = [], uv = [], idx = [];
             for (let i = 0; i <= M; i++) {
@@ -1886,15 +2050,20 @@
             gme.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
             gme.setIndex(idx);
             gme.computeVertexNormals();
-            const mesh = new THREE.Mesh(gme, new THREE.MeshLambertMaterial({ map: tex }));
+            const mesh = new THREE.Mesh(gme, new THREE.MeshStandardMaterial({
+                map: tex,
+                roughness: asphalt ? 0.52 : 0.94,
+                metalness: asphalt ? 0.22 : 0.01,
+                envMapIntensity: asphalt ? 0.5 : 0.1,
+            }));
             mesh.receiveShadow = true;
             scene.add(mesh);
             return mesh;
         }
         const roadTex = makeRoadTex(), dirtTex = makeDirtTex();
-        const roadMeshA = buildRibbon(0, DIRT0, roadTex);
+        const roadMeshA = buildRibbon(0, DIRT0, roadTex, true);
         buildRibbon(DIRT0, DIRT1, dirtTex);
-        const roadMeshB = buildRibbon(DIRT1, 1.0001, roadTex);
+        const roadMeshB = buildRibbon(DIRT1, 1.0001, roadTex, true);
 
         // Asfalto reflectante (SSR): un reflejo real por barrido en espacio de
         // pantalla, no un cubemap fijo — usa la profundidad+color de una
@@ -2011,10 +2180,48 @@
         buildEdgeStrip(ROAD_HALF + 0.5, 0x28e6dc);
         buildEdgeStrip(-(ROAD_HALF + 0.5), 0xff355e);
 
+        // Pórticos tecnológicos: dan escala, ritmo y lectura de velocidad.
+        // Comparten geometría/material para mantener bajo el coste de GPU.
+        const gateMat = new THREE.MeshStandardMaterial({
+            color: 0x071218, emissive: 0x28e6dc, emissiveIntensity: 2.8,
+            metalness: 0.78, roughness: 0.24,
+        });
+        const gateAccentMat = new THREE.MeshBasicMaterial({
+            color: 0xff355e, transparent: true, opacity: 0.9,
+            blending: THREE.AdditiveBlending, depthWrite: false,
+        });
+        const gatePostGeo = new THREE.BoxGeometry(0.46, 6.8, 0.46);
+        const gateBarGeo = new THREE.BoxGeometry((ROAD_HALF + 1.7) * 2, 0.44, 0.5);
+        const gateLightGeo = new THREE.BoxGeometry((ROAD_HALF + 1.45) * 2, 0.09, 0.58);
+        const trackGates = new THREE.Group();
+        const N_GATES = Math.max(12, Math.floor(LAP_LEN / 190));
+        for (let i = 0; i < N_GATES; i++) {
+            const f = (i + 0.45) / N_GATES;
+            if (tunnelAt(f) || surfaceAt(f) === 'dirt') continue;
+            const P = curve.getPointAt(f), Tg = curve.getTangentAt(f);
+            const side = new THREE.Vector3().crossVectors(up, Tg).setY(0).normalize();
+            for (const sd of [-1, 1]) {
+                const post = new THREE.Mesh(gatePostGeo, gateMat);
+                post.position.copy(P).addScaledVector(side, sd * (ROAD_HALF + 1.25)).add(new THREE.Vector3(0, 3.4, 0));
+                post.castShadow = true;
+                trackGates.add(post);
+            }
+            const orient = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), side);
+            const bar = new THREE.Mesh(gateBarGeo, gateMat);
+            bar.position.copy(P).add(new THREE.Vector3(0, 6.82, 0));
+            bar.quaternion.copy(orient);
+            trackGates.add(bar);
+            const strip = new THREE.Mesh(gateLightGeo, i % 2 ? gateAccentMat : gateMat);
+            strip.position.copy(P).add(new THREE.Vector3(0, 6.48, 0));
+            strip.quaternion.copy(orient);
+            trackGates.add(strip);
+        }
+        scene.add(trackGates);
+
         // Suelo con rejilla neón + dunas de arena junto al sector de tierra
         const ground = new THREE.Mesh(
             new THREE.CircleGeometry(1500, 40).rotateX(-Math.PI / 2),
-            new THREE.MeshLambertMaterial({ map: makeGridTex() }));
+            new THREE.MeshStandardMaterial({ map: makeGridTex(), roughness: 0.9, metalness: 0.08 }));
         ground.position.y = -0.4;
         ground.receiveShadow = true;
         scene.add(ground);
@@ -2063,7 +2270,8 @@
             stars = new THREE.Points(gsp, new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, sizeAttenuation: false, fog: false }));
             scene.add(stars);
         }
-        const winTex = makeWindowsTex();
+        const winTex = makeWindowsTex(), dayWinTex = makeDayWindowsTex();
+        const cityMats = [];
         // Radio del anillo de skyline: antes era un número fijo (820-1140) centrado
         // en (250,230), calibrado para el trazado viejo y mucho más pequeño — con
         // el nuevo (2.5× más largo) el anillo caía ENCIMA de varios tramos de la
@@ -2075,13 +2283,37 @@
             if (d > trackMaxR) trackMaxR = d;
         }
         const skyR0 = trackMaxR + 260;
+        const dayDecor = new THREE.Group();
+        const mountainMat = new THREE.MeshStandardMaterial({ color: 0x526c69, roughness: 1, metalness: 0 });
+        const mountainGeo = new THREE.ConeGeometry(1, 1, 7);
+        const mountains = new THREE.InstancedMesh(mountainGeo, mountainMat, 34);
+        const mountainMatrix = new THREE.Matrix4(), mountainQuat = new THREE.Quaternion();
+        for (let i = 0; i < 34; i++) {
+            const a = i / 34 * Math.PI * 2;
+            const r = trackMaxR + 145 + (i % 5) * 24;
+            const mw = 45 + (i * 17 % 58), mh = 34 + (i * 29 % 82);
+            mountainMatrix.compose(
+                new THREE.Vector3(trackCentroid.x + Math.cos(a) * r, mh * .5 - 2, trackCentroid.z + Math.sin(a) * r),
+                mountainQuat,
+                new THREE.Vector3(mw, mh, mw * .72));
+            mountains.setMatrixAt(i, mountainMatrix);
+        }
+        mountains.receiveShadow = true;
+        dayDecor.add(mountains);
+        dayDecor.visible = false;
+        scene.add(dayDecor);
         for (let i = 0; i < 40; i++) {
             const a = (i / 40) * Math.PI * 2;
             const r = skyR0 + Math.random() * 320;
             const hgt = 50 + Math.random() * 130;
+            const cityMat = new THREE.MeshStandardMaterial({
+                map: winTex, color: 0x202538, emissive: 0x2e3f52, emissiveMap: winTex,
+                emissiveIntensity: 1.15, roughness: .66, metalness: .18,
+            });
+            cityMats.push(cityMat);
             const b = new THREE.Mesh(
                 new THREE.BoxGeometry(46 + Math.random() * 50, hgt, 46 + Math.random() * 50),
-                new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x2e3f52, emissiveMap: winTex }));
+                cityMat);
             b.position.set(trackCentroid.x + Math.cos(a) * r, hgt / 2 - 1, trackCentroid.z + Math.sin(a) * r);
             scene.add(b);
         }
@@ -2117,7 +2349,11 @@
             };
             const N_BLD = Math.max(90, Math.round(LAP_LEN / 26)); // escala con la vuelta (antes: 90 fijo)
             const bldGeo = new THREE.BoxGeometry(1, 1, 1);
-            const bldMat = new THREE.MeshLambertMaterial({ map: winTex, emissive: 0x2e3f52, emissiveMap: winTex });
+            const bldMat = new THREE.MeshStandardMaterial({
+                map: winTex, color: 0x202538, emissive: 0x2e3f52, emissiveMap: winTex,
+                emissiveIntensity: 1.1, roughness: .62, metalness: .22,
+            });
+            cityMats.push(bldMat);
             const bld = new THREE.InstancedMesh(bldGeo, bldMat, N_BLD);
             const M4 = new THREE.Matrix4(), Q0 = new THREE.Quaternion();
             const S3 = new THREE.Vector3(), P3 = new THREE.Vector3();
@@ -2326,8 +2562,9 @@
         composer.addPass(bloom);
         composer.addPass(new OP.OutputPass());
 
-        T3 = { renderer, scene, camera, curve, kart, up, hemi, composer, bloom, sunLight, sunTarget, sunDir,
+         T3 = { renderer, scene, camera, curve, kart, up, hemi, composer, bloom, sunLight, sunTarget, sunDir,
                sky, sun, stars, day: false,
+               gateMat, gateAccentMat, trackGates, cityMats, cityNightTex: winTex, cityDayTex: dayWinTex, dayDecor, mountainMat,
                fogBase: new THREE.Color(0x140826), zoneCol: new THREE.Color(0x140826),
                ssrTarget, ssrMat, ssrMeshes: [roadMeshA, roadMeshB], ssrFrame: 0 };
         resize3D();
@@ -2344,19 +2581,38 @@
         T3.sun.material.map.dispose(); T3.sun.material.map = makeSunTex(day); T3.sun.material.needsUpdate = true;
         T3.stars.visible = !day; // de día no se ven las estrellas
         if (day) {
-            T3.fogBase.set(0xcfe4f2); // calima diurna neutra (menos cian: no debe lavar el cielo)
+            T3.renderer.toneMappingExposure = 1.0;
+            T3.fogBase.set(0xa9cbd5); // calima diurna con contraste suficiente para leer la ciudad
             T3.hemi.color.set(0xbfe0ff); T3.hemi.groundColor.set(0x8a7050); T3.hemi.intensity = 1.55;
             T3.sunLight.color.set(0xfff2cf); T3.sunLight.intensity = 1.25;
             T3.sun.position.set(430, 760, -1050); T3.sun.scale.set(170, 170, 1); // sol de mediodía: alto y compacto
             // De día, el bloom solo para los neones de verdad: con el umbral
             // nocturno (0.4) el cielo claro entero "bloomeaba" y lavaba la escena.
             T3.bloom.threshold = 0.82;
+            T3.gateMat.color.set(0x20313a); T3.gateMat.emissive.set(0x4ab8d4); T3.gateMat.emissiveIntensity = 0.55;
+            T3.gateAccentMat.color.set(0xff7b45); T3.gateAccentMat.opacity = 0.62;
+            T3.dayDecor.visible = true;
+            T3.mountainMat.color.set(0x607b73);
+            for (const mat of T3.cityMats) {
+                mat.map = T3.cityDayTex; mat.emissiveMap = null; mat.needsUpdate = true;
+                mat.color.set(0x86939a); mat.emissive.set(0x18313a); mat.emissiveIntensity = 0.18;
+                mat.roughness = 0.82; mat.metalness = 0.08;
+            }
         } else {
+            T3.renderer.toneMappingExposure = 1.08;
             T3.fogBase.set(0x140826);
             T3.hemi.color.set(0x9a6cff); T3.hemi.groundColor.set(0x241640); T3.hemi.intensity = 1.9;
             T3.sunLight.color.set(0xff9a5a); T3.sunLight.intensity = 1.1;
             T3.sun.position.set(260, 130, -1250); T3.sun.scale.set(420, 420, 1); // sol synthwave bajo en el horizonte
             T3.bloom.threshold = 0.4;
+            T3.gateMat.color.set(0x071218); T3.gateMat.emissive.set(0x28e6dc); T3.gateMat.emissiveIntensity = 2.8;
+            T3.gateAccentMat.color.set(0xff355e); T3.gateAccentMat.opacity = 0.9;
+            T3.dayDecor.visible = false;
+            for (const mat of T3.cityMats) {
+                mat.map = T3.cityNightTex; mat.emissiveMap = T3.cityNightTex; mat.needsUpdate = true;
+                mat.color.set(0x202538); mat.emissive.set(0x2e3f52); mat.emissiveIntensity = 1.15;
+                mat.roughness = 0.62; mat.metalness = 0.22;
+            }
         }
         // Turbo pads: en sentido inverso (N3) los cheurones giran 180° para
         // seguir apuntando en el sentido de marcha (si no, señalan al revés).
@@ -3660,6 +3916,51 @@
     }
     const lerpC = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
     const cssC = (c, al = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${al})`;
+    function drawWorldGrade(t, mode) {
+        g.save();
+        if (mode === 'dungeon') {
+            g.globalCompositeOperation = 'screen';
+            for (let i = 0; i < 3; i++) {
+                const x = W * (0.18 + i * 0.33) + Math.sin(t * 0.18 + i) * W * 0.04;
+                const ray = g.createLinearGradient(x, 0, x + W * 0.12, H);
+                ray.addColorStop(0, 'rgba(190,215,255,.10)');
+                ray.addColorStop(1, 'rgba(90,120,180,0)');
+                g.fillStyle = ray;
+                g.beginPath(); g.moveTo(x - W * .035, 0); g.lineTo(x + W * .035, 0);
+                g.lineTo(x + W * .16, H); g.lineTo(x + W * .04, H); g.closePath(); g.fill();
+            }
+        } else if (mode === 'komandos') {
+            const sunWash = g.createLinearGradient(0, 0, W, H);
+            sunWash.addColorStop(0, 'rgba(255,206,118,.10)');
+            sunWash.addColorStop(.48, 'rgba(255,145,72,.015)');
+            sunWash.addColorStop(1, 'rgba(24,45,32,.12)');
+            g.fillStyle = sunWash; g.fillRect(0, 0, W, H);
+            for (let i = 0; i < 34; i++) {
+                const x = ((i * 97.31 + t * (13 + i % 5)) % (W + 30)) - 15;
+                const y = ((i * 53.77 + t * (4 + i % 3)) % (H + 20)) - 10;
+                const r = (.8 + (i % 4) * .45) * k;
+                g.fillStyle = i % 7 === 0 ? 'rgba(255,198,108,.32)' : 'rgba(222,210,168,.18)';
+                g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+            }
+        } else if (mode === 'mma') {
+            g.globalCompositeOperation = 'screen';
+            for (const [x, col] of [[W * .27, '255,210,126'], [W * .73, '110,190,255']]) {
+                const beam = g.createLinearGradient(x, 0, W / 2, H * .86);
+                beam.addColorStop(0, `rgba(${col},.20)`); beam.addColorStop(1, `rgba(${col},0)`);
+                g.fillStyle = beam;
+                g.beginPath(); g.moveTo(x - W * .07, 0); g.lineTo(x + W * .07, 0);
+                g.lineTo(W * .61, H * .88); g.lineTo(W * .39, H * .88); g.closePath(); g.fill();
+            }
+            const flash = Math.max(0, Math.sin(t * 2.73) - .985) * 16;
+            if (flash > 0) { g.fillStyle = `rgba(210,235,255,${flash * .24})`; g.fillRect(0, 0, W, H); }
+        }
+        g.globalCompositeOperation = 'source-over';
+        const vig = g.createRadialGradient(W / 2, H * .48, H * .35, W / 2, H * .5, Math.max(W, H) * .72);
+        vig.addColorStop(0, 'rgba(0,0,0,0)');
+        vig.addColorStop(1, mode === 'mma' ? 'rgba(5,3,10,.58)' : 'rgba(3,5,7,.46)');
+        g.fillStyle = vig; g.fillRect(-10, -10, W + 20, H + 20);
+        g.restore();
+    }
     function draw4(t) {
         const h = st.hero;
         if (!h) return;
@@ -3972,6 +4273,7 @@
         vig.addColorStop(0, 'rgba(0,0,0,0)');
         vig.addColorStop(1, 'rgba(0,0,0,0.52)');
         g.fillStyle = vig; g.fillRect(-20, -20, W + 40, H + 40);
+        drawWorldGrade(t, 'dungeon');
         drawFxOverlays(t, ZONES_DUNGEON[Math.max(0, st.zone)].tint);
         g.restore();
     }
@@ -5263,6 +5565,7 @@
             g.fillStyle = 'rgba(220,255,190,0.7)'; g.font = `${Math.round(9 * k)}px monospace`;
             g.textAlign = 'center'; g.fillText('MISIÓN', W / 2, by - 4 * k);
         }
+        drawWorldGrade(t, 'komandos');
         drawFxOverlays(t, ZONES_KOMANDOS[Math.max(0, st.zone)].tint);
         g.restore();
     }
@@ -5417,6 +5720,20 @@
         knee:       { dur: 0.30, hit: [0.20, 0.54], range: 74,  dmg: 10, push: 68,  stun: 0.26, zone: 'mid', clinch: true },
         takedown:   { dur: 0.72, hit: [0.28, 0.52], range: 70,  dmg: 16, push: 18,  stun: 0.30, zone: 'low', clinch: true, knockdown: true },
     };
+    // Rótulo estilo cómic ("¡PUNCH!!") que aparece sobre el luchador golpeado
+    // en el instante EXACTO del impacto (mismo frame que mmaHitFx/blood) — el
+    // texto y el color dependen del golpe que conectó; un bloqueo muestra
+    // "¡BLOQUEADO!" en gris/azul en vez del nombre del golpe.
+    const MMA_HIT_LABELS = {
+        jab: '¡PUNCH!', dash_punch: '¡PUNCH!',
+        low_kick: '¡KICK!', mid_kick: '¡KICK!', high_kick: '¡KICK!',
+        roundhouse: '¡ROUNDHOUSE!', knee: '¡KNEE!', takedown: '¡TAKEDOWN!',
+    };
+    const MMA_HIT_COLOR = {
+        jab: '#ffe14a', dash_punch: '#ffb84a',
+        low_kick: '#4ad0ff', mid_kick: '#4ad0ff', high_kick: '#4ad0ff',
+        roundhouse: '#ff4a4a', knee: '#ff8a4a', takedown: '#ff4a9a',
+    };
     function mmaFighter(x, dir, isCPU, charId) {
         return {
             x, y: MMA_GROUND, vx: 0, vy: 0, dir, isCPU, charId,
@@ -5429,6 +5746,118 @@
             blood: [], // manchas de sangre que quedan pegadas al cuerpo (se dibujan con drawMmaFighter)
         };
     }
+    // ── Música: makeTerrainMma — pista propia del octógono, 4 zonas en 24 s ──
+    // Antes el nivel 6 reutilizaba terrainKomandos (sintetizador militar de
+    // guitarra/marcha) sin relación con un duelo de MMA, y el "golpe" sonoro
+    // (hitFx → reflexiones del motor granular sobre lo que esté sonando) lo
+    // heredaba: al reflejar un pad/marcha militar sonaba a eco raro, no a
+    // impacto. Esta pista está pensada para el género (campana de boxeo,
+    // multitud, tambores de combate/percusión seca) — así las reflexiones de
+    // hitFx() rebotan sobre transitorios reales y suenan a golpe, no a lavado.
+    function makeTerrainMma() {
+        const n = SR * TERRAIN_SECS, buf = new Float32Array(n);
+        const seg = n / 4, fade = SR * 0.5, tau = 2 * Math.PI;
+        let rng = 0x6d6d6100 >>> 0;
+        const white = () => { rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0; return rng / 2147483648 - 1; };
+        // Campana de boxeo: golpe metálico con varios parciales inarmónicos.
+        const bell = (t, f0) => 0.5 * Math.sin(tau * f0 * t) + 0.28 * Math.sin(tau * f0 * 2.76 * t) + 0.14 * Math.sin(tau * f0 * 4.98 * t);
+        // Tambor de combate: golpe seco grave con pitch-sweep hacia abajo (más "carnoso" que un click).
+        const thump = (td, f0, dec) => Math.exp(-td / dec) * Math.sin(tau * (f0 - td * f0 * 1.8) * td);
+        // Zona 0 · CAMPANA: silencio tenso de graderío (murmullo filtrado muy
+        // bajo) + campanazo de apertura solo + un par de golpes de aviso.
+        {
+            let lp = 0;
+            const i1 = Math.min(n, seg + fade);
+            for (let i = 0; i < i1; i++) {
+                lp += 0.02 * (white() - lp);
+                const gn = zoneWeight(i, 0, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR;
+                const tb = t % 6; // campanazo cada 6s
+                const dingT = tb;
+                const ding = dingT < 1.6 ? Math.exp(-dingT / 0.9) * bell(t, 587.33) * 0.6 : 0;
+                const td = (t + 3) % 6; // golpe de tambor a medio camino
+                const drum = td < 0.4 ? thump(td, 62, 0.14) * 0.5 : 0;
+                buf[i] += gn * (lp * 1.6 + ding + drum);
+            }
+        }
+        // Zona 1 · INTERCAMBIO: groove de boxeo — bombo seco a negras (100 BPM)
+        // + golpe seco en el contratiempo + multitud de fondo animándose.
+        {
+            let lp = 0;
+            const i0 = Math.max(0, Math.floor(seg - fade)), i1 = Math.min(n, Math.floor(2 * seg + fade));
+            const beat = 60 / 100;
+            for (let i = i0; i < i1; i++) {
+                lp += 0.03 * (white() - lp);
+                const gn = zoneWeight(i, 1, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR;
+                const tb = t % beat;
+                const kick = thump(tb, 58, 0.11) * 1.1;
+                const tOff = (t + beat * 0.5) % beat;
+                const jab = tOff < 0.09 ? Math.exp(-tOff / 0.045) * (white() * 0.8) : 0; // golpe seco tipo "puñetazo"
+                const crowd = 0.22 * (0.6 + 0.4 * Math.sin(tau * 0.6 * t)) * lp;
+                buf[i] += gn * (kick + jab + crowd);
+            }
+        }
+        // Zona 2 · PRESIÓN: tempo más denso (toms dobles) + graderío más alto
+        // + un stab de metal (cuerno de boxeo) tenso en el aire.
+        {
+            let lp = 0;
+            const i0 = Math.max(0, Math.floor(2 * seg - fade)), i1 = Math.min(n, Math.floor(3 * seg + fade));
+            const beat = 60 / 128 / 2;
+            for (let i = i0; i < i1; i++) {
+                lp += 0.045 * (white() - lp);
+                const gn = zoneWeight(i, 2, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR;
+                const idx = Math.floor(t / beat) % 4;
+                const tb = t % beat;
+                const f0 = idx === 2 ? 96 : 66; // acento cada 3er golpe
+                const tom = thump(tb, f0, 0.09) * (idx === 2 ? 1.15 : 0.85);
+                const tstab = t % 3.2;
+                const stab = tstab < 0.5 ? Math.exp(-tstab / 0.28) * 0.32 * (Math.sin(tau * 220 * t) + 0.5 * Math.sin(tau * 220 * 2.01 * t)) : 0;
+                const crowd = 0.34 * (0.55 + 0.45 * Math.sin(tau * 0.9 * t + Math.sin(tau * 0.21 * t))) * lp;
+                buf[i] += gn * (tom + stab + crowd);
+            }
+        }
+        // Zona 3 · ÚLTIMO ASALTO: doble tiempo, tambores a contratiempo +
+        // fanfarria de metal grave + rugido de graderío + campana final.
+        {
+            let lp = 0;
+            const i0 = Math.max(0, Math.floor(3 * seg - fade));
+            const beat = 60 / 152 / 2;
+            const brass = [130.81, 155.56, 196.0]; // Bbm-ish, tenso
+            for (let i = i0; i < n; i++) {
+                lp += 0.07 * (white() - lp);
+                const gn = zoneWeight(i, 3, seg, fade);
+                if (gn <= 0) continue;
+                const t = i / SR;
+                const tb = t % beat;
+                const drum = thump(tb, 70, 0.075) * 1.2;
+                const barT = t % 2.4;
+                const idxB = Math.floor(barT / 0.6) % brass.length;
+                const fanfare = Math.exp(-((barT % 0.6) / 0.35)) * 0.22 * Math.sin(tau * brass[idxB] * t);
+                const roar = 0.5 * (0.5 + 0.5 * Math.sin(tau * 1.3 * t)) * lp;
+                const tf = t % 8; // campana final espaciada
+                const finalBell = tf < 1.2 ? Math.exp(-tf / 0.7) * bell(t, 493.88) * 0.5 : 0;
+                buf[i] += gn * (drum + fanfare + roar + finalBell);
+            }
+        }
+        return normalize(buf);
+    }
+    // FX sonoro de golpe propio del octógono: mismo motor de reflexiones que
+    // hitFx() pero afinado a "seco y corto" (menos cola, decae en ~90ms) para
+    // que suene a impacto de puño/patada y no a un eco largo — sobre esta
+    // pista, que SÍ trae transitorios de percusión, las reflexiones tienen
+    // material real que "golpear".
+    let mmaHitFxT = 0;
+    function mmaHitFx(strength, heavy) {
+        if (!node) return;
+        node.port.postMessage({ type: 'fx', aber: 0, bounces: strength, refl: heavy ? 0.7 : 0.5, feedback: heavy ? 0.16 : 0.08 });
+        clearTimeout(mmaHitFxT);
+        mmaHitFxT = setTimeout(() => { if (node) node.port.postMessage({ type: 'fx', aber: 0, bounces: 0, refl: 0.5, feedback: 0.1 }); }, heavy ? 130 : 80);
+    }
     function switchToLevel6(p1Id, p2Id) {
         st.level = 6;
         st.zone = 0;
@@ -5437,12 +5866,14 @@
         p1Id = p1Id || MMA_DEFAULT_P1;
         p2Id = p2Id || MMA_DEFAULT_P2;
         ensureMmaAssets(p1Id, p2Id);
-        loadTerrain('komandos'); // reutiliza la música de acción (sin pista nueva)
+        loadTerrain('mma'); // pista propia del octógono (campana/tambores/graderío), no la de Komandos
+        st.combo = 0; st.pitchDip = 0; // la música arranca "fría": sube con golpes limpios, no con residuo de otro nivel
         st.mma = {
             p1: mmaFighter(MMA_W * 0.26, 1, false, p1Id),
             p2: mmaFighter(MMA_W * 0.74, -1, true, p2Id),
             timer: 90, roundOver: false, roundOverT: 0, winner: null, readyT: 1.6, hitStop: 0,
             floorBlood: [], // manchas permanentes en el tatami (se dibujan bajo los luchadores)
+            hitTexts: [], // rótulos "¡PUNCH!!"/"¡KICK!!" que aparecen al conectar (ver draw6)
         };
         clearObjs2(); clearGhosts2(); clearBolts2(); clearFrags2();
         $('stage').classList.remove('mode3d');
@@ -5582,14 +6013,19 @@
             p1.comboStep = p1.comboT > 0 ? Math.min(2, p1.comboStep + 1) : 0;
             p1.comboT = 0.55;
         }
-        if (mmaStartAttack(p1, kind, p2)) { hitFx(2 + (kind === 'jab' ? p1.comboStep : 0)); vibrate(kind === 'knee' ? 12 : 8 + p1.comboStep * 3); }
+        // El sonido de impacto (hitFx) NO se dispara aqui: antes sonaba el
+        // golpe en cuanto se pulsaba el boton, aunque el puno tardara hasta
+        // 0.7s en llegar (o ni llegara) - desincronizado con la animacion.
+        // Ahora hitFx() solo se llama en la resolucion de colision de
+        // stepLevel6, en el frame exacto en que el golpe conecta de verdad.
+        if (mmaStartAttack(p1, kind, p2)) vibrate(kind === 'knee' ? 12 : 8 + p1.comboStep * 3);
     }
     function mmaKick() {
         const M = st.mma;
         if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
         const p1 = M.p1;
         const kind = !p1.onGround ? 'high_kick' : (keys.d ? 'low_kick' : 'mid_kick');
-        if (mmaStartAttack(p1, kind, M.p2)) { hitFx(2); vibrate(10); }
+        if (mmaStartAttack(p1, kind, M.p2)) vibrate(10);
     }
     function mmaSpecial() {
         const M = st.mma;
@@ -5597,14 +6033,14 @@
         const p1 = M.p1, p2 = M.p2;
         const dist = Math.abs(p1.x - p2.x);
         const kind = dist < 68 ? 'takedown' : (dist < 100 ? 'roundhouse' : 'dash_punch');
-        if (mmaStartAttack(p1, kind, p2)) { hitFx(3); vibrate(kind === 'takedown' ? [20, 20, 30] : 14); }
+        if (mmaStartAttack(p1, kind, p2)) vibrate(kind === 'takedown' ? [20, 20, 30] : 14);
     }
     function mmaJump() {
         const M = st.mma;
         if (st.level !== 6 || !st.playing || st.paused || !M || M.roundOver) return;
         const p1 = M.p1;
         if (!p1.onGround || p1.attackT > 0 || p1.hurtT > 0) return;
-        p1.vy = -690; p1.onGround = false; hitFx(1); vibrate(6);
+        p1.vy = -690; p1.onGround = false; vibrate(6); // saltar no es un golpe: sin hitFx
     }
     function mmaAI(F, opp, dt) {
         F.aiCd = Math.max(0, F.aiCd - dt);
@@ -5704,6 +6140,13 @@
             return;
         }
         M.timer = Math.max(0, M.timer - dt);
+        // Envejece y retira los rótulos "¡PUNCH!!"/"¡KICK!!" (push más abajo,
+        // en la resolución de impacto; el dibujado vive en draw6).
+        for (let i = M.hitTexts.length - 1; i >= 0; i--) {
+            const ht = M.hitTexts[i];
+            ht.t += dt;
+            if (ht.t >= ht.dur) M.hitTexts.splice(i, 1);
+        }
         const p1 = M.p1, p2 = M.p2;
         let dir = (keys.b ? 1 : 0) - (keys.a ? 1 : 0);
         if (st.touchTargetX !== null) dir = st.touchTargetX > 0.15 ? 1 : st.touchTargetX < -0.15 ? -1 : 0;
@@ -5751,10 +6194,37 @@
                 mmaBlood(D.x * sc6, (D.y - 95) * sc6, hitDir, 16 + Math.round(dmg * 1.1));
                 mmaAddBloodStains(M, D, hitDir);
             }
-            hitFx(blocked ? 1 : 3);
+            // El impacto sonoro (mmaHitFx) va EXACTAMENTE aqui, en el frame en
+            // que el golpe conecta de verdad - no al pulsar el boton ni al
+            // fallar. Usa el efecto afinado del octógono (seco y corto), no
+            // el genérico hitFx() de los demás niveles.
+            mmaHitFx(blocked ? 1 : 3, !blocked);
             vibrate(blocked ? 6 : 16);
             st.shake = Math.max(st.shake, blocked ? 0.08 : Math.min(0.32, 0.16 + dmg * 0.01));
             M.hitStop = Math.max(M.hitStop, blocked ? 0.02 : Math.min(0.12, 0.035 + dmg * 0.006));
+            // La musica (grano/rate via st.combo, igual que en el resto de
+            // niveles) ahora SI reacciona al combate: golpear de verdad al
+            // rival la sube; que te acierten a ti la baja y agria el tono
+            // (pitchDip), igual que hitShip() en los otros niveles.
+            if (D === p2) st.combo = Math.min(10, st.combo + (blocked ? 0.3 : 1));
+            else {
+                st.combo = Math.max(0, st.combo - (blocked ? 1 : 4));
+                if (!blocked) st.pitchDip = 1;
+            }
+            // Rótulo estilo cómic sobre el golpeado, en el mismo frame del
+            // impacto: el nombre del golpe (o "¡BLOQUEADO!" si lo paró la
+            // guardia); los golpes fuertes/rematadores salen más grandes.
+            {
+                const big = !blocked && (mv.dmg >= 12 || D.hp <= 0);
+                M.hitTexts.push({
+                    text: blocked ? '¡BLOQUEADO!' : (MMA_HIT_LABELS[A.attackKind] || '¡GOLPE!'),
+                    color: blocked ? '#9fc4ff' : (MMA_HIT_COLOR[A.attackKind] || '#ffe14a'),
+                    big, x: D.x, y: D.y - 150 - Math.random() * 18,
+                    t: 0, dur: blocked ? 0.42 : (big ? 0.85 : 0.6),
+                    seed: Math.random() * 2 - 1,
+                });
+                if (M.hitTexts.length > 6) M.hitTexts.splice(0, M.hitTexts.length - 6);
+            }
             if (mv.knockdown && !blocked) {
                 D.koT = 0.75; D.koKind = 'ground_roll'; D.getUpPending = true; D.state = D.koKind; D.animT = 0;
                 D.vx = 95 * hitDir; D.vy = -210; D.onGround = false;
@@ -5846,6 +6316,29 @@
             g.fillStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.life})`;
             const sz = p.sz || 3 * k; g.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
         }
+        // Rótulos "¡PUNCH!!"/"¡KICK!!" del golpe que acaba de conectar: pop-in
+        // rápido (escala con overshoot), suben flotando y se desvanecen —
+        // pushed en stepLevel6 en el frame exacto del impacto (ver M.hitTexts).
+        for (const ht of M.hitTexts) {
+            const p2t = clamp(ht.t / ht.dur, 0, 1);
+            const inT = Math.min(1, p2t / 0.22);
+            const outT = Math.max(0, (p2t - 0.55) / 0.45);
+            const pop = (ht.big ? 1.5 : 1) * (0.45 + 0.85 * (1 - Math.pow(1 - inT, 3)));
+            const alpha = 1 - outT * outT;
+            const rise = -50 * p2t * sc;
+            g.save();
+            g.translate(ht.x * sc, ht.y * sc + rise);
+            g.rotate(ht.seed * 0.22 * (1 - inT));
+            g.scale(pop, pop);
+            g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.font = `900 ${Math.round((ht.big ? 30 : 21) * k)}px system-ui, -apple-system, sans-serif`;
+            g.lineWidth = 4.5 * k; g.strokeStyle = `rgba(0,0,0,${0.75 * alpha})`;
+            g.strokeText(ht.text, 0, 0);
+            g.fillStyle = ht.color; g.globalAlpha = alpha;
+            g.fillText(ht.text, 0, 0);
+            g.globalAlpha = 1;
+            g.restore();
+        }
         const barW = W * 0.38, barH = 16 * k;
         const drawBar = (hp, maxHp, x0, flip) => {
             const frac = clamp(hp / maxHp, 0, 1);
@@ -5870,6 +6363,7 @@
             g.textAlign = 'center';
             g.fillText(st.banner, W / 2, H * 0.5);
         }
+        drawWorldGrade(t, 'mma');
         g.restore();
     }
 
@@ -6353,13 +6847,52 @@
         bg.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0.06)`);
         g.fillStyle = bg;
         g.fillRect(-20, -20, W + 40, H + 40);
-        g.fillStyle = 'rgba(255,255,255,0.6)';
+        g.globalCompositeOperation = 'screen';
+        for (let i = 0; i < 5; i++) {
+            const nx = ((i * 0.237 + t * (0.002 + i * 0.0004)) % 1.35 - 0.15) * W;
+            const ny = H * (0.18 + ((i * 0.31) % 0.68));
+            const nr = H * (0.32 + (i % 3) * 0.14);
+            const ng = g.createRadialGradient(nx, ny, 0, nx, ny, nr);
+            const mix = i % 2 ? tint : [69, 120, 228];
+            ng.addColorStop(0, `rgba(${mix[0]},${mix[1]},${mix[2]},${0.055 + st.combo * 0.003})`);
+            ng.addColorStop(0.45, `rgba(${mix[0]},${mix[1]},${mix[2]},0.018)`);
+            ng.addColorStop(1, 'rgba(0,0,0,0)');
+            g.fillStyle = ng;
+            g.beginPath(); g.arc(nx, ny, nr, 0, 7); g.fill();
+        }
+        g.globalCompositeOperation = 'source-over';
+        // Planeta anillado con paralaje: silueta de gran escala que convierte
+        // cada sector espacial en un lugar, no solo en un campo de estrellas.
+        {
+            const planetX = W * .78 - (st.worldT * W * .012) % (W * .22);
+            const planetY = H * (.24 + Math.sin(st.worldT * .08) * .025);
+            const planetR = H * .17;
+            g.save();
+            g.translate(planetX, planetY);
+            g.rotate(-.19);
+            g.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},.24)`;
+            g.lineWidth = Math.max(1.2, 2.1 * k);
+            g.beginPath(); g.ellipse(0, 0, planetR * 1.65, planetR * .34, 0, 0, 7); g.stroke();
+            g.rotate(.19);
+            const planet = g.createRadialGradient(-planetR * .34, -planetR * .42, planetR * .05, 0, 0, planetR);
+            planet.addColorStop(0, `rgba(${Math.min(255,tint[0]+100)},${Math.min(255,tint[1]+75)},${Math.min(255,tint[2]+65)},.72)`);
+            planet.addColorStop(.42, `rgba(${tint[0]},${tint[1]},${tint[2]},.32)`);
+            planet.addColorStop(1, 'rgba(3,5,12,.96)');
+            g.fillStyle = planet; g.beginPath(); g.arc(0, 0, planetR, 0, 7); g.fill();
+            g.strokeStyle = 'rgba(255,255,255,.09)'; g.lineWidth = 1;
+            for (let j = -2; j <= 2; j++) {
+                g.beginPath(); g.ellipse(0, j * planetR * .17, planetR * .82, planetR * (.08 + Math.abs(j) * .012), 0, 0, Math.PI); g.stroke();
+            }
+            g.restore();
+        }
         for (const s of st.stars) {
             s.x -= st.speed * sf() * s.z * 0.02;
             if (s.x < 0) { s.x = W; s.y = Math.random() * H; }
             g.globalAlpha = 0.25 + s.z * 0.5;
             const sz = (1.6 * s.z + 0.4) * k;
-            g.fillRect(s.x, s.y, sz, sz);
+            g.fillStyle = s.hue > .86 ? 'rgba(125,216,255,.9)' : s.hue < .08 ? 'rgba(255,168,190,.88)' : 'rgba(255,255,255,.82)';
+            const trail = (st.playing ? 2 + st.speed / 115 : 1) * s.z * k;
+            g.fillRect(s.x, s.y, Math.max(sz, trail), Math.max(.7 * k, sz * .5));
         }
         g.globalAlpha = 1;
         for (const c of st.crystals) drawCrystal(c.x, c.y, (9 + Math.sin(c.ph) * 1.5) * k);
@@ -6424,14 +6957,25 @@
         g.save();
         g.translate(SHIP_X, st.shipY);
         g.scale(k, k);
-        g.fillStyle = 'rgba(255,140,60,0.8)';
-        g.beginPath(); g.moveTo(-14, 0); g.lineTo(-14 - flame / k, -4); g.lineTo(-14 - flame / k, 4); g.closePath(); g.fill();
-        g.fillStyle = '#0f1320';
+        const flameGrad = g.createLinearGradient(-14, 0, -14 - flame / k, 0);
+        flameGrad.addColorStop(0, 'rgba(255,245,190,.95)');
+        flameGrad.addColorStop(.3, 'rgba(255,111,55,.9)');
+        flameGrad.addColorStop(1, 'rgba(255,40,104,0)');
+        g.fillStyle = flameGrad;
+        g.beginPath(); g.moveTo(-10, -4); g.lineTo(-14 - flame / k, 0); g.lineTo(-10, 4); g.closePath(); g.fill();
+        g.fillStyle = '#111824';
         g.strokeStyle = '#28e6dc';
         g.lineWidth = 2;
         g.shadowColor = '#28e6dc'; g.shadowBlur = 10 + st.combo * 1.5;
-        g.beginPath(); g.moveTo(16, 0); g.lineTo(-12, -11); g.lineTo(-7, 0); g.lineTo(-12, 11); g.closePath();
+        g.beginPath(); g.moveTo(20, 0); g.lineTo(-7, -8); g.lineTo(-16, -13); g.lineTo(-11, -2); g.lineTo(-11, 2); g.lineTo(-16, 13); g.lineTo(-7, 8); g.closePath();
         g.fill(); g.stroke();
+        g.shadowBlur = 8;
+        g.fillStyle = '#ff3f68';
+        g.beginPath(); g.moveTo(7, 0); g.lineTo(-5, -5); g.lineTo(-2, 0); g.lineTo(-5, 5); g.closePath(); g.fill();
+        g.fillStyle = '#dffcff';
+        g.beginPath(); g.ellipse(5, 0, 5, 2.6, 0, 0, 7); g.fill();
+        g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = .8;
+        g.beginPath(); g.moveTo(-3, -7); g.lineTo(-11, -12); g.moveTo(-3, 7); g.lineTo(-11, 12); g.stroke();
         g.restore();
         drawShield(SHIP_X, st.shipY, 22 * k);
         drawFxOverlays(t, tint);
@@ -6602,6 +7146,24 @@
             g.strokeRect(bx, by, bw, 7 * k);
         }
         if (miniPts && st.playing) drawMiniMap();
+        if (st.playing) {
+            const speedFx = clamp((st.speed2 - 2500) / 2300, 0, 1) * (st.boost > 0 ? 1.5 : 1);
+            if (speedFx > .04) {
+                g.save();
+                g.globalCompositeOperation = 'screen';
+                g.strokeStyle = st.level === 3 ? `rgba(255,255,255,${.06 + speedFx * .14})` : `rgba(105,228,255,${.08 + speedFx * .18})`;
+                g.lineWidth = Math.max(1, speedFx * 2.2 * k);
+                for (let i = 0; i < 26; i++) {
+                    const an = (i * 2.399 + t * .14) % 6.283;
+                    const inner = H * (.24 + ((i * .173 + t * .7) % .34));
+                    const outer = inner + H * (.03 + speedFx * (.05 + (i % 5) * .008));
+                    const ax = Math.cos(an) * 1.35, ay = Math.sin(an) * .72;
+                    g.beginPath(); g.moveTo(W / 2 + ax * inner, H * .47 + ay * inner);
+                    g.lineTo(W / 2 + ax * outer, H * .47 + ay * outer); g.stroke();
+                }
+                g.restore();
+            }
+        }
         // Destello de roce (+25 por pasar rozando una barrera)
         if (st.nearMiss > 0) {
             g.globalAlpha = Math.min(1, st.nearMiss);
@@ -6717,7 +7279,7 @@
         for (const p of st.particles) {
             g.fillStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.life})`;
             const sz = p.sz || 3 * k;
-            g.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
+            g.beginPath(); g.arc(p.x, p.y, sz * Math.max(.25, p.life), 0, 7); g.fill();
         }
         if (st.zoneFlash > 0) {
             g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${st.zoneFlash})`;

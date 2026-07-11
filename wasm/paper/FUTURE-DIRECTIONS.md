@@ -15,7 +15,7 @@ Strip RayDrone to its abstract structure and you get a recipe, not a sound:
 3. You **reduce variance** with the graphics toolkit: stratification, QMC,
    importance sampling (reweighted `p/q`), Russian roulette.
 4. Honest counterpoint: rejection **without** reweighting is *biased* — a
-   different target, not a faster one. (Our "reverse" curve proves it.)
+  different target, not a faster one. (The reproducible synthetic reverse curve illustrates it.)
 
 **Two layers, only one is ours.**
 - The *mathematics* (Monte Carlo + variance reduction) is one of the most

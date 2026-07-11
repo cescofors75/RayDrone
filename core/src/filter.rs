@@ -82,7 +82,7 @@ impl Filter {
     }
 
     pub fn set_sample_rate(&mut self, sr: f32) {
-        self.sr = if sr > 1.0 { sr } else { 44100.0 };
+        self.sr = if sr.is_finite() && sr > 1.0 { sr } else { 44100.0 };
         self.cur_cut = -1.0; // force coeff recompute
     }
 
@@ -100,9 +100,8 @@ impl Filter {
     pub fn set_lfo(&mut self, rate_hz: f32, depth_oct: f32) {
         self.lfo_inc = clampf(rate_hz, 0.0, 100.0) / self.sr;
         self.lfo_depth = clampf(depth_oct, 0.0, 6.0);
-        if self.lfo_depth > 0.0 {
-            self.enabled = true;
-        }
+        self.enabled = self.base_cut < self.sr * 0.45 || self.lfo_depth > 0.0;
+        self.cur_cut = -1.0;
     }
 
     pub fn set_enabled(&mut self, on: bool) {
@@ -244,6 +243,18 @@ mod tests {
     fn disabled_is_passthrough() {
         let mut f = Filter::new(); // enabled defaults false
         assert_eq!(f.process(0.7, -0.3), (0.7, -0.3));
+    }
+
+    #[test]
+    fn disabling_lfo_restores_open_filter_bypass() {
+        let sr = 44100.0;
+        let mut filter = Filter::new();
+        filter.set_sample_rate(sr);
+        filter.set(sr * 0.5, 0.0);
+        filter.set_lfo(2.0, 4.0);
+        assert_ne!(filter.process(0.7, -0.3), (0.7, -0.3));
+        filter.set_lfo(0.0, 0.0);
+        assert_eq!(filter.process(0.7, -0.3), (0.7, -0.3));
     }
 
     #[test]

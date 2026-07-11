@@ -25,8 +25,8 @@ mide). Ese cambio de lente es exactamente el tipo de aportación que valora DAFx
 
 **¿Y si un revisor me dice que la analogía es superficial?**
 Por eso la Sección 3 pone las DOS fórmulas (`g[n]` y `ĝ_N[n]`): no es una metáfora,
-es literalmente el mismo estimador. Y la Sección 5.3 (trazado inverso sesgado)
-demuestra que entendemos la diferencia entre converger mejor y sonar distinto.
+es la misma clase de estimador en la formulación offline sincronizada. La Sección
+5.3 (trazado inverso sesgado) distingue converger al objetivo de cambiarlo.
 
 ## Dónde enviarlo
 - **DAFx** — encaje natural (efectos/síntesis digital). *(primera opción)*
@@ -44,7 +44,7 @@ demuestra que entendemos la diferencia entre converger mejor y sonar distinto.
 - [x] Fig. 4: Reverse (se aplana) vs Importance (converge) → sesgo. Hecho con el
       run 5 sintético (`node paper/make_bias_run.mjs` →
       `figures/run5-bias-ap91-foc2.0.png`). Ojo al matiz honesto: en música real
-      (runs 1–4) el sesgo queda bajo el ruido y reverse ≈ random; los dos
+      (runs 1–4, históricos) reverse ≈ random en pendiente; los dos
       regímenes están redactados en el §5.3.
 - [ ] Redactar Sec. 3 (núcleo matemático) en limpio.
 - [ ] Pasar a plantilla LaTeX de DAFx cuando el contenido esté cerrado.

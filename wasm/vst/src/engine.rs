@@ -25,6 +25,25 @@ use raydrone_core::{
     clampf, music::semitone_ratio, sample_at, soft, sqrtf, tri_inv, win_at, DcBlocker, Reverb,
 };
 
+#[inline]
+fn sample_at_wrapped(sample: &[f32], pos: f32) -> f32 {
+    let len = sample.len();
+    if len < 4 || !pos.is_finite() {
+        return 0.0;
+    }
+    let floor = pos.floor();
+    let base = floor as usize % len;
+    let frac = pos - floor;
+    let s0 = sample[(base + len - 1) % len];
+    let s1 = sample[base];
+    let s2 = sample[(base + 1) % len];
+    let s3 = sample[(base + 2) % len];
+    let a = -0.5 * s0 + 1.5 * s1 - 1.5 * s2 + 0.5 * s3;
+    let b = s0 - 2.5 * s1 + 2.0 * s2 - 0.5 * s3;
+    let c = -0.5 * s0 + 0.5 * s2;
+    ((a * frac + b) * frac + c) * frac + s1
+}
+
 const WIN: usize = 2048;
 const MAX_VOICES: usize = 512;
 
@@ -90,7 +109,7 @@ pub struct Engine {
     octave: f32,      // probability a grain plays an octave up (shimmer)
     bounces: u32,     // recursive ray bounces (Russian-roulette depth)
     refl: f32,        // reflection coefficient: probability each bounce survives
-    mode: u32, // 0 random, 1 QMC (golden), 2 stratified
+    mode: u32,        // 0 random, 1 QMC (golden), 2 stratified
 
     // Recursive autoevolution: the output envelope feeds back into focus/aperture,
     // and a slow self-sweep (EVO) makes the render drift on its own.
@@ -206,7 +225,7 @@ impl Engine {
         self.live = false;
         let old = std::mem::replace(&mut self.sample, sample);
         self.samp_sr = if sr > 1.0 { sr } else { 44100.0 };
-        self.reset();
+        self.reset_runtime(false);
         old
     }
 
@@ -222,7 +241,7 @@ impl Engine {
         self.samp_sr = if sr > 1.0 { sr } else { 44100.0 };
         self.cap_w = 0;
         self.live = true;
-        self.reset();
+        self.reset_runtime(false);
         old
     }
 
@@ -239,6 +258,10 @@ impl Engine {
     }
 
     pub fn reset(&mut self) {
+        self.reset_runtime(true);
+    }
+
+    fn reset_runtime(&mut self, clear_effects: bool) {
         self.nactive = 0;
         self.nfree = MAX_VOICES;
         for i in 0..MAX_VOICES {
@@ -255,7 +278,9 @@ impl Engine {
         self.out_ring = [0.0; OUT_RING];
         self.out_w = 0;
         self.dc.reset();
-        self.reverb.reset();
+        if clear_effects {
+            self.reverb.reset();
+        }
     }
 
     // ── Setters from the plugin ─────────────────────────────────────────────
@@ -428,7 +453,12 @@ impl Engine {
         let eff_ap = (self.aperture_ms * 0.001) * (1.0 + self.feedback * self.env * 0.8);
         let off_sec = eff_focus + tri_inv(self.next_u()) * eff_ap;
         let maxp = (len - 2) as f32;
-        let pos = clampf(off_sec * self.samp_sr, 0.0, maxp);
+        let relative_pos = clampf(off_sec * self.samp_sr, 0.0, maxp);
+        let pos = if self.live {
+            ((self.cap_w + relative_pos as usize) % len) as f32
+        } else {
+            relative_pos
+        };
 
         // Log for the visualizer.
         if span > 0.0 {
@@ -476,16 +506,27 @@ impl Engine {
                 if depth > 0 && self.rng01() < self.refl {
                     let maxp = (self.sample.len().max(2) - 2) as f32;
                     let jitter = (self.rng01() - 0.5) * 0.1 * self.samp_sr;
-                    let cpos = clampf(endpos + jitter, 0.0, maxp);
+                    let cpos = if self.live {
+                        (endpos + jitter).rem_euclid(self.sample.len() as f32)
+                    } else {
+                        clampf(endpos + jitter, 0.0, maxp)
+                    };
                     self.place(cpos, depth - 1);
                 }
                 continue; // active[k] is now another voice: don't advance k
             }
-            let raw = sample_at(&self.sample, self.voices[i].pos);
+            let raw = if self.live {
+                sample_at_wrapped(&self.sample, self.voices[i].pos)
+            } else {
+                sample_at(&self.sample, self.voices[i].pos)
+            };
             let s = raw * win_at(&self.window, ph) * self.voices[i].gain;
             accl += s * self.voices[i].panl;
             accr += s * self.voices[i].panr;
             self.voices[i].pos += self.voices[i].step;
+            if self.live && self.voices[i].pos >= self.sample.len() as f32 {
+                self.voices[i].pos -= self.sample.len() as f32;
+            }
             self.voices[i].age += 1.0;
             k += 1;
         }
@@ -506,9 +547,11 @@ impl Engine {
         // self-sweep (EVO). ENV widens the aperture; EVO drifts the focus — both
         // gated by `feedback`. Per-sample coefficients ≈ the WASM per-block ones.
         let lvl = (ol.abs() + orr.abs()) * 0.5;
-        self.env = self.env * 0.9996 + lvl * 0.0004;
+        let rate_scale = 44_100.0 / self.host_sr;
+        let env_mix = 1.0 - 0.9996f32.powf(rate_scale);
+        self.env += (lvl - self.env) * env_mix;
         if self.feedback > 0.0 {
-            let step = self.feedback * (0.0004 + self.env * 0.0018) / 256.0;
+            let step = self.feedback * (0.0004 + self.env * 0.0018) / 256.0 * rate_scale;
             self.evo += self.evo_dir * step;
             if self.evo >= 1.0 {
                 self.evo = 1.0;
@@ -618,7 +661,9 @@ mod tests {
     use super::*;
 
     fn sine_scene(n: usize, freq: f32, sr: f32) -> Vec<f32> {
-        (0..n).map(|i| (2.0 * PI * freq * i as f32 / sr).sin()).collect()
+        (0..n)
+            .map(|i| (2.0 * PI * freq * i as f32 / sr).sin())
+            .collect()
     }
 
     #[test]
@@ -633,7 +678,10 @@ mod tests {
         let mut e = Engine::new(44100.0);
         let first = sine_scene(4096, 220.0, 44100.0);
         let old = e.load(first.clone(), 44100.0);
-        assert!(old.is_empty(), "fresh engine should have had no prior sample");
+        assert!(
+            old.is_empty(),
+            "fresh engine should have had no prior sample"
+        );
         assert!(!e.is_empty());
 
         e.set_density(2000.0); // dense enough to hear quickly
@@ -646,11 +694,18 @@ mod tests {
                 heard = true;
             }
         }
-        assert!(heard, "engine produced no audible output after loading a scene");
+        assert!(
+            heard,
+            "engine produced no audible output after loading a scene"
+        );
 
         let second = sine_scene(2048, 440.0, 44100.0);
         let replaced = e.load(second, 44100.0);
-        assert_eq!(replaced.len(), first.len(), "load() must hand back the buffer it replaced");
+        assert_eq!(
+            replaced.len(),
+            first.len(),
+            "load() must hand back the buffer it replaced"
+        );
     }
 
     #[test]
@@ -730,9 +785,16 @@ mod tests {
         for _ in 0..(OUT_RING * 2 + 17) {
             e.tick();
         }
-        assert_eq!(e.out_write(), 17, "write pointer should have wrapped exactly twice plus 17");
+        assert_eq!(
+            e.out_write(),
+            17,
+            "write pointer should have wrapped exactly twice plus 17"
+        );
         assert!(e.out_buffer().iter().all(|s| s.is_finite()));
-        assert!(e.out_buffer().iter().any(|&s| s.abs() > 1e-4), "ring never captured audible output");
+        assert!(
+            e.out_buffer().iter().any(|&s| s.abs() > 1e-4),
+            "ring never captured audible output"
+        );
     }
 
     #[test]
@@ -747,13 +809,17 @@ mod tests {
     fn magnitude_spectrum_concentrates_energy_at_the_tone_bin() {
         const N: usize = 1024;
         let k0 = 50; // bin the test tone should land in
-        let samples: Vec<f32> =
-            (0..N).map(|i| (2.0 * PI * k0 as f32 * i as f32 / N as f32).sin()).collect();
+        let samples: Vec<f32> = (0..N)
+            .map(|i| (2.0 * PI * k0 as f32 * i as f32 / N as f32).sin())
+            .collect();
         let mut mag = [0.0f32; N / 2];
         magnitude_spectrum(&samples, &mut mag);
         assert!(mag.iter().all(|m| m.is_finite()));
-        let (peak_bin, &peak) =
-            mag.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap();
+        let (peak_bin, &peak) = mag
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap();
         assert_eq!(peak_bin, k0, "energy should peak at the tone's own bin");
         // Window leakage spreads some energy to neighbours, but the peak bin
         // should still dominate by a wide margin over a distant, empty bin.
@@ -766,7 +832,11 @@ mod tests {
         let samples = [0.5f32; N];
         let mut mag = [0.0f32; N / 2];
         magnitude_spectrum(&samples, &mut mag);
-        let (peak_bin, _) = mag.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap();
+        let (peak_bin, _) = mag
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap();
         assert_eq!(peak_bin, 0);
     }
 }

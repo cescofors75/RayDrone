@@ -161,6 +161,83 @@
             #wave { height:132px; }
             .info-tip { left:auto; right:0; }
         }
+
+        /* RayDrone Studio 2026: instrumento primero, formulario después. */
+        body { display:block; padding:0; overflow-x:hidden; background:#05070a;
+               background-image:linear-gradient(rgba(255,255,255,.016) 1px,transparent 1px),
+                                linear-gradient(90deg,rgba(255,255,255,.016) 1px,transparent 1px),
+                                radial-gradient(circle at 50% -15%,rgba(85,214,194,.12),transparent 42%);
+               background-size:40px 40px,40px 40px,100% 100%; }
+        .container { width:min(1500px,100%); min-height:100vh; margin:auto; padding:16px clamp(14px,2.4vw,36px) 38px;
+                     border:0; border-left:1px solid var(--line); border-right:1px solid var(--line); border-radius:0;
+                     background:rgba(7,9,14,.86); box-shadow:0 0 120px rgba(0,0,0,.7); }
+        .studio-head { min-height:62px; display:flex; justify-content:space-between; align-items:center; gap:24px; margin-bottom:14px; }
+        .studio-brand { display:flex; align-items:baseline; gap:16px; min-width:0; }
+        h1 { flex:none; font-family:Impact,'Arial Narrow',sans-serif; font-style:italic; font-size:clamp(1.75rem,3.1vw,2.8rem);
+             line-height:1; text-align:left; white-space:nowrap; }
+        h1::after { display:none; }
+        .studio-copy { min-width:0; }
+        .studio-copy .sub { margin:0 0 3px; text-align:left; font-size:.72rem; text-transform:uppercase; }
+        .studio-copy .badge { margin:0; padding:0; border:0; border-radius:0; background:none; color:var(--muted-2); }
+        .engine-live { flex:none; display:flex; gap:14px; align-items:center; padding:8px 11px; border:1px solid rgba(85,214,194,.25);
+                       background:rgba(6,18,17,.62); font:700 .62rem/1 ui-monospace,SFMono-Regular,Consolas,monospace;
+                       color:var(--accent-2); text-transform:uppercase; }
+        .engine-live::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--accent-2);
+                               box-shadow:0 0 10px var(--accent-2); animation:enginePulse 1.7s ease-in-out infinite; }
+        @keyframes enginePulse { 50% { opacity:.35; transform:scale(.7); } }
+        .deck { gap:10px; }
+        .panel { position:relative; border-radius:3px; padding:15px; background:rgba(12,15,21,.82);
+                 border-color:rgba(215,226,255,.09); box-shadow:inset 0 1px rgba(255,255,255,.025); }
+        .panel::before { content:""; position:absolute; left:-1px; top:14px; bottom:14px; width:2px; background:var(--accent-2); opacity:.22; }
+        .panel-title { margin-bottom:12px; padding-bottom:8px; font-size:.66rem; }
+        .scene { padding:16px; border-color:rgba(85,214,194,.2);
+                 background:linear-gradient(150deg,rgba(85,214,194,.045),rgba(255,63,104,.03) 60%,rgba(8,10,15,.94)); }
+        .scene::before { background:linear-gradient(var(--accent-2),var(--accent)); opacity:1; }
+        #viz-wrap { overflow:hidden; border:1px solid rgba(85,214,194,.19); background:#05080c;
+                    box-shadow:0 18px 42px rgba(0,0,0,.32),inset 0 0 70px rgba(85,214,194,.035); }
+        canvas { border-radius:2px; }
+        #wave { height:clamp(240px,36vh,430px); margin:0; border:0; }
+        #outwave { height:105px; border-radius:2px; }
+        .file-label { padding:12px; margin-bottom:10px; border-radius:3px; border-style:solid;
+                      background:rgba(85,214,194,.035); font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+                      text-transform:uppercase; font-size:.73rem; }
+        .presets { border-radius:3px; }
+        .preset { border-radius:2px; }
+        .btn { border-radius:3px; clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px)); }
+        input[type="range"] { height:4px; border-radius:0; }
+        input[type="range"]::-webkit-slider-thumb { width:15px; height:15px; border-radius:2px; }
+        select { border-radius:3px; }
+        #piano { height:104px; border-radius:3px; }
+        #meter { height:4px; border-radius:0; }
+        .p-game { overflow:hidden; background:linear-gradient(110deg,rgba(255,63,104,.09),rgba(12,15,21,.9) 60%); }
+        .p-game::after { content:"RAYRUNNER"; position:absolute; right:-12px; bottom:-22px; font:italic 900 clamp(3rem,9vw,7rem)/1 Impact,'Arial Narrow',sans-serif;
+                         color:rgba(255,255,255,.025); pointer-events:none; }
+        @media (min-width:1000px) {
+            .deck { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:stretch; }
+            .scene { grid-column:1 / -1; grid-row:1; }
+            .p-shape { grid-column:1; grid-row:2; }
+            .p-optics { grid-column:2; grid-row:2; }
+            .p-space { grid-column:3; grid-row:2; }
+            .p-engine { grid-column:4; grid-row:2; }
+            .p-play { grid-column:1 / -1; grid-row:3; }
+            .deck > div:has(#adv-toggle) { grid-column:1 / -1; grid-row:4; }
+            .p-ambient { grid-column:1 / -1; grid-row:5; }
+            .p-tune { grid-column:1 / -1; grid-row:6; }
+            .lab { grid-column:1 / -1; grid-row:7; }
+            .p-game { grid-column:1 / -1; grid-row:8; }
+        }
+        @media (max-width:760px) {
+            .container { padding:10px 8px 24px; }
+            .studio-head { min-height:50px; margin-bottom:8px; }
+            .studio-copy { display:none; }
+            .engine-live { font-size:.54rem; padding:7px; }
+            .scene { padding:10px; }
+            #wave { height:48vh; min-height:300px; }
+            #piano { height:88px; }
+            .panel-title { flex-direction:row; align-items:center; }
+            .panel-title > span:last-child { display:none; }
+        }
+        @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; } }
     </style>
     <!-- Vercel Web Analytics (sitio estático, sin build): snippet directo, no el
          paquete npm/React — este proyecto no tiene package.json ni framework. -->
@@ -169,9 +246,16 @@
 </head>
 <body>
     <div class="container">
-        <h1>RayDrone</h1>
-        <p class="sub">Drones y texturas a partir de tus samples</p>
-        <span class="badge">Rust · WebAssembly · AudioWorklet · Control Deck</span>
+        <header class="studio-head">
+            <div class="studio-brand">
+                <h1>RayDrone</h1>
+                <div class="studio-copy">
+                    <p class="sub">Instrumento granular de trazado acústico</p>
+                    <span class="badge">Rust · WebAssembly · AudioWorklet · QMC Engine</span>
+                </div>
+            </div>
+            <div class="engine-live">DSP local · tiempo real</div>
+        </header>
 
         <div class="deck">
             <!-- ── SCENE / TRANSPORT ── -->
@@ -430,9 +514,9 @@
 
             <!-- ── GAME: audio adaptativo en vivo, demostrado jugando ── -->
             <section class="panel p-game">
-                <div class="panel-title"><span>🎮 Game<span class="info-badge" tabindex="0">i<span class="info-tip">RayRunner: arcade de 2 niveles cuya banda sonora la renderiza RayDrone en vivo. Nivel 1: nave espacial lateral. Nivel 2: circuito neón 3D real (WebGL/Three.js vendorizado) sobre una moto Tron (otro sample, música mayor y luminosa). Power-ups (escudo/misil/bomba), bláster ilimitado (clic, Z o toque corto), enemigos fantasma en ambos niveles, ranking local con nick, y tu combo controla N: jugar bien = la música converge; impactos = polvo granular.</span></span></span><span>arcade · 2 niveles · la banda sonora se renderiza en vivo</span></div>
+                <div class="panel-title"><span>🎮 RayRunner<span class="info-badge" tabindex="0">i<span class="info-tip">Arcade de seis mundos cuya banda sonora la renderiza RayDrone en vivo: espacio, dos circuitos 3D, mazmorra, asalto Komandos y combate MMA. Tu ejecución transforma densidad, filtro, shimmer, tono y reverberación en tiempo real.</span></span></span><span>arcade · 6 mundos · audio adaptativo vivo</span></div>
                 <div class="sub" style="text-align:left; margin:0 0 12px;"><b>Nivel 1 · Espacio</b> (lateral) y <b>Nivel 2 · Circuito Neón</b> (circuito 3D real — WebGL con Three.js vendorizado, texturas procedurales — sobre una moto Tron: curvas, chicanes, túnel, rasantes, asfalto y tierra, vueltas — con su propio sample synthwave alegre): por <b>donde pasas</b> decide el sonido y <b>cómo juegas</b> decide N (rayos/s). Power-ups 🛡🚀💣 + bláster ilimitado (clic de ratón, Z/espacio o toque corto) y <b>rivales fantasma</b> 👻 en ambos niveles, ranking local con nick (interfaz lista para hacerlo online), táctil + teclado. Audio adaptativo sin capas pregrabadas — un solo motor, parámetros vivos.</div>
-                <a class="btn btn-play" href="game.html" style="display:block; text-align:center; text-decoration:none;">▶ Jugar RayRunner</a>
+                <a class="btn btn-play" href="game.html" style="display:block; text-align:center; text-decoration:none;">▶ Entrar en RayRunner</a>
             </section>
         </div>
     </div>
@@ -474,6 +558,7 @@
     let sampleData = null, sampleRate = 44100, duration = 0;
     let focusSec = 0, mode = 'drone', isPlaying = false, drySource = null;
     let wavePeaks = null;   // pico por pixel (precalculado al cargar)
+    let waveEnergy = null;  // RMS por pixel para distinguir cuerpo y transitorios
     let visRays = [];       // rayos a dibujar (posiciones de granos reales)
     let latestFoci = null;  // constelación de focos en ambient: [pos0, w0, pos1, w1, …]
 
@@ -1050,13 +1135,19 @@
     function computePeaks() {
         const W = waveCanvas.width;
         wavePeaks = new Float32Array(W);
+        waveEnergy = new Float32Array(W);
         if (!sampleData) return;
         for (let x = 0; x < W; x++) {
             const start = Math.floor(x / W * sampleData.length);
             const end = Math.floor((x + 1) / W * sampleData.length);
-            let peak = 0;
-            for (let i = start; i < end; i++) { const v = Math.abs(sampleData[i]); if (v > peak) peak = v; }
+            let peak = 0, sumSq = 0;
+            for (let i = start; i < end; i++) {
+                const v = sampleData[i], a = Math.abs(v);
+                if (a > peak) peak = a;
+                sumSq += v * v;
+            }
             wavePeaks[x] = peak;
+            waveEnergy[x] = Math.sqrt(sumSq / Math.max(1, end - start));
         }
     }
 
@@ -1072,7 +1163,7 @@
                 seed: Math.random(),
             });
         }
-        if (visRays.length > 450) visRays.splice(0, visRays.length - 450);
+        if (visRays.length > 260) visRays.splice(0, visRays.length - 260);
     }
 
     // Color por banda: grave=naranja, medio=rojo, agudo=rosa claro (se ve la aberración)
@@ -1090,10 +1181,10 @@
             // pantalla → sin estirar). A 4K serían 8M píxeles/cuadro = lento; esto
             // baja a ~3M manteniéndolo nítido.
             // El 2D con glow/gradientes cuesta por píxel; renderizamos a una
-            // resolución modesta y dejamos que el CSS la escale a la pantalla
-            // (el glow disimula el suavizado). ~1280px en el lado largo.
+            // resolución moderada y dejamos que el CSS la escale. En fullscreen
+            // prima la fluidez: el glow y las curvas toleran bien 720 px internos.
             const cw = vizWrap.clientWidth, ch = vizWrap.clientHeight;
-            const s = Math.min(1, 1280 / Math.max(1, cw));
+            const s = Math.min(1, 720 / Math.max(1, cw));
             w = Math.max(700, Math.round(cw * s));
             h = Math.max(150, Math.round(ch * s));
         }
@@ -1153,15 +1244,61 @@
     }
 
     let meterShown = 0;
-    let zoomPeaks = null, zoomKey = '';
+    let zoomPeaks = null, zoomEnergy = null, zoomLow = null, zoomHigh = null;
+    let flowPeak = null, flowEnergy = null, flowBias = null, zoomKey = '';
+    let lastVizFrame = 0;
     const MM_H = 18; // alto de la tira-minimapa (solo visible con zoom)
     // Estado del "modo live": espectro FFT, modo radial, HUD (oculto por defecto).
     let liveSpectrum = false, liveRadial = false, hudShown = false;
 
-    function frame() {
+    function frame(now = performance.now()) {
         const W = waveCanvas.width, H = waveCanvas.height;
+        const frameSeconds = lastVizFrame ? Math.min(0.08, Math.max(0.008, (now - lastVizFrame) * 0.001)) : 1 / 60;
+        lastVizFrame = now;
         wctx.clearRect(0, 0, W, H);
         wctx.fillStyle = '#07080e'; wctx.fillRect(0, 0, W, H);
+
+        // Retícula de instrumento y señal latente: el deck se siente activo
+        // incluso antes de cargar una fuente, sin simular audio inexistente.
+        wctx.lineWidth = 1;
+        for (let x = 0; x <= W; x += Math.max(32, W / 16)) {
+            wctx.strokeStyle = x % Math.max(64, W / 8) < 1 ? 'rgba(85,214,194,.07)' : 'rgba(255,255,255,.025)';
+            wctx.beginPath(); wctx.moveTo(x, 0); wctx.lineTo(x, H); wctx.stroke();
+        }
+        for (let y = 0; y <= H; y += Math.max(24, H / 8)) {
+            wctx.strokeStyle = 'rgba(255,255,255,.028)';
+            wctx.beginPath(); wctx.moveTo(0, y); wctx.lineTo(W, y); wctx.stroke();
+        }
+        if (!sampleData) {
+            const now = performance.now() * .001;
+            const mid0 = H * .5;
+            const pulse = wctx.createRadialGradient(W * .5, mid0, 0, W * .5, mid0, Math.min(W, H) * .62);
+            pulse.addColorStop(0, 'rgba(85,214,194,.065)');
+            pulse.addColorStop(.55, 'rgba(255,63,104,.018)');
+            pulse.addColorStop(1, 'rgba(0,0,0,0)');
+            wctx.fillStyle = pulse; wctx.fillRect(0, 0, W, H);
+            wctx.globalCompositeOperation = 'lighter';
+            for (let band = 0; band < 3; band++) {
+                wctx.strokeStyle = band === 0 ? 'rgba(85,214,194,.28)' : band === 1 ? 'rgba(255,63,104,.14)' : 'rgba(255,209,102,.09)';
+                wctx.lineWidth = 1.1 + band * .35;
+                wctx.beginPath();
+                for (let x = 0; x <= W; x += 3) {
+                    const env = Math.sin(Math.PI * x / W);
+                    const wave = Math.sin(x * (.018 + band * .009) + now * (.55 + band * .23)) *
+                                 Math.sin(x * .0041 - now * .16) * H * (.055 + band * .022) * env;
+                    const y = mid0 + wave + (band - 1) * H * .065;
+                    x ? wctx.lineTo(x, y) : wctx.moveTo(x, y);
+                }
+                wctx.stroke();
+            }
+            for (let i = 0; i < 22; i++) {
+                const x = ((i * 89.13 + now * (7 + i % 4)) % (W + 20)) - 10;
+                const y = mid0 + Math.sin(i * 2.1 + now * .4) * H * .31;
+                wctx.fillStyle = i % 3 ? 'rgba(85,214,194,.22)' : 'rgba(255,63,104,.24)';
+                wctx.beginPath(); wctx.arc(x, y, .8 + (i % 4) * .38, 0, 7); wctx.fill();
+            }
+            wctx.globalCompositeOperation = 'source-over';
+        }
 
         const dur = Math.max(duration, 0.001);
         const { t0, winDur, z } = zoomWindow();
@@ -1179,14 +1316,49 @@
             if (key !== zoomKey) {
                 zoomKey = key;
                 zoomPeaks = new Float32Array(W);
+                zoomEnergy = new Float32Array(W);
+                zoomLow = new Float32Array(W);
+                zoomHigh = new Float32Array(W);
                 const i0 = Math.floor(t0 / dur * sampleData.length);
                 const span = Math.max(1, Math.floor(winDur / dur * sampleData.length));
                 for (let x = 0; x < W; x++) {
                     const a = i0 + Math.floor(x / W * span);
                     const b = Math.min(i0 + Math.floor((x + 1) / W * span), sampleData.length);
-                    let pk = 0;
-                    for (let i = a; i < b; i++) { const v = Math.abs(sampleData[i]); if (v > pk) pk = v; }
+                    let pk = 0, lo = 0, hi = 0, sumSq = 0;
+                    for (let i = a; i < b; i++) {
+                        const v = sampleData[i], av = Math.abs(v);
+                        if (av > pk) pk = av;
+                        if (v < lo) lo = v;
+                        if (v > hi) hi = v;
+                        sumSq += v * v;
+                    }
                     zoomPeaks[x] = pk;
+                    zoomEnergy[x] = Math.sqrt(sumSq / Math.max(1, b - a));
+                    zoomLow[x] = lo;
+                    zoomHigh[x] = hi;
+                }
+
+                // Envolvente visual suavizada. Se calcula solo al cambiar la
+                // ventana, nunca por frame: conserva fraseo y dinámica del WAV
+                // eliminando los dientes de muestra propios de un editor técnico.
+                flowPeak = new Float32Array(W);
+                flowEnergy = new Float32Array(W);
+                flowBias = new Float32Array(W);
+                const radius = Math.max(5, Math.round(W / 70));
+                const peakSum = new Float32Array(W + 1);
+                const energySum = new Float32Array(W + 1);
+                const biasSum = new Float32Array(W + 1);
+                for (let x = 0; x < W; x++) {
+                    peakSum[x + 1] = peakSum[x] + zoomPeaks[x];
+                    energySum[x + 1] = energySum[x] + zoomEnergy[x];
+                    biasSum[x + 1] = biasSum[x] + (zoomHigh[x] + zoomLow[x]) * 0.5;
+                }
+                for (let x = 0; x < W; x++) {
+                    const a = Math.max(0, x - radius), b = Math.min(W, x + radius + 1);
+                    const invCount = 1 / (b - a);
+                    flowPeak[x] = (peakSum[b] - peakSum[a]) * invCount;
+                    flowEnergy[x] = (energySum[b] - energySum[a]) * invCount;
+                    flowBias[x] = (biasSum[b] - biasSum[a]) * invCount;
                 }
                 zoomV.innerText = zoomed ? `×${z.toFixed(z < 10 ? 1 : 0)} · ${(winDur * 1000).toFixed(0)} ms` : '×1';
             }
@@ -1205,30 +1377,74 @@
             wctx.fillRect(focusX - apX, top, apX * 2, H - top);
         }
 
-        // Onda (de la ventana visible): cuerpo relleno con gradiente vertical +
-        // espejo + contorno luminoso que pulsa con el nivel de salida.
-        if (zoomPeaks && !liveRadial) {
+        // El WAV se visualiza como tres corrientes vivas. Su amplitud, apertura y
+        // deriva proceden de la envolvente real; la fase solo aporta movimiento.
+        if (flowPeak && !liveRadial) {
             const amp = (H - top) * 0.46;
-            const grd = wctx.createLinearGradient(0, mid - amp, 0, mid + amp);
-            grd.addColorStop(0.0, 'rgba(255,120,150,0.04)');
-            grd.addColorStop(0.5, `rgba(255,53,94,${0.20 + glow * 0.18})`);
-            grd.addColorStop(1.0, 'rgba(255,120,150,0.04)');
-            wctx.fillStyle = grd;
+            const phase = now * 0.00034;
+
+            // Perfil real del WAV al fondo: silueta suavizada, casi fantasma.
+            // Mantiene la lectura temporal del archivo sin competir con el flow.
+            const profileScale = 0.72;
+            const profileFill = wctx.createLinearGradient(0, mid - amp, 0, mid + amp);
+            profileFill.addColorStop(0, 'rgba(255,112,148,0.018)');
+            profileFill.addColorStop(0.48, 'rgba(73,188,178,0.045)');
+            profileFill.addColorStop(0.52, 'rgba(73,188,178,0.045)');
+            profileFill.addColorStop(1, 'rgba(255,112,148,0.018)');
+            wctx.fillStyle = profileFill;
             wctx.beginPath();
-            wctx.moveTo(0, mid - zoomPeaks[0] * amp);
-            for (let x = 1; x < W; x++) wctx.lineTo(x, mid - zoomPeaks[x] * amp);
-            for (let x = W - 1; x >= 0; x--) wctx.lineTo(x, mid + zoomPeaks[x] * amp);
+            wctx.moveTo(0, mid - flowPeak[0] * amp * profileScale);
+            for (let x = 3; x <= W; x += 3) {
+                const xi = Math.min(W - 1, x);
+                wctx.lineTo(x, mid - flowPeak[xi] * amp * profileScale);
+            }
+            for (let x = W; x >= 0; x -= 3) {
+                const xi = Math.min(W - 1, x);
+                wctx.lineTo(x, mid + flowPeak[xi] * amp * profileScale);
+            }
             wctx.closePath();
             wctx.fill();
-            // contorno (arriba y espejo abajo); sin shadowBlur (carísimo a alta
-            // resolución) — el glow lo da el relleno aditivo y el grosor reactivo.
-            wctx.strokeStyle = `rgba(255,170,195,${0.5 + glow * 0.4})`;
-            wctx.lineWidth = 1.1 + glow * 0.8;
+
+            wctx.strokeStyle = `rgba(255,138,169,${0.07 + glow * 0.035})`;
+            wctx.lineWidth = 0.75;
             for (const sign of [-1, 1]) {
                 wctx.beginPath();
-                for (let x = 0; x < W; x++) { const y = mid + sign * zoomPeaks[x] * amp; x ? wctx.lineTo(x, y) : wctx.moveTo(x, y); }
+                for (let x = 0; x <= W; x += 3) {
+                    const xi = Math.min(W - 1, x);
+                    const y = mid + sign * flowPeak[xi] * amp * profileScale;
+                    x ? wctx.lineTo(x, y) : wctx.moveTo(x, y);
+                }
                 wctx.stroke();
             }
+
+            const streams = [
+                { color: [84, 229, 207], offset: -0.11, speed: 0.78, freq: 0.010, sign: -1 },
+                { color: [255, 72, 116], offset: 0.02, speed: -0.55, freq: 0.014, sign: 1 },
+                { color: [255, 207, 105], offset: 0.14, speed: 0.38, freq: 0.018, sign: 0.55 },
+            ];
+            wctx.globalCompositeOperation = 'lighter';
+            for (const stream of streams) {
+                const [r, g, b] = stream.color;
+                for (let layer = 0; layer < 2; layer++) {
+                    wctx.strokeStyle = `rgba(${r},${g},${b},${layer ? 0.28 + glow * 0.23 : 0.055 + glow * 0.035})`;
+                    wctx.lineWidth = layer ? 1.05 + glow * 0.35 : 5.2;
+                    wctx.beginPath();
+                    for (let x = 0; x <= W; x += 3) {
+                        const xi = Math.min(W - 1, x);
+                        const energy = flowEnergy[xi];
+                        const envelope = flowPeak[xi];
+                        const flow = Math.sin(x * stream.freq + phase * stream.speed * 6.283) *
+                                     (2.2 + energy * amp * 0.3);
+                        const breath = Math.sin(x * 0.0037 - phase * stream.speed * 2.4) * envelope * amp * 0.2;
+                        const dataDrift = flowBias[xi] * amp * 0.75 +
+                                          stream.sign * envelope * amp * 0.18;
+                        const y = mid + stream.offset * (H - top) + dataDrift + flow + breath;
+                        x ? wctx.lineTo(x, y) : wctx.moveTo(x, y);
+                    }
+                    wctx.stroke();
+                }
+            }
+            wctx.globalCompositeOperation = 'source-over';
         }
 
         // Rayos: cada grano sale de su offset (spread vertical) y converge al foco
@@ -1236,10 +1452,14 @@
         // La vida decae siempre; solo se dibujan los que caen dentro de la ventana.
         wctx.globalCompositeOperation = 'lighter';
         const spread = (H - top) * 0.42;
+        const fullScreenViz = (document.fullscreenElement || document.webkitFullscreenElement) === vizWrap;
+        const rayBudget = fullScreenViz ? 90 : 220;
+        const rayStride = Math.max(1, Math.ceil(visRays.length / rayBudget));
         for (let i = visRays.length - 1; i >= 0; i--) {
             const r = visRays[i];
-            r.life -= 0.022;
+            r.life -= frameSeconds / 1.05;
             if (r.life <= 0) { visRays.splice(i, 1); continue; }
+            if (i % rayStride) continue;
             const tsec = r.x * dur;
             if (tsec < t0 || tsec > t1) continue;
             const p = 1 - r.life;                       // 0 al nacer → 1 al morir
@@ -1265,18 +1485,73 @@
                 tx = bx + (focusX - bx) * easeT;
                 ty = mid + arc * (1 - easeT);
             }
-            const c = BAND_RGB[r.band] || BAND_RGB[1];
+            const base = BAND_RGB[r.band] || BAND_RGB[1];
+            const pitchTint = clamp(Math.log2(Math.max(0.25, r.ratio || 1)) * 0.28 + 0.5, 0, 1);
+            const c = [
+                Math.round(base[0] + (120 - base[0]) * pitchTint * 0.32),
+                Math.round(base[1] + (225 - base[1]) * pitchTint * 0.42),
+                Math.round(base[2] + (255 - base[2]) * pitchTint * 0.36),
+            ];
             const a = r.life * glow;
-            // estela
-            wctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.28})`;
-            wctx.lineWidth = 1;
-            wctx.beginPath(); wctx.moveTo(tx, ty); wctx.lineTo(hx, hy); wctx.stroke();
-            // cabeza luminosa (halo + núcleo; el solape aditivo crea el bloom)
-            wctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.18})`;
-            wctx.beginPath(); wctx.arc(hx, hy, 3.2, 0, 6.283); wctx.fill();
-            wctx.fillStyle = `rgba(255,235,240,${a * 0.5})`;
-            wctx.beginPath(); wctx.arc(hx, hy, 1.1, 0, 6.283); wctx.fill();
+            // Cola curva: reconstruye el tramo reciente de la trayectoria, con
+            // un control perpendicular para que cada rayo tenga firma propia.
+            const startP = Math.max(0, p - 0.24);
+            const bend = (r.seed * 2 - 1) * spread * 0.42;
+            const midP = (startP + p) * 0.5;
+            const startEase = startP * startP * (3 - 2 * startP);
+            const midEase = midP * midP * (3 - 2 * midP);
+            let sx, sy, mx, my;
+            if (liveRadial) {
+                const cx = W / 2, cy = top + (H - top) / 2, ang = r.seed * 6.2831853;
+                const radialBend = bend / Math.max(1, spread);
+                const radius = Math.min(W, H - top) * 0.47;
+                const startAngle = ang + radialBend * (1 - startP);
+                const midAngle = ang + radialBend * (1 - midP);
+                sx = cx + Math.cos(startAngle) * radius * (1 - startEase);
+                sy = cy + Math.sin(startAngle) * radius * (1 - startEase);
+                mx = cx + Math.cos(midAngle) * radius * (1 - midEase);
+                my = cy + Math.sin(midAngle) * radius * (1 - midEase);
+            } else {
+                sx = bx + (focusX - bx) * startEase;
+                sy = mid + arc * (1 - startEase) + Math.sin(Math.PI * startP) * bend;
+                mx = bx + (focusX - bx) * midEase;
+                my = mid + arc * (1 - midEase) + Math.sin(Math.PI * midP) * bend;
+            }
+            // Una cuadrática que atraviesa el punto medio aproxima la antigua
+            // polilínea de nueve muestras con una sola operación de trazado.
+            const controlX = 2 * mx - (sx + hx) * 0.5;
+            const controlY = 2 * my - (sy + hy) * 0.5;
+            wctx.lineCap = 'round';
+            const firstTrailLayer = fullScreenViz ? 1 : 0;
+            for (let layer = firstTrailLayer; layer < 2; layer++) {
+                wctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * (layer ? 0.46 : 0.10)})`;
+                wctx.lineWidth = layer ? 1.15 : 4.8;
+                wctx.beginPath();
+                wctx.moveTo(sx, sy);
+                wctx.quadraticCurveTo(controlX, controlY, hx, hy);
+                wctx.stroke();
+            }
+            // Cabeza: halo por banda y núcleo blanco; tamaño ligado al pitch.
+            const headR = 2.4 + pitchTint * 1.7;
+            if (!fullScreenViz) {
+                wctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.15})`;
+                wctx.beginPath(); wctx.arc(hx, hy, headR * 2.5, 0, 6.283); wctx.fill();
+            }
+            wctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a * 0.72})`;
+            wctx.beginPath(); wctx.arc(hx, hy, headR, 0, 6.283); wctx.fill();
+            wctx.fillStyle = `rgba(255,248,250,${a * 0.88})`;
+            wctx.beginPath(); wctx.arc(hx, hy, 0.75, 0, 6.283); wctx.fill();
+
+            // Al alcanzar el foco, una onda expansiva hace visible la convergencia.
+            if (p > 0.78) {
+                const impact = (p - 0.78) / 0.22;
+                const radius = 3 + impact * 18;
+                wctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${(1 - impact) * a * 0.48})`;
+                wctx.lineWidth = 1.2;
+                wctx.beginPath(); wctx.arc(hx, hy, radius, 0, 6.283); wctx.stroke();
+            }
         }
+        wctx.lineCap = 'butt';
 
         // Espectro FFT (modo live): barras log-espaciadas reactivas en la base.
         if (liveSpectrum && analyser) {
@@ -1348,6 +1623,15 @@
                 wctx.moveTo(x, mmid - a); wctx.lineTo(x, mmid + a);
             }
             wctx.stroke();
+            if (waveEnergy) {
+                wctx.strokeStyle = 'rgba(85,214,194,0.42)';
+                wctx.beginPath();
+                for (let x = 0; x < W; x += 2) {
+                    const a = waveEnergy[x] * (MM_H * 0.34);
+                    wctx.moveTo(x, mmid - a); wctx.lineTo(x, mmid + a);
+                }
+                wctx.stroke();
+            }
             // focos sobre el minimapa (posición global)
             if (ambFoci) {
                 for (let i = 0; i < ambFoci.length; i += 2) {
@@ -1370,8 +1654,12 @@
         meterShown += (meterTarget - meterShown) * 0.25;
         meterFill.style.width = `${meterShown}%`;
 
-        drawLattice(glow);
-        drawOutput();
+        // En fullscreen ambos canvas quedan fuera del árbol visible. Evitar su
+        // FFT, limpieza y cientos de partículas ahorra trabajo sin cambiar audio.
+        if (!fullScreenViz) {
+            drawLattice(glow);
+            drawOutput();
+        }
         requestAnimationFrame(frame);
     }
 
@@ -1545,28 +1833,20 @@
     function labEstimate(f0, A, N, method, imp) {
         const D = LAB_GRAIN, w = labGetHann(), out = new Float32Array(D), rot = Math.random();
         if (method === 'importance' && imp) {
-            let ws = 0;
             for (let i = 0; i < N; i++) {
-                const u = (i + Math.random()) / N, idx = labImpSearch(imp.cum, u), k = idx - A, wi = imp.pm[idx] / imp.qm[idx];
-                ws += wi; const b = f0 + k;
+                const u = (i + Math.random()) / N, idx = labImpSearch(imp.cum, u), k = idx - A;
+                if (imp.qm[idx] <= 0) continue;
+                const wi = imp.pm[idx] / imp.qm[idx], b = f0 + k;
                 for (let n = 0; n < D; n++) out[n] += wi * labS(b + n);
             }
-            const inv = ws > 0 ? 1 / ws : 0;
+            const inv = 1 / N;
             for (let n = 0; n < D; n++) out[n] *= inv * w[n];
             return out;
         }
         if (method === 'reverse' && imp) {
-            // Igual que el motor en vivo: rejection ∝ energía SIN reponderar → SESGADO.
-            const en = imp.en, emax = imp.emax, len = en.length;
+            // Muestreo exacto de q ∝ p·energía, sin reponderar: objetivo sesgado.
             for (let i = 0; i < N; i++) {
-                let k = Math.round(labTri(Math.random()) * A);
-                let tries = 0;
-                while (tries < 6) {
-                    let idx = k + A; if (idx < 0) idx = 0; else if (idx >= len) idx = len - 1;
-                    if (en[idx] >= emax * Math.random()) break;
-                    k = Math.round(labTri(Math.random()) * A);
-                    tries++;
-                }
+                const k = labImpSearch(imp.cum, Math.random()) - A;
                 const b = f0 + k;
                 for (let n = 0; n < D; n++) out[n] += labS(b + n);
             }
