@@ -906,10 +906,12 @@
 
     // ── Lienzo adaptativo (retina, redimensiona sin romper la partida) ───────
     let W = 0, H = 0, k = 1, SHIP_X = 0;
+    let canvasRect = { left: 0, top: 0, width: 1, height: 1 };
     const sf = () => W / 1000;
     function resizeCanvas() {
         const rect = canvas.getBoundingClientRect();
         if (rect.width < 10 || rect.height < 10) return;
+        canvasRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const nw = Math.round(rect.width * dpr), nh = Math.round(rect.height * dpr);
         if (nw === W && nh === H) return;
@@ -1605,7 +1607,7 @@
     // Arrastre: en nivel 1 la nave sigue la ALTURA del dedo; en nivel 2, su X.
     let dragging = false;
     function dragTo(e) {
-        const rect = canvas.getBoundingClientRect();
+        const rect = canvasRect;
         if (st.level === 1) {
             st.touchTarget = clamp((e.clientY - rect.top) / rect.height * H, 24 * k, H - 24 * k);
         } else {

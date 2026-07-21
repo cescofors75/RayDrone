@@ -1155,11 +1155,56 @@
         }
     }
 
+    let audioLoadToken = 0;
+    async function loadAudioBuffer(raw, sourceName, token) {
+        // Forma con callbacks: las versiones de Safari sin la forma promesa
+        // de decodeAudioData también funcionan así.
+        const buf = await new Promise((res, rej) => ctx.decodeAudioData(raw, res, rej));
+        if (token !== audioLoadToken) return false;
+
+        // Downmix a mono promediando TODOS los canales (antes se tiraba el canal R)
+        sampleData = new Float32Array(buf.length);
+        for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+            const d = buf.getChannelData(ch);
+            for (let i = 0; i < d.length; i++) sampleData[i] += d[i];
+        }
+        if (buf.numberOfChannels > 1) {
+            const inv = 1 / buf.numberOfChannels;
+            for (let i = 0; i < sampleData.length; i++) sampleData[i] *= inv;
+        }
+        sampleRate = buf.sampleRate;
+        duration = buf.duration;
+        focusSec = duration * 0.3;
+        node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
+        sendParams(false); // silencio hasta que se pulse Play (el motor arranca con rate=0)
+        computePeaks();
+        playBtn.disabled = false;
+        playBtn.innerText = rayI18n.t('▶ Play');
+        recBtn.disabled = false;
+        fileLabel.innerText = `✔ ${sourceName.substring(0, 26)}`;
+        statusEl.innerText = `Audio listo · ${duration.toFixed(2)} s · click en la onda para mover el foco`;
+        return true;
+    }
+
+    async function loadDefaultAudio() {
+        const token = ++audioLoadToken;
+        statusEl.innerText = 'Cargando audio por defecto…';
+        try {
+            await ensureEngine();
+            const raw = await fetchArrayBuffer('data/default.mp3', { cache: 'no-store' });
+            await loadAudioBuffer(raw, 'default.mp3', token);
+        } catch (err) {
+            if (token !== audioLoadToken) return;
+            statusEl.innerText = 'No se pudo cargar data/default.mp3. Sube otro archivo para empezar.';
+            console.error(err);
+        }
+    }
+
     // ── Carga de audio ──────────────────────────────────────────────────
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        fileLabel.innerText = `✔ ${file.name.substring(0, 26)}`;
+        const token = ++audioLoadToken;
         statusEl.innerText = rayI18n.t('Decodificando…');
         try {
             await ensureEngine();
@@ -1169,31 +1214,10 @@
             return;
         }
         try {
-            // Forma con callbacks: las versiones de Safari sin la forma promesa
-            // de decodeAudioData también funcionan así.
             const raw = await file.arrayBuffer();
-            const buf = await new Promise((res, rej) => ctx.decodeAudioData(raw, res, rej));
-            // Downmix a mono promediando TODOS los canales (antes se tiraba el canal R)
-            sampleData = new Float32Array(buf.length);
-            for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-                const d = buf.getChannelData(ch);
-                for (let i = 0; i < d.length; i++) sampleData[i] += d[i];
-            }
-            if (buf.numberOfChannels > 1) {
-                const inv = 1 / buf.numberOfChannels;
-                for (let i = 0; i < sampleData.length; i++) sampleData[i] *= inv;
-            }
-            sampleRate = buf.sampleRate;
-            duration = buf.duration;
-            focusSec = duration * 0.3;
-            node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
-            sendParams(false); // silencio hasta que se pulse Play (el motor arranca con rate=0)
-            computePeaks();
-            playBtn.disabled = false;
-            playBtn.innerText = rayI18n.t('▶ Play');
-            recBtn.disabled = false;
-            statusEl.innerText = `Audio listo · ${duration.toFixed(2)} s · click en la onda para mover el foco`;
+            await loadAudioBuffer(raw, file.name, token);
         } catch (err) {
+            if (token !== audioLoadToken) return;
             const ext = (file.name.split('.').pop() || '').toLowerCase();
             const safariNoCodec = ['ogg', 'oga', 'opus', 'webm'].includes(ext);
             statusEl.innerText = safariNoCodec
@@ -1202,6 +1226,11 @@
             console.error(err);
         }
     });
+
+    const scheduleDefaultAudio = window.requestIdleCallback
+        ? (cb) => requestIdleCallback(cb, { timeout: 1200 })
+        : (cb) => setTimeout(cb, 0);
+    scheduleDefaultAudio(() => { if (!sampleData) loadDefaultAudio(); });
 
     // ── Transporte ──────────────────────────────────────────────────────
     function stopDry() {
@@ -1750,6 +1779,7 @@
     let zoomPeaks = null, zoomEnergy = null, zoomLow = null, zoomHigh = null;
     let flowPeak = null, flowEnergy = null, flowBias = null, zoomKey = '';
     let lastVizFrame = 0;
+    let lastHeavyViz = 0;
     const MM_H = 18; // alto de la tira-minimapa (solo visible con zoom)
     // Estado del "modo live": espectro FFT, modo radial, HUD (oculto por defecto).
     let liveSpectrum = false, liveRadial = false, hudShown = false;
@@ -2159,7 +2189,8 @@
 
         // En fullscreen ambos canvas quedan fuera del árbol visible. Evitar su
         // FFT, limpieza y cientos de partículas ahorra trabajo sin cambiar audio.
-        if (!fullScreenViz) {
+        if (!fullScreenViz && (now - lastHeavyViz) >= 33) {
+            lastHeavyViz = now;
             drawLattice(glow);
             drawOutput();
         }
