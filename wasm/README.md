@@ -27,7 +27,7 @@ necesita acceso a crates.io**. Solo `rustc` + el target `wasm32-unknown-unknown`
 | `../core/` | Kernel DSP compartido (`raydrone_core`, `no_std`, sin deps): `clampf`, `soft`, `sample_at`, `win_at`, RNG. **El mismo código que enlaza el VST** — una sola fuente de verdad. |
 | `processor.js` | `AudioWorkletProcessor` que instancia el wasm y rellena la salida cada bloque. |
 | `lab-worker.js` | Web Worker del Convergence Lab: otra instancia del mismo wasm para medir convergencia sin congelar la UI. |
-| `index.html` | La página (UI sencilla: Original/Drone/Shimmer + Carácter + Volumen). |
+| `index.html` | Estudio web con tres flujos: Básico por macros, Medio por tareas y Profesional por inspectores especializados. |
 | `build.sh` | Compila `../core` → `libraydrone_core.rlib` y luego `raydrone.rs` → `raydrone.wasm` (lo enlaza con `--extern`). |
 | `vendor/` | Three.js r185 vendorizado (motor 3D del Nivel 2 de RayRunner) + `three-addons/` (postprocesado: `EffectComposer`/`RenderPass`/`UnrealBloomPass`/`OutputPass`, extraídos del paquete oficial). Sin CDN, offline. El motor de audio sigue sin depender de nada de esto. |
 
@@ -73,8 +73,13 @@ y abre **http://localhost:8080/wasm/**.
 
 1. Carga un WAV/MP3.
 2. Haz click en la onda para mover el **foco**.
-3. **Original (Dry)** = tu sample tal cual · **Drone** / **Shimmer** = el motor.
-4. Mueve **Carácter** (de tonal a drone) y **Volumen**.
+3. **Original · Ray direct** = un único rayo recorre tu sample sin granularizar,
+   pero atraviesa el motor (materiales, filtro, movimiento y espacio) ·
+   **Drone** / **Shimmer** = nube de muchos rayos.
+4. Elige el entorno según la tarea: **Básico** (material + cuatro macros, zoom
+   y monitor de salida),
+   **Medio** (Material / Espacio / Rayos) o **Profesional** (añade Afinación,
+   Análisis y Directo). Cambiar de entorno no reinicia ni modifica la escena.
 
 ## Estado
 
@@ -120,7 +125,19 @@ Motor con paridad casi completa con la versión JS:
   ratio objetivo se usa el grado más cercano de la escala, así el mismo acorde queda
   afinado distinto en cada temperamento y la diferencia entre escalas se vuelve
   audible (con todos los grados activos, cualquier EDO denso suena a cluster).
-- ✅ **Reverb (espacio)**: reverb estéreo Freeverb-lite (4 combs + 2 allpass por canal).
+- ✅ **Espacio por trayectorias**: cuatro trayectorias de reflexión estéreo con
+  longitudes distintas, pérdida de energía y absorción según material. El control
+  Reverb mezcla ese campo de rayos (no convolución ni un algoritmo de reverb
+  clásico); Delay y Chorus reutilizan taps del mismo espacio.
+- ✅ **Materiales sonoros**: Vacío, Metal, Madera, Cristal, Agua y Plasma
+  alteran los rayos y sus reflexiones. Véase `SDK.md` para empaquetar escenas y
+  materiales compuestos para otros desarrolladores.
+- ✅ **Interfaz por intención**: Básico no expone parámetros técnicos; sus macros
+  escriben sobre los mismos controles del motor. Medio enseña un único bloque
+  de trabajo con parámetros primarios y Profesional revela los secundarios sin
+  apilar todos los paneles a la vez.
+- ✅ **Original · Ray direct**: la fuente directa se lee dentro del WASM, no por
+  un bypass paralelo; comparte material, filtro, modulación y efectos con Drone.
 - ✅ **Trazado inverso (opcional)**: precalcula la energía del sample y lanza los rayos
   hacia donde hay señal (importance desde la fuente) → menos rayos malgastados, más
   lleno y limpio. Brilla con material disperso; con notas sostenidas la mejora es leve.
@@ -410,8 +427,6 @@ Motor con paridad casi completa con la versión JS:
   siempre accesible después con el botón ❓ — se cierra con el botón ✕, con
   Escape o clicando fuera.
 
-Paridad completa con la versión JS.
-
-> ⚠️ Este `.wasm` se compila en tu máquina (el entorno donde se escribió el código
-> no podía compilar a wasm). Si `rustc` se queja de algo al compilar, es un ajuste
-> menor — pásame el error y lo corrijo.
+Paridad completa con la versión JS. La compilación local se valida con
+`build.ps1` en Windows o `build.sh` en macOS/Linux, y `node test_engine.mjs`
+ejecuta la suite funcional del DSP compilado.

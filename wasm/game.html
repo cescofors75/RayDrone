@@ -6,15 +6,29 @@
     <title>RayRunner · RayDrone</title>
     <style>
         :root {
-            --bg:#07090f; --panel:#11131b; --panel-2:#171a24; --stage:#05060b;
-            --accent:#ff3f68; --accent-dim:#d72f55; --cyan:#45e4d5; --gold:#ffd166;
-            --text:#f4eef2; --muted:#a9b4c7; --muted-2:#738095;
-            --line:rgba(220,230,255,0.11); --line-hot:rgba(255,63,104,0.34);
+            --bg:#060706; --panel:#121412; --panel-2:#292b27; --stage:#090b0a;
+            --accent:#ff3b18; --accent-dim:#b51d10; --cyan:#ffd447; --gold:#fff18a;
+            --text:#fff8e8; --muted:#d0c3aa; --muted-2:#93836b;
+            --line:rgba(255,218,128,0.22); --line-hot:rgba(255,84,26,0.72);
+            --glow-a:rgba(255,59,24,0.14); --glow-b:rgba(255,212,71,0.08); --glow-c:rgba(255,120,36,0.06);
         }
+        :root[data-theme="ocean"] { --bg:#06131c; --panel:#0b202b; --panel-2:#103344; --stage:#041018; --accent:#32c7ff; --accent-dim:#1385b5; --cyan:#7de7d3; --gold:#ffe38a; --text:#eafaff; --muted:#a6c4cf; --muted-2:#72919e; --line-hot:rgba(50,199,255,.36); --glow-a:rgba(50,199,255,.10); --glow-b:rgba(125,231,211,.055); --glow-c:rgba(34,132,255,.07); }
+        :root[data-theme="neon"] { --bg:#100719; --panel:#1c0e26; --panel-2:#28113a; --stage:#0d0614; --accent:#ff32d5; --accent-dim:#a50b8b; --cyan:#71ff75; --gold:#fff45c; --text:#fff1ff; --muted:#d0b4d5; --muted-2:#9d78a7; --line-hot:rgba(255,50,213,.38); --glow-a:rgba(255,50,213,.10); --glow-b:rgba(113,255,117,.055); --glow-c:rgba(113,80,255,.08); }
+        :root[data-theme="sunset"] { --bg:#1a0d0a; --panel:#291613; --panel-2:#3a1e18; --stage:#120806; --accent:#ff7a45; --accent-dim:#c24b29; --cyan:#c58cff; --gold:#fff0b5; --text:#fff4e9; --muted:#d1b4a3; --muted-2:#a47d68; --line-hot:rgba(255,122,69,.38); --glow-a:rgba(255,122,69,.11); --glow-b:rgba(197,140,255,.075); --glow-c:rgba(214,62,45,.07); }
+        :root[data-theme="grayscale"] { --bg:#111; --panel:#1a1a1a; --panel-2:#242424; --stage:#090909; --accent:#d7d7d7; --accent-dim:#858585; --cyan:#f2f2f2; --gold:#fff; --text:#f7f7f7; --muted:#b7b7b7; --muted-2:#888; --line-hot:rgba(215,215,215,.35); --glow-a:rgba(255,255,255,.06); --glow-b:rgba(180,180,180,.035); --glow-c:rgba(255,255,255,.025); }
+        :root[data-theme="rainbow"] { --bg:#080a12; --panel:#141821; --panel-2:#252d3e; --stage:#0b0f18; --accent:#ff4dca; --accent-dim:#8f2f9b; --cyan:#20f0ff; --gold:#ecff58; --text:#fbfbff; --muted:#c8cbe0; --muted-2:#9298b0; --line-hot:rgba(32,240,255,.66); --glow-a:rgba(255,77,202,.16); --glow-b:rgba(32,240,255,.11); --glow-c:rgba(177,109,255,.14); }
+        html[data-theme="red808"] body { background:linear-gradient(180deg,rgba(240,74,36,.08),transparent 34%),linear-gradient(115deg,rgba(227,184,79,.045),transparent 42%,rgba(255,120,36,.04)),linear-gradient(180deg,#111210 0%,var(--bg) 100%); }
+        html[data-theme="red808"] .container { background:linear-gradient(180deg,var(--panel),var(--bg)); box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 26px 80px rgba(0,0,0,.52),0 0 28px rgba(255,59,24,.10); }
+        html[data-theme="red808"] h1 { text-shadow:0 0 8px rgba(255,59,24,.28); }
+        html[data-theme="rainbow"] body { overflow-x:hidden; background:linear-gradient(180deg,rgba(255,77,202,.15),transparent 34%),linear-gradient(115deg,rgba(32,240,255,.12),transparent 42%,rgba(177,109,255,.14)),radial-gradient(circle at 82% 8%,rgba(113,255,117,.12),transparent 34%),linear-gradient(180deg,#0d0b1d 0%,var(--bg) 100%); }
+        html[data-theme="rainbow"] body::before { content:"";position:fixed;inset:-28%;z-index:0;pointer-events:none;background:conic-gradient(from 210deg,rgba(255,77,202,.28),rgba(255,216,77,.2),rgba(113,255,117,.22),rgba(32,240,255,.28),rgba(177,109,255,.24),rgba(255,77,202,.28));filter:blur(84px) saturate(145%);animation:rainbow-drift 18s linear infinite; }
+        html[data-theme="rainbow"] body > * { position:relative; z-index:1; }
+        html[data-theme="rainbow"] .container { border-color:rgba(32,240,255,.58); box-shadow:0 0 0 1px rgba(255,77,202,.38),0 0 38px rgba(32,240,255,.30),0 0 82px rgba(177,109,255,.20),0 26px 80px rgba(0,0,0,.62); }
+        @keyframes rainbow-drift { from { transform:rotate(0deg) scale(1.05); } to { transform:rotate(360deg) scale(1.05); } }
         * { box-sizing:border-box; }
         body { background:
-                   linear-gradient(180deg, rgba(255,63,104,0.08), transparent 34%),
-                   linear-gradient(115deg, rgba(69,228,213,0.05), transparent 42%, rgba(255,63,104,0.04)),
+                   linear-gradient(180deg, var(--glow-a), transparent 34%),
+                   linear-gradient(115deg, var(--glow-b), transparent 42%, var(--glow-c)),
                    linear-gradient(180deg, #090b12 0%, var(--bg) 100%);
                color:var(--text);
                font-family:'Segoe UI',Tahoma,sans-serif; display:flex; justify-content:center;
@@ -220,7 +234,7 @@
         .container { width:min(1440px,100%); min-height:100vh; margin:auto; padding:18px clamp(14px,2.6vw,38px) 26px;
                      border:0; border-left:1px solid var(--line); border-right:1px solid var(--line);
                      border-radius:0; background:rgba(7,9,14,.82); box-shadow:0 0 120px rgba(0,0,0,.72); }
-        .masthead { min-height:54px; display:flex; align-items:center; justify-content:space-between; gap:24px; }
+        .masthead { min-height:54px; display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
         .brand-lockup { display:flex; align-items:baseline; gap:13px; min-width:0; }
         h1 { font-family:Impact,'Arial Narrow',sans-serif; font-size:clamp(1.5rem,3vw,2.45rem); text-align:left;
              font-style:italic; line-height:1; white-space:nowrap; }
@@ -231,11 +245,13 @@
                      border:1px solid rgba(69,228,213,.24); background:rgba(5,16,17,.72);
                      font:700 .65rem/1 ui-monospace,SFMono-Regular,Consolas,monospace; color:var(--cyan); text-transform:uppercase; }
         .live-dot { width:6px; height:6px; border-radius:50%; background:var(--cyan); box-shadow:0 0 10px var(--cyan); animation:livePulse 1.6s ease-in-out infinite; }
+        .ui-selects { display:flex; align-items:center; gap:6px; min-width:0; }
+        .ui-selects .language-select, .ui-selects .theme-select { width:132px; min-width:0; max-width:132px; }
         @keyframes livePulse { 50% { opacity:.35; transform:scale(.72); } }
         .play-shell { position:relative; margin-top:12px; }
-        #stage { border-color:rgba(255,63,104,.4); border-radius:6px; isolation:isolate;
+        #stage { border-color:var(--line-hot); border-radius:6px; isolation:isolate;
                  box-shadow:0 24px 90px rgba(0,0,0,.62),0 0 0 1px rgba(255,255,255,.035) inset,
-                            0 0 42px rgba(255,63,104,.09); }
+                            0 0 42px var(--glow-a); }
         #stage::before { content:""; position:absolute; inset:0; z-index:3; pointer-events:none;
                          background:linear-gradient(90deg,rgba(0,0,0,.28),transparent 10%,transparent 90%,rgba(0,0,0,.28)),
                                     linear-gradient(0deg,rgba(0,0,0,.24),transparent 16%,transparent 76%,rgba(0,0,0,.18)); }
@@ -301,6 +317,8 @@
         }
         @media (max-width:620px) {
             h1 { font-size:1.35rem; }
+            .ui-selects { width:100%; }
+            .ui-selects .language-select, .ui-selects .theme-select { width:auto; max-width:none; flex:1 1 0; }
             canvas,#game3d { height:calc(100svh - 64px); min-height:520px; }
             .hud { right:6px; grid-template-columns:42px minmax(90px,1fr) 60px 72px; }
             .hud .n,.hud .resources { display:none; }
@@ -317,7 +335,15 @@
     <!-- Vercel Web Analytics (sitio estático, sin build): snippet directo, no el
          paquete npm/React — este proyecto no tiene package.json ni framework. -->
     <script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
-    <script defer src="/_vercel/insights/script.js"></script>
+    <script>
+        if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+            const analytics = document.createElement('script');
+            analytics.defer = true;
+            analytics.src = '/_vercel/insights/script.js';
+            document.head.appendChild(analytics);
+        }
+    </script>
+    <script src="i18n.js"></script>
 </head>
 <body>
 <div class="container">
@@ -327,6 +353,17 @@
             <p class="sub">6 mundos · audio adaptativo · motor RayDrone</p>
         </div>
         <div class="live-pill"><span class="live-dot"></span>Audio generado en vivo</div>
+        <div class="ui-selects" aria-label="Preferencias visuales">
+            <select class="language-select" aria-label="Idioma" title="Idioma">
+                <option value="ca">CATALÀ</option><option value="es">CASTELLANO</option><option value="eu">EUSKERA</option>
+                <option value="gl">GALEGO</option><option value="en">ENGLISH</option><option value="fr">FRANÇAIS</option>
+                <option value="de">DEUTSCH</option><option value="it">ITALIANO</option><option value="pt">PORTUGUÊS</option>
+            </select>
+            <select class="theme-select" aria-label="Tema visual" title="Tema visual">
+                <option value="ocean">Ocean</option><option value="neon">Neon</option><option value="sunset">Sunset</option>
+                <option value="grayscale">Grey Scale</option><option value="red808">Red808</option><option value="rainbow">Rainbow</option>
+            </select>
+        </div>
     </header>
 
     <div class="play-shell">
@@ -353,7 +390,7 @@
             <button id="cam-btn" title="Cámara (V): persecución / dentro / frontal">📷</button>
             <button id="fs-btn" title="Pantalla completa">⛶</button>
         </div>
-        <div id="keys-sidebar">
+        <div id="keys-sidebar" data-i18n-html="gameKeys">
             <h3>⌨ Teclas</h3>
             <div class="grp">
                 <b>General</b>
@@ -441,7 +478,7 @@
             </div>
         </div>
 
-    <div class="how">
+    <div class="how" data-i18n-html="gameIntro">
         <b>Qué está pasando por debajo</b> — el motor granular real (el mismo Rust→wasm del demo) suena todo el
         rato y cada nivel es un sample distinto de 24 s con 4 zonas: el espacio (pad → campanas → tormenta → coro),
         el circuito neón (amanecer → calipso → niebla → faro 2077), la mazmorra (bosque → montaña →
@@ -462,7 +499,7 @@
     <div id="howto-modal">
         <button id="howto-close" title="Cerrar (Esc)">✕</button>
         <h2>Cómo jugar</h2>
-        <div class="how how-modal-body">
+        <div class="how how-modal-body" data-i18n-html="gameHowto">
             <b>Nivel 1 · Espacio</b> — pilota con ↑ ↓ (o arrastrando el dedo), esquiva asteroides y
             <b style="color:#7bdcff">fantasmas</b> 👻, recoge cristales <b style="color:var(--cyan)">◆</b> y power-ups
             (🛡 escudo · 🚀 misil con <b>X</b> · 💣 bomba con <b>C</b>). Dispara el <b>bláster</b> —ilimitado— con
@@ -520,7 +557,7 @@
     <div id="train-modal">
         <button id="train-close" title="Cerrar (Esc)">✕</button>
         <h2>🎯 Entrenar</h2>
-        <div class="how train-note">Salta directo a cualquier nivel para practicarlo.</div>
+        <div class="how train-note" data-i18n-html="gameTrainNote">Salta directo a cualquier nivel para practicarlo.</div>
         <div class="train-grid">
             <button class="btn sec train-lvl" data-lvl="1">🚀 <b>Nivel 1</b><span>Espacio</span></button>
             <button class="btn sec train-lvl" data-lvl="2">🏍 <b>Nivel 2</b><span>Circuito neón (noche)</span></button>
@@ -536,7 +573,7 @@
     <div id="mma-select-modal">
         <button id="mma-select-close" title="Cerrar (Esc)">✕</button>
         <h2>🥊 Elige luchadores</h2>
-        <div class="how" style="font-size:0.82rem; margin-bottom:10px;">Elige tu personaje y el rival para el combate en el octógono.</div>
+        <div class="how" data-i18n-html="gameMmaNote" style="font-size:0.82rem; margin-bottom:10px;">Elige tu personaje y el rival para el combate en el octógono.</div>
         <div class="mma-pick-section">
             <h3>Tú</h3>
             <div class="mma-grid" id="mma-grid-p1"></div>
@@ -998,7 +1035,7 @@
         for (const el of document.querySelectorAll('.mma-only')) el.style.display = mmaShow;
     }
     const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
-    function banner(text) { st.banner = text; st.bannerTtl = 1; }
+    function banner(text) { st.banner = window.rayI18n ? rayI18n.t(text) : text; st.bannerTtl = 1; }
 
     // ════════════════════════════════════════════════════════════════════════
     // Ranking local. `lb` es la única puerta al almacenamiento: para hacerlo
@@ -1499,11 +1536,16 @@
         audioMuted = muted;
         soundBtn.classList.toggle('muted', muted);
         soundBtn.textContent = muted ? '×))' : '◖))';
-        soundBtn.title = muted ? 'Activar audio (M)' : 'Silenciar audio (M)';
+        soundBtn.title = muted ? rayI18n.t('Activar audio (M)') : rayI18n.t('Silenciar audio (M)');
         soundBtn.setAttribute('aria-label', soundBtn.title);
         if (gainNode && actx) gainNode.gain.setTargetAtTime(muted ? 0 : 0.82, actx.currentTime, 0.025);
     }
     soundBtn.addEventListener('click', () => setAudioMuted(!audioMuted));
+    window.addEventListener('raydrone:language', () => {
+        // Re-render dynamic button metadata too; static DOM is handled by i18n.js.
+        setAudioMuted(audioMuted);
+        updateHud();
+    });
 
     // ── Entrada ───────────────────────────────────────────────────────────────
     // e.key en minúscula para las letras: con Bloq Mayús (o Shift) llegaba
@@ -1602,7 +1644,9 @@
     const CAM_NAMES = ['PERSECUCIÓN', 'DENTRO', 'FRONTAL'];
     function cycleCamera() {
         st.camMode = (st.camMode + 1) % 3;
-        banner(`CÁMARA · ${CAM_NAMES[st.camMode]}`); // la visibilidad de la moto la fija render3D cada frame
+        const camLabel = window.rayI18n ? rayI18n.t('CÁMARA') : 'CÁMARA';
+        const modeLabel = window.rayI18n ? rayI18n.t(CAM_NAMES[st.camMode]) : CAM_NAMES[st.camMode];
+        banner(`${camLabel} · ${modeLabel}`); // la visibilidad de la moto la fija render3D cada frame
     }
     $('cam-btn').addEventListener('click', () => { if (st.level === 2 || st.level === 3) cycleCamera(); });
 
@@ -6416,7 +6460,7 @@
             st.zone = zone;
             st.zoneFlash = 1;
             st.zoneFlashName = zones()[zone].name;
-            hudZone.innerText = zones()[zone].name;
+            hudZone.innerText = window.rayI18n ? rayI18n.t(zones()[zone].name) : zones()[zone].name;
         }
         for (let i = st.particles.length - 1; i >= 0; i--) {
             const p = st.particles[i];

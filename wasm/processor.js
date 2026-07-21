@@ -13,6 +13,10 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.outL = this.ex.out_l_ptr();
         this.outR = this.ex.out_r_ptr();
         this.blockCapacity = this.ex.block_capacity();
+        this.outViewBuffer = null;
+        this.outViewCount = 0;
+        this.outLView = null;
+        this.outRView = null;
         this.ex.set_output_sample_rate(sampleRate);
         this.ready = false;
         this.ex.seed(0x9e3779b9);
@@ -20,6 +24,7 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.rayOff = [];
         this.rayBand = [];
         this.rayRatio = [];
+        this.foci = [];
         this.blockCount = 0;
         // Diagnóstico de rendimiento
         this.now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : null;
@@ -82,6 +87,8 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             }
         } else if (d.type === 'params') {
             ex.set_params(d.focus, d.aperture, d.grainMs, d.grainRate, d.gain, d.master);
+        } else if (d.type === 'direct') {
+            ex.set_direct(d.on >>> 0, d.offsetSec);
         } else if (d.type === 'mode') {
             ex.set_mode(d.value >>> 0);
         } else if (d.type === 'fx') {
@@ -110,6 +117,14 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             ex.set_filter_lfo(d.rate, d.depth);
         } else if (d.type === 'reverb') {
             ex.set_reverb(d.wet);
+        } else if (d.type === 'material') {
+            ex.set_material(d.kind >>> 0, d.amount);
+        } else if (d.type === 'modulation') {
+            ex.set_modulation(d.mode >>> 0, d.target >>> 0, d.rate, d.depth, d.attack, d.release);
+        } else if (d.type === 'effects') {
+            ex.set_effects(d.delayWet, d.delayTime, d.delayFeedback, d.chorusWet, d.chorusRate, d.chorusDepth);
+        } else if (d.type === 'advancedfx') {
+            ex.set_advanced_effects(d.flangerWet, d.flangerRate, d.flangerDepth, d.phaserWet, d.phaserRate, d.phaserDepth, d.drive, d.resonatorWet, d.resonatorHz, d.resonatorDecay);
         } else if (d.type === 'smart') {
             ex.set_smart(d.on >>> 0);
         } else if (d.type === 'ambient') {
@@ -152,8 +167,16 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             for (let offset = 0; offset < frames; offset += this.blockCapacity) {
                 const count = Math.min(this.blockCapacity, frames - offset);
                 this.ex.process(count);
-                out[0].set(new Float32Array(this.mem.buffer, this.outL, count), offset);
-                if (out[1]) out[1].set(new Float32Array(this.mem.buffer, this.outR, count), offset);
+                // La memoria WASM es estable en ejecución normal. Reutilizar
+                // las vistas elimina dos objetos por quantum (~750/seg a 48 kHz).
+                if (this.outViewBuffer !== this.mem.buffer || this.outViewCount !== count) {
+                    this.outViewBuffer = this.mem.buffer;
+                    this.outViewCount = count;
+                    this.outLView = new Float32Array(this.mem.buffer, this.outL, count);
+                    this.outRView = new Float32Array(this.mem.buffer, this.outR, count);
+                }
+                out[0].set(this.outLView, offset);
+                if (out[1]) out[1].set(this.outRView, offset);
             }
             if (this.now) { this.cpuAcc += this.now() - t0; this.cpuBlocks++; }
 
@@ -204,15 +227,19 @@ class RayDroneProcessor extends AudioWorkletProcessor {
                     const cap = this.ex.foci_cap();
                     const fp = new Float32Array(this.mem.buffer, this.ex.foci_ptr(), cap);
                     const fw = new Float32Array(this.mem.buffer, this.ex.foci_w_ptr(), cap);
-                    foci = [];
+                    foci = this.foci;
+                    foci.length = 0;
                     for (let i = 0; i < cap; i++) if (fw[i] > 0.004) foci.push(fp[i], fw[i]);
                 }
 
                 if (this.rayOff.length) {
                     this.port.postMessage({ type: 'rays', offsets: this.rayOff, bands: this.rayBand, ratios: this.rayRatio, foci, level, perf });
-                    this.rayOff = [];
-                    this.rayBand = [];
-                    this.rayRatio = [];
+                    // structured clone ya ha capturado el mensaje al volver de
+                    // postMessage: conservar la capacidad evita tres arrays y
+                    // su posterior GC unas 20 veces por segundo en audio real.
+                    this.rayOff.length = 0;
+                    this.rayBand.length = 0;
+                    this.rayRatio.length = 0;
                 } else {
                     this.port.postMessage({ type: 'level', foci, level, perf });
                 }

@@ -182,6 +182,9 @@ ex.set_scale(0);
 ex.set_space(0, 0);
 ex.set_reverb(0);
 ex.set_filter_lfo(0, 0);
+ex.set_material(0, 0);
+ex.set_modulation(0, 0, 0.25, 0, 0.05, 0.5);
+ex.set_effects(0, 0.38, 0.35, 0, 0.25, 0.008);
 function rmsOut(blocks) {
     let sum = 0, n = 0;
     for (let b = 0; b < blocks; b++) {
@@ -198,6 +201,71 @@ ex.set_filter(90, 0.1); // cutoff well below the 220 Hz source → should gut it
 const rmsLow = rmsOut(120);
 check('low cutoff attenuates the signal (filter is in the path)', rmsLow < rmsOpen * 0.5, `rms open=${rmsOpen.toExponential(2)} → low=${rmsLow.toExponential(2)}`);
 ex.set_filter(22050, 0); // reopen
+
+console.log('\n[materials, modulation and spatial effects]');
+ex.set_material(3, 0.85); // crystal
+ex.set_modulation(1, 1, 0.35, 0.4, 0.02, 0.4); // LFO → aperture
+ex.set_effects(0.2, 0.11, 0.3, 0.18, 0.25, 0.008);
+ex.set_advanced_effects(0.35, 0.18, 0.003, 0.3, 0.22, 0.6, 0.35, 0.28, 330, 0.55);
+ex.set_reverb(0.2);
+const designed = run(180);
+check('material/modulation/effects chain stays finite', designed.nonFinite === 0, `${designed.nonFinite} bad samples`);
+check('material/modulation/effects chain remains audible', designed.rms > 1e-4, `rms=${designed.rms.toExponential(2)}`);
+
+console.log('\n[original ray direct — same WASM acoustic path]');
+ex.set_direct(1, 0.25);
+ex.set_material(1, 0.8); // metal
+ex.set_modulation(1, 0, 0.6, 0.35, 0.02, 0.3);
+ex.set_effects(0.18, 0.12, 0.25, 0.12, 0.3, 0.008);
+ex.set_reverb(0.22);
+const directRay = run(160);
+check('exports and renders Original as a direct ray through WASM', directRay.nonFinite === 0 && directRay.rms > 1e-4, `rms=${directRay.rms.toExponential(2)}`);
+ex.set_direct(0, 0);
+
+// No basta con que la cadena no se caiga: este A/B obliga a que material y
+// efectos alteren muestras reales con la misma fuente, semilla y parámetros.
+function renderSignature(material, effects, reverb) {
+    const q = freshInstance();
+    q.ex.set_reverb(reverb);
+    q.ex.set_material(material, 1);
+    q.ex.set_modulation(1, 1, 0.42, 0.65, 0.02, 0.3);
+    q.ex.set_effects(...effects);
+    q.ex.seed(0x7f4a_7c15);
+    const out = [];
+    for (let b = 0; b < 520; b++) { // > delay más largo de la prueba
+        q.ex.process(BLOCK);
+        const L = q.f32(q.ex.out_l_ptr(), BLOCK);
+        for (let i = 0; i < BLOCK; i++) out.push(L[i]);
+    }
+    return out;
+}
+const plainSig = renderSignature(0, [0, 0.12, 0, 0, 0.25, 0.008], 0);
+const shapedSig = renderSignature(3, [0.45, 0.12, 0.32, 0.35, 0.3, 0.012], 0.45);
+let meanDifference = 0;
+for (let i = 0; i < plainSig.length; i++) meanDifference += Math.abs(plainSig[i] - shapedSig[i]);
+meanDifference /= plainSig.length;
+check('material + movement + FX audibly alter the rendered signal', meanDifference > 1e-3, `mean abs difference=${meanDifference.toExponential(2)}`);
+
+// Regresión: Delay compartía memoria con Chorus/Flanger, pero su feedback se
+// aplicaba incluso con Delay wet=0. Eso coloreaba Chorus y podía auto-resonar.
+function renderChorusWithHiddenDelayFeedback(feedback) {
+    const q = freshInstance();
+    q.ex.set_direct(1, 0);
+    q.ex.set_effects(0, 0.12, feedback, 0.35, 0.3, 0.008);
+    const out = [];
+    for (let b = 0; b < 180; b++) {
+        q.ex.process(BLOCK);
+        const L = q.f32(q.ex.out_l_ptr(), BLOCK);
+        for (let i = 0; i < BLOCK; i++) out.push(L[i]);
+    }
+    return out;
+}
+const chorusNoFeedback = renderChorusWithHiddenDelayFeedback(0);
+const chorusMaxFeedback = renderChorusWithHiddenDelayFeedback(0.68);
+let hiddenFeedbackDifference = 0;
+for (let i = 0; i < chorusNoFeedback.length; i++) hiddenFeedbackDifference += Math.abs(chorusNoFeedback[i] - chorusMaxFeedback[i]);
+hiddenFeedbackDifference /= chorusNoFeedback.length;
+check('Delay feedback is inaudible when Delay wet is zero', hiddenFeedbackDifference < 1e-8, `mean abs difference=${hiddenFeedbackDifference.toExponential(2)}`);
 
 console.log('\n[convergence lab — the offline estimator]');
 // The same estimator, measured offline: more rays → lower error vs the target.
@@ -242,6 +310,10 @@ ex.set_keys(2);
 ex.set_reverb(NaN);
 ex.set_filter(NaN, Infinity);
 ex.set_filter_lfo(Infinity, NaN);
+ex.set_material(99, NaN);
+ex.set_modulation(99, 99, Infinity, NaN, Infinity, NaN);
+ex.set_effects(NaN, Infinity, NaN, Infinity, NaN, Infinity);
+ex.set_advanced_effects(NaN, Infinity, NaN, Infinity, NaN, Infinity, NaN, Infinity, NaN, Infinity);
 ex.set_fx(NaN, 99, Infinity, NaN);
 ex.set_space(NaN, Infinity);
 ex.set_ambient(1, 3, 2, NaN, Infinity, NaN);
