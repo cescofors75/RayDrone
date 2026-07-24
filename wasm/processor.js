@@ -1,14 +1,41 @@
 // AudioWorkletProcessor que ejecuta el motor RayDrone (Rust→wasm). Estéreo.
 // Incluye diagnóstico: CPU del hilo de audio, voces (rayos) activas y granos/seg.
 
+// Exports que el constructor necesita SÍ o SÍ. Si falta alguno, el .wasm es de
+// una versión anterior al JS (el binario no está en git: hay que recompilarlo
+// tras cada pull) y conviene decirlo con todas las letras.
+// (wasm/test_exports.mjs comprueba que esta lista cubre todo lo que el
+// constructor invoca de verdad; si no, volvería el TypeError crudo.)
+const REQUIRED_EXPORTS = [
+    'memory', 'out_l_ptr', 'out_r_ptr', 'block_capacity', 'set_output_sample_rate',
+    'seed', 'process', 'set_sample', 'sample_ptr', 'sample_capacity',
+    'slog_cap', 'slog_ptr', 'slog_b_ptr', 'slog_s_ptr',
+    'foci_cap', 'foci_ptr', 'foci_w_ptr',
+];
+
 class RayDroneProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
+        this.broken = null; // motivo por el que el motor no puede arrancar
         // Compilar aquí dentro: Safari no permite clonar un WebAssembly.Module
         // del hilo principal al worklet, así que llegan los bytes crudos.
         const mod = new WebAssembly.Module(options.processorOptions.wasmBytes);
         this.inst = new WebAssembly.Instance(mod, {});
         this.ex = this.inst.exports;
+        // El guard de `onMsg` solo salta cuando llega un mensaje, pero el
+        // constructor ya llama a exports del motor: con un .wasm viejo reventaba
+        // aquí con un TypeError crudo ("block_capacity is not a function"), el
+        // nodo moría antes de recibir nada y la UI nunca llegaba a explicarlo.
+        const missing = REQUIRED_EXPORTS.filter((n) => {
+            const v = this.ex[n];
+            return n === 'memory' ? !v : typeof v !== 'function';
+        });
+        if (missing.length) {
+            this.broken = `faltan exports: ${missing.join(', ')}`;
+            this.port.postMessage({ type: 'enginemismatch', messageType: 'init', error: this.broken });
+            this.port.onmessage = () => {}; // nada que hacer con este módulo
+            return;
+        }
         this.mem = this.ex.memory;
         this.outL = this.ex.out_l_ptr();
         this.outR = this.ex.out_r_ptr();
@@ -26,6 +53,18 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.rayRatio = [];
         this.foci = [];
         this.blockCount = 0;
+        // Vistas del log de rayos y de la constelación: se recreaban en cada
+        // quantum (3 objetos por bloque, ~1100/seg a 48 kHz, porque casi siempre
+        // hay granos nuevos). El módulo no tiene allocator ni llama a
+        // memory.grow, así que el ArrayBuffer nunca se desacopla y basta con
+        // crearlas una vez.
+        this.slogCap = this.ex.slog_cap();
+        this.slogOff = new Float32Array(this.mem.buffer, this.ex.slog_ptr(), this.slogCap);
+        this.slogBand = new Float32Array(this.mem.buffer, this.ex.slog_b_ptr(), this.slogCap);
+        this.slogRatio = new Float32Array(this.mem.buffer, this.ex.slog_s_ptr(), this.slogCap);
+        this.fociCap = this.ex.foci_cap();
+        this.fociPos = new Float32Array(this.mem.buffer, this.ex.foci_ptr(), this.fociCap);
+        this.fociW = new Float32Array(this.mem.buffer, this.ex.foci_w_ptr(), this.fociCap);
         // Diagnóstico de rendimiento
         this.now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : null;
         this.cpuAcc = 0;
@@ -161,6 +200,11 @@ class RayDroneProcessor extends AudioWorkletProcessor {
     process(inputs, outputs) {
         const out = outputs[0];
         const frames = out[0].length;
+        if (this.broken) { // .wasm incompatible: silencio, pero el nodo sigue vivo
+            out[0].fill(0);
+            if (out[1]) out[1].fill(0);
+            return true;
+        }
         if (this.ready) {
             // Cronometrar el render del motor (carga real del hilo de audio).
             const t0 = this.now ? this.now() : 0;
@@ -191,10 +235,8 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             // Recoger rayos (offset + banda) para la visualización.
             const w = this.ex.slog_w() >>> 0;
             if (w !== this.lastW) {
-                const cap = this.ex.slog_cap();
-                const off = new Float32Array(this.mem.buffer, this.ex.slog_ptr(), cap);
-                const bnd = new Float32Array(this.mem.buffer, this.ex.slog_b_ptr(), cap);
-                const rat = new Float32Array(this.mem.buffer, this.ex.slog_s_ptr(), cap);
+                const cap = this.slogCap;
+                const off = this.slogOff, bnd = this.slogBand, rat = this.slogRatio;
                 let count = (w - this.lastW) >>> 0;
                 if (count > cap) count = cap;
                 for (let k = 0; k < count; k++) {
@@ -224,12 +266,10 @@ class RayDroneProcessor extends AudioWorkletProcessor {
                 // Constelación de focos (solo en ambient): posición + peso de cada foco vivo.
                 let foci = null;
                 if (this.ambOn) {
-                    const cap = this.ex.foci_cap();
-                    const fp = new Float32Array(this.mem.buffer, this.ex.foci_ptr(), cap);
-                    const fw = new Float32Array(this.mem.buffer, this.ex.foci_w_ptr(), cap);
+                    const fp = this.fociPos, fw = this.fociW;
                     foci = this.foci;
                     foci.length = 0;
-                    for (let i = 0; i < cap; i++) if (fw[i] > 0.004) foci.push(fp[i], fw[i]);
+                    for (let i = 0; i < this.fociCap; i++) if (fw[i] > 0.004) foci.push(fp[i], fw[i]);
                 }
 
                 if (this.rayOff.length) {

@@ -83,6 +83,9 @@ impl Filter {
 
     pub fn set_sample_rate(&mut self, sr: f32) {
         self.sr = if sr.is_finite() && sr > 1.0 { sr } else { 44100.0 };
+        // El umbral de bypass depende de `sr`: sin recalcularlo, cambiar el
+        // sample rate dejaba `enabled` con el valor del rate anterior.
+        self.refresh_enabled();
         self.cur_cut = -1.0; // force coeff recompute
     }
 
@@ -91,7 +94,7 @@ impl Filter {
     pub fn set(&mut self, cutoff_hz: f32, res01: f32) {
         self.base_cut = clampf(cutoff_hz, 20.0, self.sr * 0.45);
         self.res = clampf(res01, 0.0, 1.0);
-        self.enabled = cutoff_hz < self.sr * 0.45 || self.lfo_depth > 0.0;
+        self.refresh_enabled();
         self.cur_cut = -1.0;
     }
 
@@ -100,8 +103,16 @@ impl Filter {
     pub fn set_lfo(&mut self, rate_hz: f32, depth_oct: f32) {
         self.lfo_inc = clampf(rate_hz, 0.0, 100.0) / self.sr;
         self.lfo_depth = clampf(depth_oct, 0.0, 6.0);
-        self.enabled = self.base_cut < self.sr * 0.45 || self.lfo_depth > 0.0;
+        self.refresh_enabled();
         self.cur_cut = -1.0;
+    }
+
+    /// The filter is in the path only if it actually does something: a cutoff
+    /// below ~Nyquist, or an LFO that will sweep it there. Always recomputed,
+    /// never latched, so any setter can restore a true bypass.
+    #[inline]
+    fn refresh_enabled(&mut self) {
+        self.enabled = self.base_cut < self.sr * 0.45 || self.lfo_depth > 0.0;
     }
 
     pub fn set_enabled(&mut self, on: bool) {

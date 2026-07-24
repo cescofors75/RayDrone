@@ -18,10 +18,15 @@ jobs:
       - name: Build wasm engine
         run: bash wasm/build.sh
 
+      - name: Test shared DSP kernel
+        run: cargo test --manifest-path core/Cargo.toml
+
       - name: Check JS syntax
         run: |
-          node --check wasm/processor.js
-          node --check wasm/api/leaderboard.js
+          for f in wasm/processor.js wasm/lab-worker.js wasm/acoustic.js \
+                   wasm/raytrace_buffer.js wasm/i18n.js wasm/api/leaderboard.js; do
+            node --check "$f" && echo "$f OK"
+          done
           node -e "
             const fs = require('fs'), vm = require('vm');
             for (const f of ['wasm/index.html', 'wasm/game.html', 'rta.html']) {
@@ -31,6 +36,16 @@ jobs:
               console.log(f, 'OK —', n, 'script block(s)');
             }
           "
+
+      # Estos suites ya existían y nadie los corría. Se ejecutan contra el .wasm
+      # recién compilado, así que una regresión del motor —o un export que el JS
+      # usa y el binario no tiene— rompe el build en vez del navegador.
+      - name: Test wasm engine + contrato de exports
+        run: |
+          node wasm/test_exports.mjs
+          node wasm/test_engine.mjs
+          node wasm/test_acoustic.mjs
+          node wasm/test_raytrace_buffer.mjs
 
       - name: Upload wasm artifact
         uses: actions/upload-artifact@v4

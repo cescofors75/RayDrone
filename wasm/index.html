@@ -879,9 +879,10 @@
     let ctx = null, jsGain = null, node = null, wasmBytes = null;
     let analyser = null, freqData = null, timeData = null; // espectro FFT + osciloscopio de la salida real
     let sampleData = null, sampleRate = 44100, duration = 0;
+    let sentSample = null;  // qué Float32Array tiene ya el worklet (evita re-subirlo)
     let focusSec = 0, mode = 'drone', isPlaying = false;
-    let wavePeaks = null;   // pico por pixel (precalculado al cargar)
-    let waveEnergy = null;  // RMS por pixel para distinguir cuerpo y transitorios
+    let wavePeaks = null;   // picos globales del archivo, PEAK_BINS fijos (minimapa)
+    let waveEnergy = null;  // RMS global del archivo, misma rejilla que wavePeaks
     let visRays = [];       // rayos a dibujar (posiciones de granos reales)
     let latestFoci = null;  // constelación de focos en ambient: [pos0, w0, pos1, w1, …]
     let latestPerf = null;
@@ -972,9 +973,13 @@
     }
 
     // Cutoff: slider 0..99 mapea 80 Hz..18 kHz exponencial; 100 = abierto (bypass).
+    // El motor da por "abierto" cualquier corte >= sr·0.45 con el sample rate REAL
+    // de salida: con el 22050 fijo de antes, un contexto a 96 kHz (umbral 43200)
+    // se quedaba con un paso-bajo de 22 kHz puesto en vez de hacer bypass.
     function cutoffHz() {
         const v = parseFloat(cutoffSlider.value);
-        return v >= 100 ? 22050 : 80 * Math.pow(18000 / 80, v / 100);
+        if (v < 100) return 80 * Math.pow(18000 / 80, v / 100);
+        return ctx ? ctx.sampleRate : 192000;
     }
     function sendFilter() {
         if (!node) return;
@@ -1126,7 +1131,9 @@
                     // El .wasm cargado no reconoce un mensaje que el JS ya manda —
                     // típico de haber tirado de git sin recompilar raydrone.wasm
                     // (no está versionado; hay que correr wasm/build.sh).
-                    statusEl.innerText = `⚠ El motor (.wasm) no reconoce "${d.messageType}" — recompílalo con: bash wasm/build.sh (git pull no actualiza el binario compilado). Detalle: ${d.error}`;
+                    statusEl.innerText = d.messageType === 'init'
+                        ? `⚠ El motor (.wasm) es de una versión anterior a esta página — recompílalo: wasm/build.sh (o build.ps1 en Windows). git pull NO actualiza el binario. Detalle: ${d.error}`
+                        : `⚠ El motor (.wasm) no reconoce "${d.messageType}" — recompílalo con: bash wasm/build.sh (git pull no actualiza el binario compilado). Detalle: ${d.error}`;
                     console.error('enginemismatch:', d.messageType, d.error);
                 }
                 if (d.perf) updatePerf(d.perf);
@@ -1150,8 +1157,13 @@
             sendFilterLfo();
             sendAmbient();
         }
-        if (sampleData) {
+        // Subir el sample solo si el worklet no lo tiene ya. Antes se re-enviaba
+        // en CADA ensureEngine() — o sea en cada Play y en cada A/B del Lab: una
+        // copia estructurada de hasta 16 MB más un build_energy() completo dentro
+        // del hilo de audio, con su corte correspondiente.
+        if (sampleData && sentSample !== sampleData) {
             node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
+            sentSample = sampleData;
         }
     }
 
@@ -1176,6 +1188,7 @@
         duration = buf.duration;
         focusSec = duration * 0.3;
         node.port.postMessage({ type: 'sample', data: sampleData, sampleRate });
+        sentSample = sampleData;
         sendParams(false); // silencio hasta que se pulse Play (el motor arranca con rate=0)
         computePeaks();
         playBtn.disabled = false;
@@ -1665,14 +1678,21 @@
     }
 
     // ── Visualización: onda + rayos (granos reales) + foco ──────────────────
+    // Picos/energía globales (los usa el minimapa) a resolución FIJA, no la del
+    // canvas: resizeViz() cambia waveCanvas.width al entrar y salir de pantalla
+    // completa y estos arrays se calculan una sola vez al cargar. Con el ancho
+    // atado al canvas quedaban desfasados: leyendo de más daba undefined → NaN
+    // (el minimapa se cortaba a media tira, porque canvas descarta los tramos no
+    // finitos) y leyendo de menos mostraba solo el principio del archivo.
+    const PEAK_BINS = 2048;
+    const peakAt = (arr, x, W) => arr[Math.min(PEAK_BINS - 1, (x * PEAK_BINS / W) | 0)];
     function computePeaks() {
-        const W = waveCanvas.width;
-        wavePeaks = new Float32Array(W);
-        waveEnergy = new Float32Array(W);
+        wavePeaks = new Float32Array(PEAK_BINS);
+        waveEnergy = new Float32Array(PEAK_BINS);
         if (!sampleData) return;
-        for (let x = 0; x < W; x++) {
-            const start = Math.floor(x / W * sampleData.length);
-            const end = Math.floor((x + 1) / W * sampleData.length);
+        for (let x = 0; x < PEAK_BINS; x++) {
+            const start = Math.floor(x / PEAK_BINS * sampleData.length);
+            const end = Math.floor((x + 1) / PEAK_BINS * sampleData.length);
             let peak = 0, sumSq = 0;
             for (let i = start; i < end; i++) {
                 const v = sampleData[i], a = Math.abs(v);
@@ -2152,7 +2172,7 @@
             const mmid = MM_H / 2;
             wctx.strokeStyle = canvasColor('accent', 0.30); wctx.beginPath();
             for (let x = 0; x < W; x += 2) {
-                const a = wavePeaks[x] * (MM_H * 0.42);
+                const a = peakAt(wavePeaks, x, W) * (MM_H * 0.42);
                 wctx.moveTo(x, mmid - a); wctx.lineTo(x, mmid + a);
             }
             wctx.stroke();
@@ -2160,7 +2180,7 @@
                 wctx.strokeStyle = canvasColor('accent-2', 0.42);
                 wctx.beginPath();
                 for (let x = 0; x < W; x += 2) {
-                    const a = waveEnergy[x] * (MM_H * 0.34);
+                    const a = peakAt(waveEnergy, x, W) * (MM_H * 0.34);
                     wctx.moveTo(x, mmid - a); wctx.lineTo(x, mmid + a);
                 }
                 wctx.stroke();

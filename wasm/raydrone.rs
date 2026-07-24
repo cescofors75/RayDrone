@@ -22,9 +22,13 @@ use raydrone_core::{
 
 use core::panic::PanicInfo;
 
+// Un panic dentro del worklet con `loop {}` colgaba el hilo de audio para
+// siempre: 100 % de CPU en un core, sin sonido y sin ningún aviso. Con el trap
+// de wasm el módulo aborta, el worklet emite `processorerror` y la UI ya lo
+// muestra ("Error en el motor de audio").
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    loop {}
+    core::arch::wasm32::unreachable()
 }
 
 const SAMPLE_CAP: usize = 4_000_000; // ~90 s @44.1k mono
