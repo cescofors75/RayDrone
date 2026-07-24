@@ -20,3 +20,36 @@ core/Cargo.lock
 __pycache__/
 *.pyc
 .DS_Store
+
+# ── Escritorio personal ──────────────────────────────────────────────────
+# Este repo vive en C:\Users\cesco\Desktop junto con archivos y carpetas
+# personales que NO son del proyecto RayDrone (fotos, correos, otros
+# proyectos de hardware, vídeos...). Se ignoran aquí para que `git status`
+# y el control de código de VS Code solo muestren wasm/ · core/ · vst/ ·
+# paper/ · .claude/ · .github/ — no todo el escritorio.
+.vscode/
+.codex/
+.env.local
+wasm/.env.local
+ADMINISTRACION_BACO/
+CESCO_MAILS_VISITTOO/
+CH341SER/
+DrumMachine_ESP32S3/
+MIDIInstrument/
+Mutua/
+RENTAS/
+Sterms/
+Roland TR-808/
+Wave Point - Sample Packs/
+fotosPareMarroc/
+Daisy_Seed_pinout_square.webp
+FORS FERRER FRANCESC - 44004300X.crt
+GreenVelvet&FredAgain1995-2024.mp4
+RayDroneV1.mp4
+const char WIFI_SSID = iPhone de Fr.txt
+drummachinered808.txt
+raydrone.png
+red808.ModelFile
+red80816steps.txt
+red808S3.txt
+**/desktop.ini

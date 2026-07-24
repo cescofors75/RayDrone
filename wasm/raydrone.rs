@@ -39,7 +39,8 @@ static mut OUTL: [f32; BLOCK] = [0.0; BLOCK];
 static mut OUTR: [f32; BLOCK] = [0.0; BLOCK];
 
 static mut SAMPLE_LEN: usize = 0;
-static mut SR: f32 = 44100.0;
+static mut SOURCE_SR: f32 = 44100.0;
+static mut OUTPUT_SR: f32 = 44100.0;
 
 // Parámetros base
 static mut FOCUS: f32 = 0.3;
@@ -75,6 +76,14 @@ static mut WIDTH: f32 = 0.0;
 static mut OCT: f32 = 0.0;
 static mut PITCH_STEP: f32 = 1.0; // multiplicador de velocidad de lectura (transposición)
 
+// Original / Ray direct: una única trayectoria que recorre la fuente sin
+// granularizar. No es un bypass de Web Audio: desemboca en exactamente el
+// mismo material, filtro y espacio de rayos que el modo Drone.
+static mut DIRECT_ON: u32 = 0;
+static mut DIRECT_POS: f32 = 0.0;
+static mut DIRECT_TONE: f32 = 0.0;
+static mut DIRECT_PHASE: f32 = 0.0;
+
 // ── Escala microtonal: tabla de ratios de un período (octava, tritava…).
 // Vacía (len=0) = pitch continuo, comportamiento de siempre. Cada grano coge
 // un grado de la tabla; el muestreo del grado respeta MODE: estratificado
@@ -87,6 +96,19 @@ static mut SCALE_LEN: usize = 0;
 static mut SCALE_I: u32 = 0; // estratificado: round-robin por grados
 static mut QMC_P: f32 = 0.5; // QMC pitch (componente R2)
 const R2_ALPHA: f32 = 0.754_877_7; // 1/φ₂, φ₂ = constante plástica ≈ 1.324718
+
+// ── Teclas pulsadas (piano por teclado/ratón/táctil) ────────────────────────
+// Ratios de las notas actualmente sostenidas (2^(semitono/12) respecto a la
+// raíz), enviados por la UI cada vez que cambia el conjunto de teclas. No
+// vacío = cada grano nuevo coge una nota sostenida (así se tocan acordes);
+// vacío = se cae al comportamiento de siempre (Microtonal/Voicing o pitch
+// continuo). Mismo mecanismo de muestreo por grado que la escala microtonal,
+// con su propio acumulador QMC para no correlacionar ambos ejes.
+const KEYS_CAP: usize = 16;
+static mut KEYS: [f32; KEYS_CAP] = [1.0; KEYS_CAP];
+static mut KEYS_LEN: usize = 0;
+static mut KEYS_I: u32 = 0; // estratificado: round-robin por nota sostenida
+static mut QMC_KEY: f32 = 0.5; // QMC teclas (componente R2, propio)
 
 // ── Ambient: focos múltiples autónomos + árbol recursivo de focos ───────────
 // Modo ambient (AMB_ON=1): en vez de un único FOCUS, una constelación de focos.
@@ -121,6 +143,68 @@ static mut DC: DcBlocker = DcBlocker::new();
 // Filtro resonante (SVF) con LFO sincronizable a BPM — vive en core::filter.
 static mut FILTER: Filter = Filter::new();
 
+// ── Materiales sonoros y modulación ───────────────────────────────────────
+// Un material no es un preset de FX: altera el rayo en el momento de nacer y
+// durante su lectura. 0 vacío, 1 metal, 2 madera, 3 cristal, 4 agua, 5 plasma.
+static mut MATERIAL: u32 = 0;
+static mut MATERIAL_AMOUNT: f32 = 1.0;
+// Modulador común: 0 off, 1 LFO triangular, 2 envolvente de la salida.
+// Destinos: densidad, apertura, pitch. Mantenerlos en el núcleo hace que una
+// escena o un SDK obtengan exactamente el mismo resultado que la UI.
+static mut MOD_MODE: u32 = 0;
+static mut MOD_TARGET: u32 = 0;
+static mut MOD_RATE: f32 = 0.25;
+static mut MOD_DEPTH: f32 = 0.0;
+static mut MOD_ATTACK: f32 = 0.05;
+static mut MOD_RELEASE: f32 = 0.5;
+static mut MOD_PHASE: f32 = 0.0;
+static mut MOD_ENV: f32 = 0.0;
+
+// Cadena espacial ligera después del filtro: delay estéreo + chorus. El
+// buffer se comparte entre ambos taps y no asigna memoria en audio real-time.
+const DELAY_CAP: usize = 96_000; // 2 s a 48 kHz (se recorta según OUTPUT_SR)
+static mut DELAY_L: [f32; DELAY_CAP] = [0.0; DELAY_CAP];
+static mut DELAY_R: [f32; DELAY_CAP] = [0.0; DELAY_CAP];
+static mut DELAY_W: usize = 0;
+static mut DELAY_WET: f32 = 0.0;
+static mut DELAY_TIME: f32 = 0.38;
+static mut DELAY_FB: f32 = 0.35;
+static mut CHORUS_WET: f32 = 0.0;
+static mut CHORUS_RATE: f32 = 0.25;
+static mut CHORUS_DEPTH: f32 = 0.008;
+static mut CHORUS_PHASE: f32 = 0.0;
+// Interferencias y objetos vibrantes: FX derivados de trayectorias, no nodos
+// Web Audio externos. Flanger = trayectoria casi coincidente; Phaser = fases
+// que se cruzan; resonador = objeto que guarda y reemite energía.
+static mut FLANGER_WET: f32 = 0.0;
+static mut FLANGER_RATE: f32 = 0.16;
+static mut FLANGER_DEPTH: f32 = 0.003;
+static mut FLANGER_PHASE: f32 = 0.0;
+static mut PHASER_WET: f32 = 0.0;
+static mut PHASER_RATE: f32 = 0.18;
+static mut PHASER_DEPTH: f32 = 0.5;
+static mut PHASER_PHASE: f32 = 0.0;
+static mut PH_L: [f32; 4] = [0.0; 4];
+static mut PH_R: [f32; 4] = [0.0; 4];
+static mut DRIVE: f32 = 0.0;
+const RES_CAP: usize = 8192;
+static mut RES_L: [f32; RES_CAP] = [0.0; RES_CAP];
+static mut RES_R: [f32; RES_CAP] = [0.0; RES_CAP];
+static mut RES_W: usize = 0;
+static mut RES_WET: f32 = 0.0;
+static mut RES_FREQ: f32 = 440.0;
+static mut RES_DECAY: f32 = 0.55;
+// Campo de reflexiones: cuatro trayectorias cortas, con energía que vuelve al
+// buffer. Sustituye el uso audible del Freeverb heredado: Space es ahora una
+// geometría de rayos, no una caja de reverb convencional.
+static mut RAY_REVERB_WET: f32 = 0.0;
+static mut RAY_TONE_L: f32 = 0.0;
+static mut RAY_TONE_R: f32 = 0.0;
+const RAY_CAP: usize = 16_384; // 341 ms @48k; suficiente para cámara y cola recursiva
+static mut RAY_L: [f32; RAY_CAP] = [0.0; RAY_CAP];
+static mut RAY_R: [f32; RAY_CAP] = [0.0; RAY_CAP];
+static mut RAY_W: usize = 0;
+
 // Micro-detune por grano (±0.25% ≈ ±4 cents): batidos entre granos → drone lush, no estático.
 const DETUNE: f32 = 0.005;
 
@@ -140,7 +224,15 @@ static mut SLOG_W: u32 = 0;
 // Diagnóstico de rendimiento
 static mut SPAWN_COUNT: u32 = 0; // total de granos disparados (para granos/seg)
 
-// ── Convergence Lab: el MISMO estimador del motor, medible offline.
+// ── Convergence Lab: el mismo ESTIMADOR del motor (mismo kernel triangular,
+// mismo objetivo g[n]), medible offline. Ojo con el matiz para el paper: los
+// MUESTREADORES del Lab son las formas canónicas — estratificado de N estratos,
+// Kronecker áureo en f64 con rotación Cranley–Patterson, e importance
+// reponderado p/q (insesgado) — mientras que el motor en vivo usa variantes
+// streaming: recurrencia áurea iterativa en f32 sin rotación, 17 estratos
+// fijos round-robin, y los "rayos inteligentes" son exactamente el método
+// reverse (rejection sin reponderar, sesgado). Las curvas medidas aquí
+// caracterizan las formas canónicas, no las variantes en vivo.
 // Corre en una instancia aparte de este módulo dentro de un Web Worker (no toca
 // el hilo de audio). Acumuladores en f64 para que el suelo de error medido sea
 // del estimador, no de la precisión de la suma. RNG sembrable → reproducible.
@@ -167,6 +259,7 @@ struct Voice {
     gain: f32,
     band: u8,
     lp: f32,
+    tone: f32,
     depth: u32,
     step: f32, // velocidad de lectura (1.0 normal, 2.0 octava arriba)
     panl: f32,
@@ -181,6 +274,7 @@ static mut VOICES: [Voice; MAX_VOICES] = [Voice {
     gain: 0.0,
     band: 1,
     lp: 0.0,
+    tone: 0.0,
     depth: 0,
     step: 1.0,
     panl: 0.707,
@@ -206,6 +300,47 @@ fn ensure_voice_init() {
             NACTIVE = 0;
             VINIT = true;
         }
+    }
+}
+
+fn reset_runtime_state() {
+    unsafe {
+        for i in 0..MAX_VOICES {
+            VOICES[i].active = false;
+            FREE[i] = (MAX_VOICES - 1 - i) as u16;
+        }
+        NFREE = MAX_VOICES;
+        NACTIVE = 0;
+        VINIT = true;
+
+        SPAWN_ACC = 0.0;
+        QMC = 0.5;
+        STRAT_I = 0;
+        SCALE_I = 0;
+        QMC_P = 0.5;
+        KEYS_I = 0;
+        QMC_KEY = 0.5;
+        ENV = 0.0;
+        EVO = 0.5;
+        EVO_DIR = 1.0;
+        FOCI_ACC = 0.0;
+        AMB_DIRTY = true;
+        for i in 0..FMAX {
+            FPOS[i] = 0.0;
+            FVEL[i] = 0.0;
+            FW[i] = 0.0;
+            FWT[i] = 0.0;
+            FDEPTH[i] = 0;
+            FAGE[i] = 0.0;
+            FTTL[i] = 0.0;
+            FACT[i] = false;
+        }
+        SLOG_W = 0;
+        SPAWN_COUNT = 0;
+
+        REVERB.reset();
+        DC.reset();
+        FILTER.reset();
     }
 }
 
@@ -238,12 +373,12 @@ fn next_u() -> f32 {
 fn update_coeffs() {
     unsafe {
         let tp = 6.283_185_5f32;
-        A_LOW = clampf(tp * 500.0 / SR, 0.0, 0.99);
-        A_HIGH = clampf(tp * 2500.0 / SR, 0.0, 0.99);
+        A_LOW = clampf(tp * 500.0 / OUTPUT_SR, 0.0, 0.99);
+        A_HIGH = clampf(tp * 2500.0 / OUTPUT_SR, 0.0, 0.99);
         // DC blocker (~10 Hz) y longitudes de reverb escaladas al SR real.
-        DC.set_sample_rate(SR);
-        REVERB.set_sample_rate(SR);
-        FILTER.set_sample_rate(SR);
+        DC.set_sample_rate(OUTPUT_SR);
+        REVERB.set_sample_rate(OUTPUT_SR);
+        FILTER.set_sample_rate(OUTPUT_SR);
     }
 }
 
@@ -255,6 +390,14 @@ pub extern "C" fn sample_ptr() -> *mut f32 {
 #[no_mangle]
 pub extern "C" fn window_ptr() -> *mut f32 {
     unsafe { WINDOW.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn window_capacity() -> usize {
+    WIN
+}
+#[no_mangle]
+pub extern "C" fn block_capacity() -> usize {
+    BLOCK
 }
 #[no_mangle]
 pub extern "C" fn out_l_ptr() -> *mut f32 {
@@ -307,11 +450,18 @@ pub extern "C" fn spawn_count() -> u32 {
 pub extern "C" fn set_sample(len: usize, sr: f32) {
     unsafe {
         SAMPLE_LEN = if len > SAMPLE_CAP { SAMPLE_CAP } else { len };
-        SR = if sr > 1.0 { sr } else { 44100.0 };
-        AMB_DIRTY = true; // recolocar las semillas al span del nuevo sample
+        SOURCE_SR = if sr.is_finite() && sr > 1.0 { sr } else { 44100.0 };
+    }
+    reset_runtime_state();
+    build_energy();
+}
+
+#[no_mangle]
+pub extern "C" fn set_output_sample_rate(sr: f32) {
+    unsafe {
+        OUTPUT_SR = if sr.is_finite() && sr > 1.0 { sr } else { 44100.0 };
     }
     update_coeffs();
-    build_energy();
 }
 
 // Envolvente de energía (RMS por bin) de todo el sample, para el trazado inverso.
@@ -350,7 +500,7 @@ fn build_energy() {
 #[inline]
 fn energy_at(sec: f32) -> f32 {
     unsafe {
-        let span = (SAMPLE_LEN as f32) / SR;
+        let span = (SAMPLE_LEN as f32) / SOURCE_SR;
         if span <= 0.0 {
             return 0.0;
         }
@@ -372,7 +522,10 @@ pub extern "C" fn set_smart(on: u32) {
 #[no_mangle]
 pub extern "C" fn set_reverb(wet: f32) {
     unsafe {
-        REVERB.set_wet(wet);
+        RAY_REVERB_WET = if wet.is_finite() { clampf(wet, 0.0, 0.82) } else { 0.0 };
+        // Compatibilidad ABI: mantenemos el objeto compartido, pero el campo
+        // de trayectorias de abajo es la única reverb audible en RayDrone.
+        REVERB.set_wet(0.0);
     }
 }
 
@@ -380,7 +533,9 @@ pub extern "C" fn set_reverb(wet: f32) {
 #[no_mangle]
 pub extern "C" fn set_filter(cutoff_hz: f32, res: f32) {
     unsafe {
-        FILTER.set(cutoff_hz, res);
+        let cutoff = if cutoff_hz.is_finite() { clampf(cutoff_hz, 10.0, OUTPUT_SR * 0.5) } else { OUTPUT_SR * 0.5 };
+        let resonance = if res.is_finite() { clampf(res, 0.0, 1.0) } else { 0.0 };
+        FILTER.set(cutoff, resonance);
     }
 }
 
@@ -389,36 +544,89 @@ pub extern "C" fn set_filter(cutoff_hz: f32, res: f32) {
 #[no_mangle]
 pub extern "C" fn set_filter_lfo(rate_hz: f32, depth_oct: f32) {
     unsafe {
-        FILTER.set_lfo(rate_hz, depth_oct);
+        let rate = if rate_hz.is_finite() { clampf(rate_hz, 0.0, 100.0) } else { 0.0 };
+        let depth = if depth_oct.is_finite() { clampf(depth_oct, 0.0, 12.0) } else { 0.0 };
+        FILTER.set_lfo(rate, depth);
+    }
+}
+
+// Materiales: API estable para UI, escenas y SDK. El valor se valida aquí para
+// que un mensaje de terceros nunca pueda llevar el render a NaN.
+#[no_mangle]
+pub extern "C" fn set_material(kind: u32, amount: f32) {
+    unsafe {
+        MATERIAL = kind.min(5);
+        MATERIAL_AMOUNT = if amount.is_finite() { clampf(amount, 0.0, 1.0) } else { 0.0 };
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn set_modulation(mode: u32, target: u32, rate_hz: f32, depth: f32, attack_s: f32, release_s: f32) {
+    unsafe {
+        MOD_MODE = mode.min(2);
+        MOD_TARGET = target.min(2);
+        MOD_RATE = if rate_hz.is_finite() { clampf(rate_hz, 0.001, 30.0) } else { 0.25 };
+        MOD_DEPTH = if depth.is_finite() { clampf(depth, 0.0, 1.0) } else { 0.0 };
+        MOD_ATTACK = if attack_s.is_finite() { clampf(attack_s, 0.001, 10.0) } else { 0.05 };
+        MOD_RELEASE = if release_s.is_finite() { clampf(release_s, 0.001, 10.0) } else { 0.5 };
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn set_effects(delay_wet: f32, delay_time_s: f32, delay_feedback: f32, chorus_wet: f32, chorus_rate: f32, chorus_depth_s: f32) {
+    unsafe {
+        DELAY_WET = if delay_wet.is_finite() { clampf(delay_wet, 0.0, 1.0) } else { 0.0 };
+        DELAY_TIME = if delay_time_s.is_finite() { clampf(delay_time_s, 0.01, 1.8) } else { 0.38 };
+        // El feedback se limita por debajo de la auto-oscilación audible.
+        DELAY_FB = if delay_feedback.is_finite() { clampf(delay_feedback, 0.0, 0.68) } else { 0.35 };
+        CHORUS_WET = if chorus_wet.is_finite() { clampf(chorus_wet, 0.0, 1.0) } else { 0.0 };
+        CHORUS_RATE = if chorus_rate.is_finite() { clampf(chorus_rate, 0.01, 8.0) } else { 0.25 };
+        CHORUS_DEPTH = if chorus_depth_s.is_finite() { clampf(chorus_depth_s, 0.001, 0.03) } else { 0.008 };
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn set_advanced_effects(flanger_wet: f32, flanger_rate: f32, flanger_depth_s: f32, phaser_wet: f32, phaser_rate: f32, phaser_depth: f32, drive: f32, resonator_wet: f32, resonator_hz: f32, resonator_decay: f32) {
+    unsafe {
+        FLANGER_WET = if flanger_wet.is_finite() { clampf(flanger_wet, 0.0, 1.0) } else { 0.0 };
+        FLANGER_RATE = if flanger_rate.is_finite() { clampf(flanger_rate, 0.01, 8.0) } else { 0.16 };
+        FLANGER_DEPTH = if flanger_depth_s.is_finite() { clampf(flanger_depth_s, 0.0001, 0.015) } else { 0.003 };
+        PHASER_WET = if phaser_wet.is_finite() { clampf(phaser_wet, 0.0, 1.0) } else { 0.0 };
+        PHASER_RATE = if phaser_rate.is_finite() { clampf(phaser_rate, 0.01, 8.0) } else { 0.18 };
+        PHASER_DEPTH = if phaser_depth.is_finite() { clampf(phaser_depth, 0.0, 1.0) } else { 0.5 };
+        DRIVE = if drive.is_finite() { clampf(drive, 0.0, 1.0) } else { 0.0 };
+        RES_WET = if resonator_wet.is_finite() { clampf(resonator_wet, 0.0, 1.0) } else { 0.0 };
+        RES_FREQ = if resonator_hz.is_finite() { clampf(resonator_hz, 60.0, 4000.0) } else { 440.0 };
+        RES_DECAY = if resonator_decay.is_finite() { clampf(resonator_decay, 0.0, 0.92) } else { 0.55 };
     }
 }
 
 #[no_mangle]
 pub extern "C" fn set_params(focus: f32, aperture: f32, grain_ms: f32, grain_rate: f32, gain: f32, master: f32) {
     unsafe {
-        FOCUS = focus;
-        APERTURE = if aperture < 0.0 { 0.0 } else { aperture };
-        GRAIN_DUR = grain_ms * 0.001;
-        GRAIN_RATE = if grain_rate < 0.0 { 0.0 } else { grain_rate };
-        GAIN = gain;
-        MASTER = master;
+        FOCUS = if focus.is_finite() { focus } else { 0.0 };
+        APERTURE = if aperture.is_finite() { clampf(aperture, 0.0, 3600.0) } else { 0.0 };
+        GRAIN_DUR = if grain_ms.is_finite() { clampf(grain_ms, 1.0, 10_000.0) * 0.001 } else { 0.15 };
+        GRAIN_RATE = if grain_rate.is_finite() { clampf(grain_rate, 0.0, 100_000.0) } else { 0.0 };
+        GAIN = if gain.is_finite() { clampf(gain, 0.0, 8.0) } else { 0.0 };
+        MASTER = if master.is_finite() { clampf(master, 0.0, 8.0) } else { 0.0 };
     }
 }
 
 #[no_mangle]
 pub extern "C" fn set_mode(m: u32) {
     unsafe {
-        MODE = m;
+        MODE = m.min(2);
     }
 }
 
 #[no_mangle]
 pub extern "C" fn set_fx(aber: f32, bounces: u32, refl: f32, feedback: f32) {
     unsafe {
-        ABER = clampf(aber, 0.0, 1.0);
-        BOUNCES = bounces;
-        REFL = clampf(refl, 0.0, 1.0);
-        FEEDBACK = clampf(feedback, 0.0, 1.0);
+        ABER = if aber.is_finite() { clampf(aber, 0.0, 1.0) } else { 0.0 };
+        BOUNCES = bounces.min(6); // same cap as the VST engine's set_bounce
+        REFL = if refl.is_finite() { clampf(refl, 0.0, 1.0) } else { 0.0 };
+        FEEDBACK = if feedback.is_finite() { clampf(feedback, 0.0, 1.0) } else { 0.0 };
         update_coeffs();
     }
 }
@@ -426,8 +634,8 @@ pub extern "C" fn set_fx(aber: f32, bounces: u32, refl: f32, feedback: f32) {
 #[no_mangle]
 pub extern "C" fn set_space(width: f32, oct: f32) {
     unsafe {
-        WIDTH = clampf(width, 0.0, 1.0);
-        OCT = clampf(oct, 0.0, 1.0);
+        WIDTH = if width.is_finite() { clampf(width, 0.0, 1.0) } else { 0.0 };
+        OCT = if oct.is_finite() { clampf(oct, 0.0, 1.0) } else { 0.0 };
     }
 }
 
@@ -435,7 +643,7 @@ pub extern "C" fn set_space(width: f32, oct: f32) {
 #[no_mangle]
 pub extern "C" fn set_pitch(mult: f32) {
     unsafe {
-        PITCH_STEP = if mult > 0.01 { mult } else { 1.0 };
+        PITCH_STEP = if mult.is_finite() { clampf(mult, 0.01, 32.0) } else { 1.0 };
     }
 }
 
@@ -452,6 +660,11 @@ pub extern "C" fn scale_capacity() -> usize {
 pub extern "C" fn set_scale(len: usize) {
     unsafe {
         SCALE_LEN = if len > SCALE_CAP { SCALE_CAP } else { len };
+        for ratio in &mut SCALE[..SCALE_LEN] {
+            if !ratio.is_finite() || *ratio <= 0.0 {
+                *ratio = 1.0;
+            }
+        }
         SCALE_I = 0;
     }
 }
@@ -507,6 +720,60 @@ fn scale_ratio() -> f32 {
     }
 }
 
+// ── Teclas pulsadas (piano) ──
+#[no_mangle]
+pub extern "C" fn keys_ptr() -> *mut f32 {
+    unsafe { KEYS.as_mut_ptr() }
+}
+#[no_mangle]
+pub extern "C" fn keys_capacity() -> usize {
+    KEYS_CAP
+}
+// La UI llama a esto cada vez que cambia el conjunto de teclas sostenidas
+// (teclado, ratón o táctil), con los ratios ya escritos en `keys_ptr()`.
+// len=0 = ninguna tecla pulsada → se cae a Microtonal/Voicing o pitch continuo.
+#[no_mangle]
+pub extern "C" fn set_keys(len: usize) {
+    unsafe {
+        KEYS_LEN = if len > KEYS_CAP { KEYS_CAP } else { len };
+        for ratio in &mut KEYS[..KEYS_LEN] {
+            if !ratio.is_finite() || *ratio <= 0.0 {
+                *ratio = 1.0;
+            }
+        }
+        KEYS_I = 0;
+    }
+}
+
+// Nota para el grano nuevo, elegida entre las teclas sostenidas — mismo
+// mecanismo de muestreo por grado que `scale_ratio`, con su propio
+// acumulador QMC para no correlacionar los dos ejes de "grado".
+#[inline]
+fn key_ratio() -> f32 {
+    unsafe {
+        if KEYS_LEN == 0 {
+            return 1.0;
+        }
+        let n = KEYS_LEN;
+        let idx = match MODE {
+            1 => {
+                QMC_KEY += R2_ALPHA;
+                if QMC_KEY >= 1.0 {
+                    QMC_KEY -= 1.0;
+                }
+                (QMC_KEY * (n as f32)) as usize
+            }
+            2 => {
+                let i = (KEYS_I as usize) % n;
+                KEYS_I = KEYS_I.wrapping_add(1);
+                i
+            }
+            _ => (rng01() * (n as f32)) as usize,
+        };
+        KEYS[if idx >= n { n - 1 } else { idx }]
+    }
+}
+
 // ── Ambient: focos múltiples + recursión ────────────────────────────────────
 #[no_mangle]
 pub extern "C" fn set_ambient(on: u32, seeds: u32, depth: u32, spread: f32, drift: f32, rate: f32) {
@@ -519,9 +786,9 @@ pub extern "C" fn set_ambient(on: u32, seeds: u32, depth: u32, spread: f32, drif
         }
         AMB_SEEDS = ns;
         AMB_DEPTH = if depth > 4 { 4 } else { depth };
-        AMB_SPREAD = clampf(spread, 0.0, 1.0);
-        AMB_DRIFT = clampf(drift, 0.0, 1.0);
-        AMB_RATE = clampf(rate, 0.0, 4.0);
+        AMB_SPREAD = if spread.is_finite() { clampf(spread, 0.0, 1.0) } else { 0.0 };
+        AMB_DRIFT = if drift.is_finite() { clampf(drift, 0.0, 1.0) } else { 0.0 };
+        AMB_RATE = if rate.is_finite() { clampf(rate, 0.0, 4.0) } else { 0.0 };
     }
 }
 
@@ -539,7 +806,7 @@ fn powf_i(base: f32, n: u32) -> f32 {
 #[inline]
 fn focus_span() -> f32 {
     unsafe {
-        let s = (SAMPLE_LEN as f32) / SR;
+        let s = (SAMPLE_LEN as f32) / SOURCE_SR;
         if s > 0.0 {
             s
         } else {
@@ -881,8 +1148,7 @@ fn lab_cum_search(len: usize, r: f32) -> usize {
 }
 
 // Una estimación con N rayos. method: 0 random, 1 stratified, 2 QMC (áurea),
-// 3 importance (reponderado, insesgado), 4 reverse (rejection ∝ energía, sesgado
-// — exactamente lo que hace el motor en vivo con los rayos inteligentes).
+// 3 importance (reponderado, insesgado), 4 reverse (q ∝ p·energía, sesgado).
 #[no_mangle]
 pub extern "C" fn lab_estimate(f0: i32, a: i32, n_rays: u32, method: u32, sd: u32) {
     unsafe {
@@ -895,42 +1161,35 @@ pub extern "C" fn lab_estimate(f0: i32, a: i32, n_rays: u32, method: u32, sd: u3
         let rot = rng01() as f64;
         if method == 3 {
             let len = (2 * a + 1) as usize;
-            let mut ws = 0.0f64;
             for i in 0..n {
                 let u = ((i as f32) + rng01()) / (n as f32);
                 let idx = lab_cum_search(len, u);
+                // Borde f32: con N grande, u puede redondear a 1.0 (o superar el
+                // máximo de la CDF, que es una suma acumulada en f32) y la
+                // búsqueda devuelve el bin extremo de la apertura, donde el
+                // kernel triangular vale exactamente 0 → p = q = 0 y 0/0 = NaN
+                // envenenaría la estimación entera. Un bin de masa nula no
+                // debería poder salir elegido: su peso correcto es 0, así que
+                // se descarta la muestra (equivale a wi = 0, sin sesgo).
+                let qm = LAB_QM[idx];
+                if qm <= 0.0 {
+                    continue;
+                }
                 let k = idx as i32 - a;
-                let wi = (LAB_PM[idx] / LAB_QM[idx]) as f64;
-                ws += wi;
+                let wi = (LAB_PM[idx] / qm) as f64;
                 let b = f0 as i64 + k as i64;
                 for m in 0..LAB_D {
                     LAB_EST[m] += wi * lab_s(b + m as i64);
                 }
             }
-            let inv = if ws > 0.0 { 1.0 / ws } else { 0.0 };
+            let inv = 1.0 / (n as f64);
             for m in 0..LAB_D {
                 LAB_EST[m] *= inv * (LAB_WIN[m] as f64);
             }
         } else if method == 4 {
-            let len = (2 * a + 1) as i64;
             for _ in 0..n {
-                let mut k = roundi(tri_inv(rng01()) * (a as f32));
-                let mut tries = 0;
-                while tries < 6 {
-                    let mut idx = k + a as i64;
-                    if idx < 0 {
-                        idx = 0;
-                    }
-                    if idx >= len {
-                        idx = len - 1;
-                    }
-                    if LAB_EN[idx as usize] >= LAB_EMAX * rng01() {
-                        break;
-                    }
-                    k = roundi(tri_inv(rng01()) * (a as f32));
-                    tries += 1;
-                }
-                let b = f0 as i64 + k;
+                let idx = lab_cum_search((2 * a + 1) as usize, rng01());
+                let b = f0 as i64 + idx as i64 - a as i64;
                 for m in 0..LAB_D {
                     LAB_EST[m] += lab_s(b + m as i64);
                 }
@@ -994,6 +1253,205 @@ fn band_filter(i: usize, x: f32) -> f32 {
     }
 }
 
+// `offset_sec` permite que el click de la onda siga siendo el punto de inicio
+// de Original. Al activar se vacían voces granulares para que no haya mezcla
+// escondida entre ambos modelos de fuente.
+#[no_mangle]
+pub extern "C" fn set_direct(on: u32, offset_sec: f32) {
+    unsafe {
+        DIRECT_ON = if on == 0 { 0 } else { 1 };
+        if DIRECT_ON == 1 {
+            let maxp = SAMPLE_LEN.saturating_sub(2) as f32;
+            DIRECT_POS = if offset_sec.is_finite() { clampf(offset_sec * SOURCE_SR, 0.0, maxp) } else { 0.0 };
+            DIRECT_TONE = 0.0;
+            DIRECT_PHASE = 0.0;
+            reset_runtime_state();
+        }
+    }
+}
+
+#[inline]
+fn modulation_value() -> f32 {
+    unsafe {
+        match MOD_MODE {
+            1 => {
+                // Triangular bipolar, deliberadamente sin sin/cos para no_std.
+                let p = MOD_PHASE;
+                (if p < 0.5 { p * 4.0 - 1.0 } else { 3.0 - p * 4.0 }) * MOD_DEPTH
+            }
+            2 => (MOD_ENV * 2.0 - 1.0) * MOD_DEPTH,
+            _ => 0.0,
+        }
+    }
+}
+
+#[inline]
+fn material_sample(i: usize, x: f32) -> f32 {
+    unsafe {
+        let a = MATERIAL_AMOUNT;
+        let shaped = match MATERIAL {
+            // Metal: el diferencial enfatiza bordes y parciales altos.
+            1 => { let d = x - VOICES[i].tone; VOICES[i].tone += 0.12 * d; x + d * 1.6 },
+            // Madera: resonador medio cálido, con una pequeña parte directa.
+            2 => { VOICES[i].tone += 0.045 * (x - VOICES[i].tone); VOICES[i].tone * 0.86 + x * 0.14 },
+            // Cristal: lectura limpia y resonante; su duración se amplía al nacer.
+            3 => { VOICES[i].tone += 0.22 * (x - VOICES[i].tone); x * 0.82 + VOICES[i].tone * 0.42 },
+            // Agua: filtro suave y una ondulación lenta por la edad del rayo.
+            4 => { VOICES[i].tone += 0.09 * (x - VOICES[i].tone); x * (0.82 + 0.18 * tri_inv((VOICES[i].age * 0.00037) % 1.0)) + VOICES[i].tone * 0.35 },
+            // Plasma: no linealidad contenida, rica sin convertir el bus en ruido.
+            5 => x + (x - x * x * x) * 0.75,
+            _ => x,
+        };
+        x + (shaped - x) * a
+    }
+}
+
+#[inline]
+fn direct_material(x: f32) -> f32 {
+    unsafe {
+        let a = MATERIAL_AMOUNT;
+        let shaped = match MATERIAL {
+            1 => { let d = x - DIRECT_TONE; DIRECT_TONE += 0.12 * d; x + d * 1.6 },
+            2 => { DIRECT_TONE += 0.045 * (x - DIRECT_TONE); DIRECT_TONE * 0.86 + x * 0.14 },
+            3 => { DIRECT_TONE += 0.22 * (x - DIRECT_TONE); x * 0.82 + DIRECT_TONE * 0.42 },
+            4 => { DIRECT_TONE += 0.09 * (x - DIRECT_TONE); x * (0.82 + 0.18 * tri_inv(DIRECT_PHASE)) + DIRECT_TONE * 0.35 },
+            5 => x + (x - x * x * x) * 0.75,
+            _ => x,
+        };
+        x + (shaped - x) * a
+    }
+}
+
+#[inline]
+fn ray_reflections(l: f32, r: f32) -> (f32, f32) {
+    unsafe {
+        // Mantener el historial reciente para una activación limpia, pero no
+        // recorrer ni filtrar cuatro trayectorias cuando la cámara está seca.
+        // Esto convierte el bypass de Reverb en dos escrituras y un índice.
+        if RAY_REVERB_WET <= 0.0 {
+            RAY_L[RAY_W] = l;
+            RAY_R[RAY_W] = r;
+            RAY_W = (RAY_W + 1) % RAY_CAP;
+            return (l, r);
+        }
+        // Cámara de rayos independiente: sus trayectorias no contaminan Delay.
+        let paths = [0.017, 0.029, 0.043, 0.071];
+        let gains = [0.44, 0.31, 0.22, 0.15];
+        let mut ray_l = 0.0;
+        let mut ray_r = 0.0;
+        for k in 0..4 {
+            let d = ((paths[k] * OUTPUT_SR) as usize).min(RAY_CAP - 1);
+            let p = (RAY_W + RAY_CAP - d) % RAY_CAP;
+            let cross = if k & 1 == 0 { 0.18 } else { 0.42 };
+            ray_l += (RAY_L[p] * (1.0 - cross) + RAY_R[p] * cross) * gains[k];
+            ray_r += (RAY_R[p] * (1.0 - cross) + RAY_L[p] * cross) * gains[k];
+        }
+        let absorb = match MATERIAL { 1 => 0.30, 2 => 0.055, 3 => 0.20, 4 => 0.11, 5 => 0.38, _ => 0.16 };
+        RAY_TONE_L += absorb * (ray_l - RAY_TONE_L);
+        RAY_TONE_R += absorb * (ray_r - RAY_TONE_R);
+        if MATERIAL == 1 || MATERIAL == 5 { ray_l += (ray_l - RAY_TONE_L) * MATERIAL_AMOUNT; ray_r += (ray_r - RAY_TONE_R) * MATERIAL_AMOUNT; }
+        if MATERIAL == 2 || MATERIAL == 4 { ray_l = ray_l * (1.0 - MATERIAL_AMOUNT * 0.55) + RAY_TONE_L * MATERIAL_AMOUNT * 0.55; ray_r = ray_r * (1.0 - MATERIAL_AMOUNT * 0.55) + RAY_TONE_R * MATERIAL_AMOUNT * 0.55; }
+        // Sin wet no hay realimentación: reactivar la cámara nunca recupera
+        // una cola escondida; solo parte del historial directo reciente.
+        let feedback = RAY_REVERB_WET * (0.18 + RAY_REVERB_WET * 0.24);
+        RAY_L[RAY_W] = l + ray_l * feedback;
+        RAY_R[RAY_W] = r + ray_r * feedback;
+        RAY_W = (RAY_W + 1) % RAY_CAP;
+        (l + (ray_l - l) * RAY_REVERB_WET, r + (ray_r - r) * RAY_REVERB_WET)
+    }
+}
+
+#[inline]
+fn spatial_effects(l: f32, r: f32) -> (f32, f32) {
+    unsafe {
+        let cap = ((OUTPUT_SR * 1.9) as usize).min(DELAY_CAP - 1).max(1);
+        let delay_on = DELAY_WET > 0.0;
+        let chorus_on = CHORUS_WET > 0.0;
+        let flanger_on = FLANGER_WET > 0.0;
+
+        // Bypass barato que conserva una ventana de audio reciente. Antes se
+        // calculaban tres taps y dos LFO por muestra aunque los tres wet fueran
+        // cero, que es precisamente el estado inicial y el más habitual.
+        if !delay_on && !chorus_on && !flanger_on {
+            DELAY_L[DELAY_W] = l;
+            DELAY_R[DELAY_W] = r;
+            DELAY_W = (DELAY_W + 1) % cap;
+            return (l, r);
+        }
+
+        let delay = ((DELAY_TIME * OUTPUT_SR) as usize).min(cap - 1);
+        let read = (DELAY_W + cap - delay) % cap;
+        let dl = DELAY_L[read];
+        let dr = DELAY_R[read];
+        // El feedback pertenece solo al Delay. Antes también realimentaba el
+        // buffer con Delay a 0 % si Chorus/Flanger estaban activos, creando una
+        // resonancia inesperada y, con algunas fuentes, el pitido denunciado.
+        let feedback = if delay_on { DELAY_FB } else { 0.0 };
+        DELAY_L[DELAY_W] = l + dl * feedback;
+        DELAY_R[DELAY_W] = r + dr * feedback;
+
+        let mut cl = l;
+        let mut crr = r;
+        if chorus_on {
+            let tri = if CHORUS_PHASE < 0.5 { CHORUS_PHASE * 2.0 } else { 2.0 - CHORUS_PHASE * 2.0 };
+            let cdelay = ((0.014 + tri * CHORUS_DEPTH) * OUTPUT_SR) as usize;
+            let cr = (DELAY_W + cap - cdelay.min(cap - 1)) % cap;
+            cl = DELAY_L[cr];
+            crr = DELAY_R[cr];
+            CHORUS_PHASE += CHORUS_RATE / OUTPUT_SR;
+            if CHORUS_PHASE >= 1.0 { CHORUS_PHASE -= 1.0; }
+        }
+        // Flanger: dos rutas casi idénticas interfieren; el peine se desplaza
+        // porque la superficie virtual se mueve lentamente.
+        let mut fll = l;
+        let mut frr = r;
+        if flanger_on {
+            let ftri = if FLANGER_PHASE < 0.5 { FLANGER_PHASE * 2.0 } else { 2.0 - FLANGER_PHASE * 2.0 };
+            let fdelay = ((0.0006 + ftri * FLANGER_DEPTH) * OUTPUT_SR) as usize;
+            let fp = (DELAY_W + cap - fdelay.min(cap - 1)) % cap;
+            fll = DELAY_L[fp];
+            frr = DELAY_R[fp];
+            FLANGER_PHASE += FLANGER_RATE / OUTPUT_SR;
+            if FLANGER_PHASE >= 1.0 { FLANGER_PHASE -= 1.0; }
+        }
+        DELAY_W = (DELAY_W + 1) % cap;
+        (l + (dl - l) * DELAY_WET + (cl - l) * CHORUS_WET + (fll - l) * FLANGER_WET,
+         r + (dr - r) * DELAY_WET + (crr - r) * CHORUS_WET + (frr - r) * FLANGER_WET)
+    }
+}
+
+#[inline]
+fn phaser(l: f32, r: f32) -> (f32, f32) {
+    unsafe {
+        if PHASER_WET <= 0.0 { return (l, r); }
+        let tri = if PHASER_PHASE < 0.5 { PHASER_PHASE * 2.0 } else { 2.0 - PHASER_PHASE * 2.0 };
+        let a = clampf(0.08 + tri * PHASER_DEPTH * 0.78, 0.02, 0.9);
+        let mut yl = l;
+        let mut yr = r;
+        for i in 0..4 {
+            let nl = -a * yl + PH_L[i]; PH_L[i] = yl + a * nl; yl = nl;
+            let nr = -a * yr + PH_R[i]; PH_R[i] = yr + a * nr; yr = nr;
+        }
+        PHASER_PHASE += PHASER_RATE / OUTPUT_SR;
+        if PHASER_PHASE >= 1.0 { PHASER_PHASE -= 1.0; }
+        (l + (yl - l) * PHASER_WET, r + (yr - r) * PHASER_WET)
+    }
+}
+
+#[inline]
+fn resonator(l: f32, r: f32) -> (f32, f32) {
+    unsafe {
+        if RES_WET <= 0.0 { return (l, r); }
+        let d = ((OUTPUT_SR / RES_FREQ) as usize).min(RES_CAP - 1).max(1);
+        let p = (RES_W + RES_CAP - d) % RES_CAP;
+        let rl = RES_L[p]; let rr = RES_R[p];
+        RES_L[RES_W] = l + rl * RES_DECAY;
+        RES_R[RES_W] = r + rr * RES_DECAY;
+        RES_W = (RES_W + 1) % RES_CAP;
+        (l + (rl - l) * RES_WET, r + (rr - r) * RES_WET)
+    }
+}
+
 #[inline]
 fn log_push(off_sec: f32, band: u8, ratio: f32) {
     unsafe {
@@ -1034,15 +1492,22 @@ fn alloc_voice() -> usize {
 // Coloca un grano (usado por granos nuevos y rebotes). Decide octava, transposición y paneo.
 fn place(pos: f32, band: u8, depth: u32) {
     unsafe {
-        let dur_samp = GRAIN_DUR * SR;
+        let material_dur = if MATERIAL == 3 { 1.0 + MATERIAL_AMOUNT * 1.5 } else { 1.0 };
+        let dur_samp = GRAIN_DUR * OUTPUT_SR * material_dur;
         if dur_samp < 1.0 {
             return;
         }
         let detune = 1.0 + (rng01() - 0.5) * DETUNE; // micro-detune lush (batidos entre granos)
-        // octava × transposición × grado microtonal × detune: la retícula exacta
-        // de la escala + el detune ⇒ enjambre alrededor de cada grado, no comb estático.
-        let ratio = scale_ratio();
-        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * ratio * detune;
+        // octava × transposición × grado microtonal/tecla × detune: la retícula
+        // exacta + el detune ⇒ enjambre alrededor de cada grado, no comb estático.
+        // Las teclas sostenidas (piano) tienen prioridad: mientras haya alguna
+        // pulsada, cada grano toca una de esas notas en vez del grado de
+        // Microtonal/Voicing — igual que en el VST, tocar anula la textura fija.
+        let ratio = if KEYS_LEN > 0 { key_ratio() } else { scale_ratio() };
+        let mod_pitch = if MOD_TARGET == 2 { 1.0 + modulation_value() * 0.35 } else { 1.0 };
+        let plasma_detune = if MATERIAL == 5 { 1.0 + (rng01() - 0.5) * MATERIAL_AMOUNT * 0.04 } else { 1.0 };
+        let step = (if rng01() < OCT { 2.0 } else { 1.0 }) * PITCH_STEP * ratio * detune * mod_pitch * plasma_detune
+            * (SOURCE_SR / OUTPUT_SR);
         let pan = (rng01() * 2.0 - 1.0) * WIDTH; // paneo aleatorio según el ancho
         let panl = sqrtf((1.0 - pan) * 0.5); // equal-power
         let panr = sqrtf((1.0 + pan) * 0.5);
@@ -1055,12 +1520,13 @@ fn place(pos: f32, band: u8, depth: u32) {
             gain: GAIN,
             band,
             lp: 0.0,
+            tone: 0.0,
             depth,
             step,
             panl,
             panr,
         };
-        log_push(pos / SR, band, ratio);
+        log_push(pos / SOURCE_SR, band, ratio);
         SPAWN_COUNT = SPAWN_COUNT.wrapping_add(1);
     }
 }
@@ -1087,7 +1553,7 @@ fn spawn() {
                 _ => 1.0,
             }
         };
-        let span = (SAMPLE_LEN as f32) / SR;
+        let span = (SAMPLE_LEN as f32) / SOURCE_SR;
         // Foco efectivo: en ambient, un foco de la constelación (ponderado por peso),
         // con apertura más cerrada a escala fina (auto-similar). Si no, el FOCUS
         // único de siempre con su autoevolución acotada por FEEDBACK.
@@ -1097,10 +1563,12 @@ fn spawn() {
             let fi = fsel as usize;
             let level = (AMB_DEPTH as i32 - FDEPTH[fi] as i32).max(0) as u32;
             eff_focus = clampf(FPOS[fi], 0.0, span);
-            eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 0.8) * powf_i(0.7, level);
+            let m = if MOD_TARGET == 1 { 1.0 + modulation_value() } else { 1.0 };
+            eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 0.8) * powf_i(0.7, level) * m.max(0.05);
         } else {
             eff_focus = clampf(FOCUS + (EVO - 0.5) * FEEDBACK * span * 0.45, 0.0, span);
-            eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 0.8);
+            let m = if MOD_TARGET == 1 { 1.0 + modulation_value() } else { 1.0 };
+            eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 0.8) * m.max(0.05);
         }
         let mut off_sec = eff_focus + tri_inv(next_u()) * eff_ap * scale;
         // Trazado inverso: rejection ∝ energía → los rayos caen donde hay señal.
@@ -1115,7 +1583,7 @@ fn spawn() {
             }
         }
         let maxp = (SAMPLE_LEN - 2) as f32;
-        let pos = clampf(off_sec * SR, 0.0, maxp);
+        let pos = clampf(off_sec * SOURCE_SR, 0.0, maxp);
         place(pos, band, BOUNCES);
     }
 }
@@ -1124,15 +1592,45 @@ fn spawn() {
 pub extern "C" fn process(frames: usize) {
     unsafe {
         let n = if frames > BLOCK { BLOCK } else { frames };
-        let rate_per_sample = GRAIN_RATE / SR;
+        if n == 0 {
+            return;
+        }
         let maxp = if SAMPLE_LEN >= 2 {
             (SAMPLE_LEN - 2) as f32
         } else {
             0.0
         };
         // La constelación de focos avanza una vez por bloque (deriva lenta).
-        update_foci(n as f32 / SR);
+        update_foci(n as f32 / OUTPUT_SR);
         for f in 0..n {
+            MOD_PHASE += MOD_RATE / OUTPUT_SR;
+            if MOD_PHASE >= 1.0 { MOD_PHASE -= 1.0; }
+            if DIRECT_ON == 1 {
+                // Original = un rayo continuo de la fuente. Comparte desde aquí
+                // hasta la salida toda la acústica del modo granular.
+                let raw = if SAMPLE_LEN >= 2 { core_sample_at(&SAMPLE[..SAMPLE_LEN], DIRECT_POS) } else { 0.0 };
+                let motion_gain = if MOD_TARGET == 0 { (1.0 + modulation_value() * 0.55).max(0.0) } else { 1.0 };
+                let src = direct_material(raw) * motion_gain;
+                let (fl, fr) = FILTER.process(src * MASTER, src * MASTER);
+                let (rl0, rr0) = ray_reflections(fl, fr);
+                let (dl, dr) = spatial_effects(rl0, rr0);
+                let (pl, pr) = phaser(dl, dr);
+                let (ol, or) = resonator(pl, pr);
+                let driven_l = ol + (soft(ol * (1.0 + DRIVE * 7.0)) - ol) * DRIVE;
+                let driven_r = or + (soft(or * (1.0 + DRIVE * 7.0)) - or) * DRIVE;
+                let (rl, rr) = REVERB.process(driven_l, driven_r);
+                let (yl, yr) = DC.process(rl, rr);
+                OUTL[f] = soft(yl);
+                OUTR[f] = soft(yr);
+                let pitch_motion = if MOD_TARGET == 2 { 1.0 + modulation_value() * 0.35 } else { 1.0 };
+                DIRECT_POS += (SOURCE_SR / OUTPUT_SR) * PITCH_STEP * pitch_motion.max(0.05);
+                DIRECT_PHASE += 0.00037;
+                if DIRECT_PHASE >= 1.0 { DIRECT_PHASE -= 1.0; }
+                if SAMPLE_LEN >= 2 && DIRECT_POS > maxp { DIRECT_POS -= (SAMPLE_LEN - 2) as f32; }
+                continue;
+            }
+            let mod_density = if MOD_TARGET == 0 { 1.0 + modulation_value() } else { 1.0 };
+            let rate_per_sample = GRAIN_RATE * mod_density.max(0.0) / OUTPUT_SR;
             SPAWN_ACC += rate_per_sample;
             while SPAWN_ACC >= 1.0 {
                 spawn();
@@ -1155,14 +1653,14 @@ pub extern "C" fn process(frames: usize) {
                     FREE[NFREE] = i as u16;
                     NFREE += 1;
                     if dep > 0 && rng01() < REFL {
-                        let jitter = (rng01() - 0.5) * 0.1 * SR;
+                        let jitter = (rng01() - 0.5) * 0.1 * SOURCE_SR;
                         let cpos = clampf(endpos + jitter, 0.0, maxp);
                         place(cpos, bnd, dep - 1);
                     }
                     continue; // ACTIVE[k] ahora es otra voz: no avanzar k
                 }
                 let raw = core_sample_at(&SAMPLE[..SAMPLE_LEN], VOICES[i].pos);
-                let s = band_filter(i, raw) * core_win_at(&WINDOW, ph) * VOICES[i].gain;
+                let s = material_sample(i, band_filter(i, raw)) * core_win_at(&WINDOW, ph) * VOICES[i].gain;
                 accl += s * VOICES[i].panl;
                 accr += s * VOICES[i].panr;
                 VOICES[i].pos += VOICES[i].step;
@@ -1170,7 +1668,13 @@ pub extern "C" fn process(frames: usize) {
                 k += 1;
             }
             let (fl, fr) = FILTER.process(accl * MASTER, accr * MASTER);
-            let (rl, rr) = REVERB.process(fl, fr);
+            let (rl0, rr0) = ray_reflections(fl, fr);
+            let (dl, dr) = spatial_effects(rl0, rr0);
+            let (pl, pr) = phaser(dl, dr);
+            let (ol, or) = resonator(pl, pr);
+            let driven_l = ol + (soft(ol * (1.0 + DRIVE * 7.0)) - ol) * DRIVE;
+            let driven_r = or + (soft(or * (1.0 + DRIVE * 7.0)) - or) * DRIVE;
+            let (rl, rr) = REVERB.process(driven_l, driven_r);
             let (yl, yr) = DC.process(rl, rr);
             OUTL[f] = soft(yl);
             OUTR[f] = soft(yr);
@@ -1185,6 +1689,8 @@ pub extern "C" fn process(frames: usize) {
         }
         let blk = s / (n as f32);
         ENV = ENV * 0.9 + blk * 0.1;
+        let coeff = if blk > MOD_ENV { 1.0 / (MOD_ATTACK * OUTPUT_SR).max(1.0) } else { 1.0 / (MOD_RELEASE * OUTPUT_SR).max(1.0) };
+        MOD_ENV += (blk - MOD_ENV) * coeff * (n as f32);
         if FEEDBACK > 0.0 {
             // Barrido más lento y menos dependiente del nivel → evoluciona en vez de saltar.
             let step = FEEDBACK * (0.0004 + ENV * 0.0018);

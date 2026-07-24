@@ -12,27 +12,54 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         this.mem = this.ex.memory;
         this.outL = this.ex.out_l_ptr();
         this.outR = this.ex.out_r_ptr();
+        this.blockCapacity = this.ex.block_capacity();
+        this.outViewBuffer = null;
+        this.outViewCount = 0;
+        this.outLView = null;
+        this.outRView = null;
+        this.ex.set_output_sample_rate(sampleRate);
         this.ready = false;
         this.ex.seed(0x9e3779b9);
         this.lastW = 0;
         this.rayOff = [];
         this.rayBand = [];
         this.rayRatio = [];
+        this.foci = [];
         this.blockCount = 0;
         // Diagnóstico de rendimiento
         this.now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : null;
         this.cpuAcc = 0;
         this.cpuBlocks = 0;
         this.lastSpawn = 0;
-        // Grabación de la salida del motor (export WAV); tope de seguridad 5 min
+        // Grabación de la salida del motor (export WAV); tope de seguridad 5 min.
+        // Dos buffers reutilizables evitan slice()/arrays por quantum en el hilo de audio.
         this.recOn = false;
-        this.recL = [];
-        this.recR = [];
+        this.recCapacity = Math.ceil(sampleRate);
+        this.recL = new Float32Array(this.recCapacity);
+        this.recR = new Float32Array(this.recCapacity);
+        this.recWrite = 0;
         this.recFrames = 0;
         this.port.onmessage = (e) => this.onMsg(e.data);
     }
 
     onMsg(d) {
+        try {
+            this.handleMsg(d);
+        } catch (err) {
+            // Lo típico: raydrone.wasm está desactualizado respecto al JS (p.ej.
+            // tras un `git pull` sin recompilar — el .wasm NO está en git, hay
+            // que correr wasm/build.sh) y falta un export nuevo. Sin este
+            // try/catch, la excepción moría en silencio aquí dentro del
+            // worklet y el control simplemente "no hacía nada".
+            this.port.postMessage({
+                type: 'enginemismatch',
+                messageType: d.type,
+                error: String((err && err.message) || err),
+            });
+        }
+    }
+
+    handleMsg(d) {
         const ex = this.ex;
         if (d.type === 'sample') {
             const cap = ex.sample_capacity();
@@ -45,17 +72,23 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         } else if (d.type === 'record') {
             if (d.on) {
                 this.recOn = true;
-                this.recL = [];
-                this.recR = [];
+                this.recWrite = 0;
                 this.recFrames = 0;
             } else if (this.recOn) {
                 this.recOn = false;
-                this.flushRec();
+                this.flushRec(true, false);
             }
         } else if (d.type === 'window') {
-            new Float32Array(this.mem.buffer, ex.window_ptr(), d.data.length).set(d.data);
+            const cap = ex.window_capacity();
+            const len = Math.min(d.data.length, cap);
+            new Float32Array(this.mem.buffer, ex.window_ptr(), len).set(d.data.subarray(0, len));
+            if (d.data.length !== cap) {
+                this.port.postMessage({ type: 'windowinfo', used: len, total: d.data.length, expected: cap });
+            }
         } else if (d.type === 'params') {
             ex.set_params(d.focus, d.aperture, d.grainMs, d.grainRate, d.gain, d.master);
+        } else if (d.type === 'direct') {
+            ex.set_direct(d.on >>> 0, d.offsetSec);
         } else if (d.type === 'mode') {
             ex.set_mode(d.value >>> 0);
         } else if (d.type === 'fx') {
@@ -69,6 +102,12 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             const len = Math.min(d.data.length, ex.scale_capacity());
             if (len) new Float32Array(this.mem.buffer, ex.scale_ptr(), len).set(d.data.subarray(0, len));
             ex.set_scale(len);
+        } else if (d.type === 'keys') {
+            // Ratios de las notas sostenidas (piano por teclado/ratón/táctil);
+            // vacía = ninguna tecla pulsada, se cae a Microtonal/Voicing o pitch continuo.
+            const len = Math.min(d.data.length, ex.keys_capacity());
+            if (len) new Float32Array(this.mem.buffer, ex.keys_ptr(), len).set(d.data.subarray(0, len));
+            ex.set_keys(len);
         } else if (d.type === 'chord') {
             // Voicing afinado de core::music (0 = unísono/continuo).
             ex.set_chord(d.preset >>> 0);
@@ -78,6 +117,14 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             ex.set_filter_lfo(d.rate, d.depth);
         } else if (d.type === 'reverb') {
             ex.set_reverb(d.wet);
+        } else if (d.type === 'material') {
+            ex.set_material(d.kind >>> 0, d.amount);
+        } else if (d.type === 'modulation') {
+            ex.set_modulation(d.mode >>> 0, d.target >>> 0, d.rate, d.depth, d.attack, d.release);
+        } else if (d.type === 'effects') {
+            ex.set_effects(d.delayWet, d.delayTime, d.delayFeedback, d.chorusWet, d.chorusRate, d.chorusDepth);
+        } else if (d.type === 'advancedfx') {
+            ex.set_advanced_effects(d.flangerWet, d.flangerRate, d.flangerDepth, d.phaserWet, d.phaserRate, d.phaserDepth, d.drive, d.resonatorWet, d.resonatorHz, d.resonatorDecay);
         } else if (d.type === 'smart') {
             ex.set_smart(d.on >>> 0);
         } else if (d.type === 'ambient') {
@@ -86,21 +133,29 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         }
     }
 
-    // Concatenar lo grabado y enviarlo a la página (buffers transferidos, sin copia).
-    flushRec() {
-        let total = 0;
-        for (const a of this.recL) total += a.length;
-        const L = new Float32Array(total);
-        const R = new Float32Array(total);
-        let o = 0;
-        for (let i = 0; i < this.recL.length; i++) {
-            L.set(this.recL[i], o);
-            R.set(this.recR[i], o);
-            o += this.recL[i].length;
+    // Copiar una vez por segundo y transferir el chunk; no asigna por quantum.
+    flushRec(done = false, limited = false) {
+        if (this.recWrite > 0) {
+            const L = this.recL.slice(0, this.recWrite);
+            const R = this.recR.slice(0, this.recWrite);
+            this.port.postMessage({ type: 'recdata', l: L, r: R, sr: sampleRate, done, limited }, [L.buffer, R.buffer]);
+        } else if (done) {
+            this.port.postMessage({ type: 'recdata', l: new Float32Array(0), r: new Float32Array(0), sr: sampleRate, done, limited });
         }
-        this.recL = [];
-        this.recR = [];
-        this.port.postMessage({ type: 'recdata', l: L, r: R, sr: sampleRate }, [L.buffer, R.buffer]);
+        this.recWrite = 0;
+    }
+
+    recordBlock(left, right) {
+        let sourceOffset = 0;
+        while (sourceOffset < left.length) {
+            const count = Math.min(left.length - sourceOffset, this.recCapacity - this.recWrite);
+            this.recL.set(left.subarray(sourceOffset, sourceOffset + count), this.recWrite);
+            this.recR.set(right.subarray(sourceOffset, sourceOffset + count), this.recWrite);
+            this.recWrite += count;
+            this.recFrames += count;
+            sourceOffset += count;
+            if (this.recWrite === this.recCapacity) this.flushRec(false, false);
+        }
     }
 
     process(inputs, outputs) {
@@ -109,19 +164,27 @@ class RayDroneProcessor extends AudioWorkletProcessor {
         if (this.ready) {
             // Cronometrar el render del motor (carga real del hilo de audio).
             const t0 = this.now ? this.now() : 0;
-            this.ex.process(frames);
+            for (let offset = 0; offset < frames; offset += this.blockCapacity) {
+                const count = Math.min(this.blockCapacity, frames - offset);
+                this.ex.process(count);
+                // La memoria WASM es estable en ejecución normal. Reutilizar
+                // las vistas elimina dos objetos por quantum (~750/seg a 48 kHz).
+                if (this.outViewBuffer !== this.mem.buffer || this.outViewCount !== count) {
+                    this.outViewBuffer = this.mem.buffer;
+                    this.outViewCount = count;
+                    this.outLView = new Float32Array(this.mem.buffer, this.outL, count);
+                    this.outRView = new Float32Array(this.mem.buffer, this.outR, count);
+                }
+                out[0].set(this.outLView, offset);
+                if (out[1]) out[1].set(this.outRView, offset);
+            }
             if (this.now) { this.cpuAcc += this.now() - t0; this.cpuBlocks++; }
 
-            out[0].set(new Float32Array(this.mem.buffer, this.outL, frames));
-            if (out[1]) out[1].set(new Float32Array(this.mem.buffer, this.outR, frames));
-
             if (this.recOn) {
-                this.recL.push(out[0].slice());
-                this.recR.push((out[1] || out[0]).slice());
-                this.recFrames += frames;
+                this.recordBlock(out[0], out[1] || out[0]);
                 if (this.recFrames >= sampleRate * 300) { // tope 5 min
                     this.recOn = false;
-                    this.flushRec();
+                    this.flushRec(true, true);
                 }
             }
 
@@ -164,15 +227,19 @@ class RayDroneProcessor extends AudioWorkletProcessor {
                     const cap = this.ex.foci_cap();
                     const fp = new Float32Array(this.mem.buffer, this.ex.foci_ptr(), cap);
                     const fw = new Float32Array(this.mem.buffer, this.ex.foci_w_ptr(), cap);
-                    foci = [];
+                    foci = this.foci;
+                    foci.length = 0;
                     for (let i = 0; i < cap; i++) if (fw[i] > 0.004) foci.push(fp[i], fw[i]);
                 }
 
                 if (this.rayOff.length) {
                     this.port.postMessage({ type: 'rays', offsets: this.rayOff, bands: this.rayBand, ratios: this.rayRatio, foci, level, perf });
-                    this.rayOff = [];
-                    this.rayBand = [];
-                    this.rayRatio = [];
+                    // structured clone ya ha capturado el mensaje al volver de
+                    // postMessage: conservar la capacidad evita tres arrays y
+                    // su posterior GC unas 20 veces por segundo en audio real.
+                    this.rayOff.length = 0;
+                    this.rayBand.length = 0;
+                    this.rayRatio.length = 0;
                 } else {
                     this.port.postMessage({ type: 'level', foci, level, perf });
                 }

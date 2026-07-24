@@ -21,9 +21,10 @@ jobs:
       - name: Check JS syntax
         run: |
           node --check wasm/processor.js
+          node --check wasm/api/leaderboard.js
           node -e "
             const fs = require('fs'), vm = require('vm');
-            for (const f of ['wasm/index.html', 'rta.html']) {
+            for (const f of ['wasm/index.html', 'wasm/game.html', 'rta.html']) {
               const h = fs.readFileSync(f, 'utf8');
               let n = 0;
               for (const m of h.matchAll(/<script>([\s\S]*?)<\/script>/g)) { vm.compileFunction(m[1]); n++; }

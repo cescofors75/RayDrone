@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "app": "TexturePacker",
+    "version": "1.0",
+    "image": "hero.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 1536,
+      "h": 1152
+    },
+    "scale": "1"
+  },
+
+  "frames": {
+
+    "idle_01": { "frame": { "x": 0,    "y": 0,   "w":192, "h":192 } },
+    "idle_02": { "frame": { "x":192,   "y": 0,   "w":192, "h":192 } },
+    "idle_03": { "frame": { "x":384,   "y": 0,   "w":192, "h":192 } },
+    "idle_04": { "frame": { "x":576,   "y": 0,   "w":192, "h":192 } },
+    "idle_05": { "frame": { "x":768,   "y": 0,   "w":192, "h":192 } },
+    "idle_06": { "frame": { "x":960,   "y": 0,   "w":192, "h":192 } },
+    "idle_07": { "frame": { "x":1152,  "y": 0,   "w":192, "h":192 } },
+
+    "walk_01": { "frame": { "x":0,     "y":192, "w":192, "h":192 } },
+    "walk_02": { "frame": { "x":192,   "y":192, "w":192, "h":192 } },
+    "walk_03": { "frame": { "x":384,   "y":192, "w":192, "h":192 } },
+    "walk_04": { "frame": { "x":576,   "y":192, "w":192, "h":192 } },
+    "walk_05": { "frame": { "x":768,   "y":192, "w":192, "h":192 } },
+    "walk_06": { "frame": { "x":960,   "y":192, "w":192, "h":192 } },
+    "walk_07": { "frame": { "x":1152,  "y":192, "w":192, "h":192 } },
+
+    "attack_01": { "frame": { "x":0,    "y":384, "w":192, "h":192 } },
+    "attack_02": { "frame": { "x":192,  "y":384, "w":192, "h":192 } },
+    "attack_03": { "frame": { "x":384,  "y":384, "w":192, "h":192 } },
+    "attack_04": { "frame": { "x":576,  "y":384, "w":192, "h":192 } },
+    "attack_05": { "frame": { "x":768,  "y":384, "w":192, "h":192 } },
+    "attack_06": { "frame": { "x":960,  "y":384, "w":192, "h":192 } },
+
+    "block_01": { "frame": { "x":0,    "y":576, "w":192, "h":192 } },
+    "block_02": { "frame": { "x":192,  "y":576, "w":192, "h":192 } },
+    "block_03": { "frame": { "x":384,  "y":576, "w":192, "h":192 } },
+
+    "jump_01": { "frame": { "x":576, "y":576, "w":192, "h":192 } },
+    "jump_02": { "frame": { "x":768, "y":576, "w":192, "h":192 } },
+
+    "damage_01": { "frame": { "x":0, "y":768, "w":192, "h":192 } },
+    "damage_02": { "frame": { "x":192, "y":768, "w":192, "h":192 } },
+    "damage_03": { "frame": { "x":384, "y":768, "w":192, "h":192 } },
+
+    "death_01": { "frame": { "x":576, "y":768, "w":192, "h":192 } },
+    "death_02": { "frame": { "x":768, "y":768, "w":192, "h":192 } },
+    "death_03": { "frame": { "x":960, "y":768, "w":192, "h":192 } },
+
+    "victory_01": { "frame": { "x":0, "y":960, "w":192, "h":192 } },
+    "victory_02": { "frame": { "x":192, "y":960, "w":192, "h":192 } },
+    "victory_03": { "frame": { "x":384, "y":960, "w":192, "h":192 } },
+    "victory_04": { "frame": { "x":576, "y":960, "w":192, "h":192 } }
+  },
+
+  "animations": {
+    "idle": ["idle_01","idle_02","idle_03","idle_04","idle_05","idle_06","idle_07"],
+    "walk": ["walk_01","walk_02","walk_03","walk_04","walk_05","walk_06","walk_07"],
+    "attack": ["attack_01","attack_02","attack_03","attack_04","attack_05","attack_06"],
+    "block": ["block_01","block_02","block_03"],
+    "jump": ["jump_01","jump_02"],
+    "damage": ["damage_01","damage_02","damage_03"],
+    "death": ["death_01","death_02","death_03"],
+    "victory": ["victory_01","victory_02","victory_03","victory_04"]
+  }
+}

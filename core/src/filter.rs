@@ -82,7 +82,7 @@ impl Filter {
     }
 
     pub fn set_sample_rate(&mut self, sr: f32) {
-        self.sr = if sr > 1.0 { sr } else { 44100.0 };
+        self.sr = if sr.is_finite() && sr > 1.0 { sr } else { 44100.0 };
         self.cur_cut = -1.0; // force coeff recompute
     }
 
@@ -100,9 +100,8 @@ impl Filter {
     pub fn set_lfo(&mut self, rate_hz: f32, depth_oct: f32) {
         self.lfo_inc = clampf(rate_hz, 0.0, 100.0) / self.sr;
         self.lfo_depth = clampf(depth_oct, 0.0, 6.0);
-        if self.lfo_depth > 0.0 {
-            self.enabled = true;
-        }
+        self.enabled = self.base_cut < self.sr * 0.45 || self.lfo_depth > 0.0;
+        self.cur_cut = -1.0;
     }
 
     pub fn set_enabled(&mut self, on: bool) {
@@ -140,9 +139,22 @@ impl Filter {
             if self.lfo_phase >= 1.0 {
                 self.lfo_phase -= 1.0;
             }
+            // Give the sweep headroom: `recompute` clamps to the same ceiling
+            // (sr*0.45) that `base_cut` can already sit at (e.g. cutoff left
+            // "fully open"), so without this the LFO has nowhere to sweep up
+            // into and `depth` does nothing audible. Scale the swept base down
+            // so its peak excursion (oct == lfo_depth) lands at the ceiling
+            // instead of being silently clipped there every cycle.
+            let ceiling = self.sr * 0.45;
+            let peak_factor = pow2(self.lfo_depth);
+            let swept_base = if self.base_cut * peak_factor > ceiling {
+                ceiling / peak_factor
+            } else {
+                self.base_cut
+            };
             // 2^(depth·tri) via the integer-octave + fractional blend; cheap & smooth.
             let oct = self.lfo_depth * tri;
-            self.base_cut * pow2(oct)
+            swept_base * pow2(oct)
         } else {
             self.base_cut
         };
@@ -162,7 +174,10 @@ impl Default for Filter {
 }
 
 // 2^x for x >= 0, no_std: 2^floor(x) times a small-poly fractional part.
+// The 0.693_147 coefficient is intentionally ln(2) (the minimax poly's leading
+// term) — not a typo'd PI/E/SQRT_2, so silence clippy's approx-constant lint.
 #[inline]
+#[allow(clippy::approx_constant)]
 fn pow2(x: f32) -> f32 {
     let i = x as u32;
     let f = x - i as f32; // 0..1
@@ -228,6 +243,45 @@ mod tests {
     fn disabled_is_passthrough() {
         let mut f = Filter::new(); // enabled defaults false
         assert_eq!(f.process(0.7, -0.3), (0.7, -0.3));
+    }
+
+    #[test]
+    fn disabling_lfo_restores_open_filter_bypass() {
+        let sr = 44100.0;
+        let mut filter = Filter::new();
+        filter.set_sample_rate(sr);
+        filter.set(sr * 0.5, 0.0);
+        filter.set_lfo(2.0, 4.0);
+        assert_ne!(filter.process(0.7, -0.3), (0.7, -0.3));
+        filter.set_lfo(0.0, 0.0);
+        assert_eq!(filter.process(0.7, -0.3), (0.7, -0.3));
+    }
+
+    #[test]
+    fn lfo_sweeps_even_with_cutoff_left_fully_open() {
+        // Regression: with the manual cutoff at the ceiling (as when the UI's
+        // "Cutoff" control is left at its default, fully-open position), the
+        // LFO used to have no headroom to sweep into and `depth` was
+        // inaudible — this compares an 8 kHz tone's RMS with the LFO off vs.
+        // on and requires a real, audible drop, not just "some" numeric change.
+        let sr = 44100.0;
+        let freq = 8000.0;
+
+        let mut no_lfo = Filter::new();
+        no_lfo.set_sample_rate(sr);
+        no_lfo.set(sr * 0.45, 0.0); // cutoff at the absolute ceiling: "fully open"
+        let flat = response(&mut no_lfo, freq, sr);
+
+        let mut with_lfo = Filter::new();
+        with_lfo.set_sample_rate(sr);
+        with_lfo.set(sr * 0.45, 0.0); // same "fully open" cutoff
+        with_lfo.set_lfo(2.0, 4.0); // 2 Hz sweep, 4-octave depth
+        let swept = response(&mut with_lfo, freq, sr);
+
+        assert!(
+            swept < flat * 0.7,
+            "LFO depth had no real headroom to sweep into: flat {flat} vs swept {swept}"
+        );
     }
 
     #[test]

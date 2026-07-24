@@ -52,6 +52,9 @@ pub fn chord_ratios(preset: u32) -> &'static [f32] {
 /// drone to a track's key by ear. `2^(semitones/12)`, computed without `std`
 /// (the WASM build has no `powf`): exact integer-octave factor times a 12th-root
 /// lookup for the remainder.
+// The table's 7th entry (2^(6/12), the tritone) genuinely equals sqrt(2) —
+// that's the equal-tempered table being correct, not a typo'd constant.
+#[allow(clippy::approx_constant)]
 pub fn semitone_ratio(semitones: i32) -> f32 {
     // 2^(1/12) .. 2^(11/12)
     const ET: [f32; 12] = [
@@ -71,10 +74,15 @@ pub fn semitone_ratio(semitones: i32) -> f32 {
     let oct = semitones.div_euclid(12);
     let rem = semitones.rem_euclid(12) as usize;
     let base = ET[rem];
+    // Clamp the octave shift so a wildly out-of-range input (e.g. a malformed
+    // automation value) saturates instead of overflowing the `<<` — which
+    // panics in debug builds and is unspecified in release. 30 octaves is
+    // already ~24 octaves past anything audible.
+    let shift = oct.unsigned_abs().min(30);
     if oct >= 0 {
-        base * (1u32 << (oct as u32)) as f32
+        base * (1u32 << shift) as f32
     } else {
-        base / (1u32 << ((-oct) as u32)) as f32
+        base / (1u32 << shift) as f32
     }
 }
 
@@ -113,5 +121,14 @@ mod tests {
         assert_eq!(semitone_ratio(0), 1.0);
         assert!((semitone_ratio(12) - 2.0).abs() < 1e-4); // octave up
         assert!((semitone_ratio(-12) - 0.5).abs() < 1e-4); // octave down
+    }
+
+    #[test]
+    fn semitone_ratio_does_not_panic_on_extreme_input() {
+        // Far outside any real musical range — must saturate, not overflow the shift.
+        assert!(semitone_ratio(i32::MAX).is_finite());
+        assert!(semitone_ratio(i32::MIN).is_finite());
+        assert!(semitone_ratio(1000) > 0.0);
+        assert!(semitone_ratio(-1000) >= 0.0);
     }
 }
