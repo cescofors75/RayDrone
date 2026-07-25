@@ -16,7 +16,7 @@
 // El crate es no_std y sin deps, así que el build de `rustc` crudo (sin Cargo) lo
 // enlaza vía `--extern raydrone_core=...` — ver build.sh. No toca crates.io.
 use raydrone_core::{
-    clampf, filter::Filter, sample_at as core_sample_at, soft, sqrtf, tri_inv,
+    clampf, filter::Filter, flush, sample_at as core_sample_at, soft, sqrtf, tri_inv,
     win_at as core_win_at, DcBlocker, Reverb,
 };
 
@@ -148,6 +148,25 @@ static mut FILTER: Filter = Filter::new();
 // durante su lectura. 0 vacío, 1 metal, 2 madera, 3 cristal, 4 agua, 5 plasma.
 static mut MATERIAL: u32 = 0;
 static mut MATERIAL_AMOUNT: f32 = 1.0;
+// Banco modal: el CUERPO del material. El shaper por grano tine, pero un metal
+// y un cristal se distinguen por sus parciales y por cuanto duran, no por la
+// pendiente de un lowpass. Vive en el kernel compartido para que el motor web y
+// el firmware de la Daisy usen exactamente los mismos numeros.
+static mut MODAL: raydrone_core::material::ModalBank =
+    raydrone_core::material::ModalBank::new();
+static mut MATERIAL_HZ: f32 = 110.0;
+// Trim del banco para ESTE motor. `core` normaliza el banco por potencia, pero
+// su salida pasa por un `soft()` cuyo efecto depende del nivel absoluto de la
+// entrada — y el camino seco de este motor esta a bastante menos nivel que el
+// del port a Daisy. Sin este ajuste, activar un material subia 10 dB: dejaba de
+// ser un cambio de timbre para ser un cambio de volumen.
+const BANK_TRIM: f32 = 0.34;
+static mut MAT_DIRTY: bool = true;
+// Shimmer dentro del lazo de realimentacion (ver core::shimmer).
+static mut SHIMMER: raydrone_core::shimmer::Shimmer =
+    raydrone_core::shimmer::Shimmer::new();
+static mut SHIMMER_AMT: f32 = 0.0;
+static mut SHIMMER_TILT: f32 = 0.0;
 // Modulador común: 0 off, 1 LFO triangular, 2 envolvente de la salida.
 // Destinos: densidad, apertura, pitch. Mantenerlos en el núcleo hace que una
 // escena o un SDK obtengan exactamente el mismo resultado que la UI.
@@ -341,6 +360,9 @@ fn reset_runtime_state() {
         REVERB.reset();
         DC.reset();
         FILTER.reset();
+        MODAL.reset();
+        SHIMMER.reset();
+        MAT_DIRTY = true;
     }
 }
 
@@ -555,8 +577,31 @@ pub extern "C" fn set_filter_lfo(rate_hz: f32, depth_oct: f32) {
 #[no_mangle]
 pub extern "C" fn set_material(kind: u32, amount: f32) {
     unsafe {
-        MATERIAL = kind.min(5);
+        MATERIAL = kind.min(raydrone_core::material::MAT_COUNT - 1);
         MATERIAL_AMOUNT = if amount.is_finite() { clampf(amount, 0.0, 1.0) } else { 0.0 };
+        MAT_DIRTY = true;
+    }
+}
+
+/// Fundamental del banco modal, en Hz. Es la nota a la que se afina el CUERPO
+/// del material: los ocho parciales salen de ahi. Por defecto 110 Hz (A2).
+#[no_mangle]
+pub extern "C" fn set_material_pitch(hz: f32) {
+    unsafe {
+        MATERIAL_HZ = if hz.is_finite() { clampf(hz, 20.0, 4000.0) } else { 110.0 };
+        MAT_DIRTY = true;
+    }
+}
+
+/// Shimmer: cuanto de la cola se re-inyecta transpuesta, y con que intervalo
+/// (`tilt` 0 = solo +12, 1 = solo +19). A diferencia de `set_octave`, que solo
+/// hace que algunos granos lean a 2x, esto vive DENTRO de la realimentacion:
+/// la octava vuelve a entrar y la cola asciende sola.
+#[no_mangle]
+pub extern "C" fn set_shimmer(amount: f32, tilt: f32) {
+    unsafe {
+        SHIMMER_AMT = if amount.is_finite() { clampf(amount, 0.0, 1.0) } else { 0.0 };
+        SHIMMER_TILT = if tilt.is_finite() { clampf(tilt, 0.0, 1.0) } else { 0.0 };
     }
 }
 
@@ -1239,13 +1284,16 @@ fn band_filter(i: usize, x: f32) -> f32 {
         if ABER <= 0.0 {
             return x;
         }
+        // `flush`: este `lp` es uno POR GRANO y decae al rango subnormal en los
+        // huecos de la nube; con decenas de granos vivos eso multiplica por diez
+        // el coste por muestra.
         match VOICES[i].band {
             0 => {
-                VOICES[i].lp += A_LOW * (x - VOICES[i].lp);
+                VOICES[i].lp = flush(VOICES[i].lp + A_LOW * (x - VOICES[i].lp));
                 VOICES[i].lp
             }
             2 => {
-                VOICES[i].lp += A_HIGH * (x - VOICES[i].lp);
+                VOICES[i].lp = flush(VOICES[i].lp + A_HIGH * (x - VOICES[i].lp));
                 x - VOICES[i].lp
             }
             _ => x,
@@ -1285,40 +1333,36 @@ fn modulation_value() -> f32 {
     }
 }
 
+// El shaper por grano vive ahora en `core::material`, compartido con el VST y
+// con el port a Daisy: mismos materiales, mismas constantes, un solo sitio que
+// arreglar. Ademas trae dos correcciones sobre lo que habia aqui:
+//   - Plasma acotado. El `x + (x - x^3)*0.75` de antes cambia de signo en
+//     cuanto |x| pasa de 1,15 (a x = 2 devuelve -2,5): pliegue asimetrico y
+//     continua metida en la nube.
+//   - El estado `tone` se aplasta a cero cuando ya no es audible. Un filtro de
+//     un polo por grano cae al rango subnormal en los huecos de la nube, y ahi
+//     el FPU se sale de su camino rapido.
 #[inline]
 fn material_sample(i: usize, x: f32) -> f32 {
     unsafe {
-        let a = MATERIAL_AMOUNT;
-        let shaped = match MATERIAL {
-            // Metal: el diferencial enfatiza bordes y parciales altos.
-            1 => { let d = x - VOICES[i].tone; VOICES[i].tone += 0.12 * d; x + d * 1.6 },
-            // Madera: resonador medio cálido, con una pequeña parte directa.
-            2 => { VOICES[i].tone += 0.045 * (x - VOICES[i].tone); VOICES[i].tone * 0.86 + x * 0.14 },
-            // Cristal: lectura limpia y resonante; su duración se amplía al nacer.
-            3 => { VOICES[i].tone += 0.22 * (x - VOICES[i].tone); x * 0.82 + VOICES[i].tone * 0.42 },
-            // Agua: filtro suave y una ondulación lenta por la edad del rayo.
-            4 => { VOICES[i].tone += 0.09 * (x - VOICES[i].tone); x * (0.82 + 0.18 * tri_inv((VOICES[i].age * 0.00037) % 1.0)) + VOICES[i].tone * 0.35 },
-            // Plasma: no linealidad contenida, rica sin convertir el bus en ruido.
-            5 => x + (x - x * x * x) * 0.75,
-            _ => x,
-        };
-        x + (shaped - x) * a
+        let mut tone = VOICES[i].tone;
+        let y = raydrone_core::material::shape(
+            MATERIAL, MATERIAL_AMOUNT, &mut tone, VOICES[i].age, x);
+        VOICES[i].tone = tone;
+        y
     }
 }
 
 #[inline]
 fn direct_material(x: f32) -> f32 {
     unsafe {
-        let a = MATERIAL_AMOUNT;
-        let shaped = match MATERIAL {
-            1 => { let d = x - DIRECT_TONE; DIRECT_TONE += 0.12 * d; x + d * 1.6 },
-            2 => { DIRECT_TONE += 0.045 * (x - DIRECT_TONE); DIRECT_TONE * 0.86 + x * 0.14 },
-            3 => { DIRECT_TONE += 0.22 * (x - DIRECT_TONE); x * 0.82 + DIRECT_TONE * 0.42 },
-            4 => { DIRECT_TONE += 0.09 * (x - DIRECT_TONE); x * (0.82 + 0.18 * tri_inv(DIRECT_PHASE)) + DIRECT_TONE * 0.35 },
-            5 => x + (x - x * x * x) * 0.75,
-            _ => x,
-        };
-        x + (shaped - x) * a
+        let mut tone = DIRECT_TONE;
+        // El camino directo no tiene edad de grano: se le pasa la fase lenta ya
+        // existente, escalada para que la ondulacion del agua sea la misma.
+        let y = raydrone_core::material::shape(
+            MATERIAL, MATERIAL_AMOUNT, &mut tone, DIRECT_PHASE / 0.00037, x);
+        DIRECT_TONE = tone;
+        y
     }
 }
 
@@ -1346,11 +1390,32 @@ fn ray_reflections(l: f32, r: f32) -> (f32, f32) {
             ray_l += (RAY_L[p] * (1.0 - cross) + RAY_R[p] * cross) * gains[k];
             ray_r += (RAY_R[p] * (1.0 - cross) + RAY_L[p] * cross) * gains[k];
         }
-        let absorb = match MATERIAL { 1 => 0.30, 2 => 0.055, 3 => 0.20, 4 => 0.11, 5 => 0.38, _ => 0.16 };
+        let absorb = raydrone_core::material::spec(MATERIAL).absorb;
         RAY_TONE_L += absorb * (ray_l - RAY_TONE_L);
         RAY_TONE_R += absorb * (ray_r - RAY_TONE_R);
         if MATERIAL == 1 || MATERIAL == 5 { ray_l += (ray_l - RAY_TONE_L) * MATERIAL_AMOUNT; ray_r += (ray_r - RAY_TONE_R) * MATERIAL_AMOUNT; }
         if MATERIAL == 2 || MATERIAL == 4 { ray_l = ray_l * (1.0 - MATERIAL_AMOUNT * 0.55) + RAY_TONE_L * MATERIAL_AMOUNT * 0.55; ray_r = ray_r * (1.0 - MATERIAL_AMOUNT * 0.55) + RAY_TONE_R * MATERIAL_AMOUNT * 0.55; }
+        // Shimmer: lo que vuelve al lazo no es solo la cola, sino la cola MAS
+        // su version transpuesta (+12 / +19). Como la mezcla se re-inyecta,
+        // cada vuelta sube otra octava y la cola asciende sola. El retorno se
+        // limita para que la ganancia de lazo no pase de uno.
+        let (sh_l, sh_r) = if SHIMMER_AMT > 0.0 {
+            SHIMMER.read(SHIMMER_TILT)
+        } else {
+            (0.0, 0.0)
+        };
+        // La linea de shimmer se realimenta CONSIGO MISMA. Es lo que hace que
+        // la octava se acumule: sin esa regeneracion, la unica vuelta posible
+        // seria la de la camara de rayos, cuya realimentacion es de 0,15 (es
+        // una sala corta, no una cola de reverb), y el shimmer se quedaria en
+        // un +7 % de tono en vez de ascender. Ganancia de lazo acotada a 0,9,
+        // y `soft` en la escritura para que no pueda dispararse.
+        let regen = clampf(SHIMMER_AMT * 0.9, 0.0, 0.9);
+        SHIMMER.write(soft(ray_l + sh_l * regen), soft(ray_r + sh_r * regen));
+        let shim = SHIMMER_AMT * 0.55;
+        let ray_l = ray_l + sh_l * shim;
+        let ray_r = ray_r + sh_r * shim;
+
         // Sin wet no hay realimentación: reactivar la cámara nunca recupera
         // una cola escondida; solo parte del historial directo reciente.
         let feedback = RAY_REVERB_WET * (0.18 + RAY_REVERB_WET * 0.24);
@@ -1492,7 +1557,12 @@ fn alloc_voice() -> usize {
 // Coloca un grano (usado por granos nuevos y rebotes). Decide octava, transposición y paneo.
 fn place(pos: f32, band: u8, depth: u32) {
     unsafe {
-        let material_dur = if MATERIAL == 3 { 1.0 + MATERIAL_AMOUNT * 1.5 } else { 1.0 };
+        use raydrone_core::material::{MAT_GLASS, MAT_ICE};
+        let material_dur = if MATERIAL == MAT_GLASS || MATERIAL == MAT_ICE {
+            1.0 + MATERIAL_AMOUNT * 0.6
+        } else {
+            1.0
+        };
         let dur_samp = GRAIN_DUR * OUTPUT_SR * material_dur;
         if dur_samp < 1.0 {
             return;
@@ -1511,13 +1581,22 @@ fn place(pos: f32, band: u8, depth: u32) {
         let pan = (rng01() * 2.0 - 1.0) * WIDTH; // paneo aleatorio según el ancho
         let panl = sqrtf((1.0 - pan) * 0.5); // equal-power
         let panr = sqrtf((1.0 + pan) * 0.5);
+        // Compensacion de solapamiento. Sin esto el nivel de salida sube con
+        // la densidad y el motor entra en el limitador en cuanto se pide una
+        // nube espesa: el mando de densidad acababa siendo un mando de volumen.
+        // Los granos son mutuamente incoherentes, asi que su suma crece como
+        // sqrt(N); dividiendo por la raiz del solapamiento esperado el nivel se
+        // queda plano mientras se barre la densidad.
+        let overlap = clampf(GRAIN_RATE * GRAIN_DUR * material_dur, 1.0, MAX_VOICES as f32);
+        let gain = GAIN * clampf(5.6 / sqrtf(overlap), 0.0, 1.6);
+
         let slot = alloc_voice();
         VOICES[slot] = Voice {
             active: true,
             pos,
             age: 0.0,
             inv_dur: 1.0 / dur_samp,
-            gain: GAIN,
+            gain,
             band,
             lp: 0.0,
             tone: 0.0,
@@ -1600,6 +1679,13 @@ pub extern "C" fn process(frames: usize) {
         } else {
             0.0
         };
+        // Los coeficientes del banco modal solo cambian al tocar material,
+        // cantidad o afinacion: se recalculan aqui, una vez por bloque como
+        // mucho, nunca por muestra.
+        if MAT_DIRTY {
+            MODAL.set(MATERIAL, MATERIAL_AMOUNT, MATERIAL_HZ, OUTPUT_SR);
+            MAT_DIRTY = false;
+        }
         // La constelación de focos avanza una vez por bloque (deriva lenta).
         update_foci(n as f32 / OUTPUT_SR);
         for f in 0..n {
@@ -1667,6 +1753,23 @@ pub extern "C" fn process(frames: usize) {
                 VOICES[i].age += 1.0;
                 k += 1;
             }
+            // Banco modal: el cuerpo del material. Se SUMA al directo en vez de
+            // sustituirlo — un banco de Q alto usado como filtro deja pasar una
+            // fraccion minuscula de una excitacion de banda ancha y apagaria la
+            // nube. El directo solo cede un 30 % para hacerle sitio.
+            let (accl, accr) = if MATERIAL_AMOUNT > 0.001
+                && MATERIAL != raydrone_core::material::MAT_NONE
+            {
+                let (ml, mr) = MODAL.process(accl, accr);
+                let a = MATERIAL_AMOUNT;
+                let t = BANK_TRIM;
+                (
+                    accl * (1.0 - 0.30 * a) + ml * a * t,
+                    accr * (1.0 - 0.30 * a) + mr * a * t,
+                )
+            } else {
+                (accl, accr)
+            };
             let (fl, fr) = FILTER.process(accl * MASTER, accr * MASTER);
             let (rl0, rr0) = ray_reflections(fl, fr);
             let (dl, dr) = spatial_effects(rl0, rr0);

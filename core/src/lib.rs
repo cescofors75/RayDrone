@@ -23,7 +23,9 @@
 #![cfg_attr(not(test), no_std)]
 
 pub mod filter;
+pub mod material;
 pub mod music;
+pub mod shimmer;
 
 /// Clamp `x` into `[a, b]`.
 #[inline]
@@ -34,6 +36,26 @@ pub fn clampf(x: f32, a: f32, b: f32) -> f32 {
         b
     } else {
         x
+    }
+}
+
+/// Aplasta a cero lo que ya no es audible.
+///
+/// Los filtros de un polo del motor (el `tone` del material, el `lp` de la
+/// aberracion — uno de cada POR GRANO) decaen exponencialmente en los huecos de
+/// la nube y acaban en el rango subnormal. Ahi el FPU deja de resolver la
+/// operacion por su camino rapido y el coste se dispara: medido sobre el port a
+/// Daisy de este mismo motor, 6,2 us por muestra frente a 0,49 con
+/// flush-to-zero, y creciendo con el numero de granos vivos. El umbral esta 500
+/// dB por debajo de fondo de escala, asi que no se puede oir.
+pub const FLUSH_FLOOR: f32 = 1.0e-25;
+
+#[inline]
+pub fn flush(v: f32) -> f32 {
+    if v < FLUSH_FLOOR && v > -FLUSH_FLOOR {
+        0.0
+    } else {
+        v
     }
 }
 

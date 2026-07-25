@@ -222,6 +222,67 @@ points by design:
 
 ---
 
+## Materials and shimmer (shared DSP kernel)
+
+Two capabilities live in the shared `core` kernel, so the web engine, the VST and
+the [Daisy Seed firmware port](https://github.com/cescofors75/RedMaster-DaisySeed64MB)
+run the same algorithm with the same constants.
+
+### `core::material` — the body that resonates
+
+The engine used to apply one cheap one-pole per grain and call that a material.
+That tints, but it does not give a body: metal and glass are told apart by their
+**partials** and by how long they ring, not by the slope of a lowpass.
+
+There are now two layers. The per-grain shaper is kept, and the cloud also feeds
+an **8-mode stereo modal bank** tuned to the note, with the ratios and Q of the
+actual physical body: free-free bar (metal), tuned marimba bar (wood), Bessel
+membrane (skin), harmonic string, high-Q cup (glass, ice).
+
+Ten materials: `0` none · `1` metal · `2` wood · `3` glass · `4` water ·
+`5` plasma · `6` stone · `7` skin · `8` string · `9` ice.
+
+```js
+engine.set_material(kind, amount);   // kind 0..9
+engine.set_material_pitch(hz);       // fundamental of the modal bank, default 110
+```
+
+The delicate part is gain. A high-Q mode is a razor-thin bandpass: driven by a
+broadband grain cloud, the textbook unit-peak normalisation returns about 1 % of
+the input level, and the material turns into a filter that mutes the engine. The
+bank is normalised **by power** (bandwidth-compensated) and summed with the dry
+path instead of replacing it, so choosing a material changes timbre and not
+volume.
+
+### `core::shimmer` — the tail that climbs
+
+`set_octave` only sets the probability that a grain reads at 2×, which is an
+octave layer, not shimmer. Real shimmer lives **inside** the feedback: the tail
+is transposed up and re-injected, so each pass adds another octave.
+
+```js
+engine.set_shimmer(amount, tilt);    // tilt 0 = +12 only, 1 = +19 only
+```
+
+Measured on the web engine, the tail's pitch goes 154 Hz → 444 Hz (+12) →
+674 Hz (+19).
+
+### Other fixes that came with this
+
+- **Level no longer tracks density.** Grains are mutually incoherent, so their
+  sum grows as `√N`; grain gain is now divided by the square root of the expected
+  overlap. Measured across 50–800 grains/s, the level-vs-density slope drops from
+  0.5 to 0.01.
+- **Plasma is bounded.** `x + (x - x³)·0.75` flips sign once `|x|` passes ~1.15
+  (at `x = 2` it returns −2.5), folding asymmetrically and pushing DC into the
+  cloud. Replaced with a bounded odd shaper.
+- **Denormal flushing.** The per-grain one-poles decay into the subnormal range
+  during gaps in the cloud, where the FPU leaves its fast path. Measured on the
+  Daisy port of the same engine, that is 6.2 µs per sample against 0.49 µs with
+  flush-to-zero, and it grows with the number of live grains.
+
+---
+
 ## Usage (classic)
 
 1. Open `rta.html` in any modern browser.
