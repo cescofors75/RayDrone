@@ -91,6 +91,15 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             ex.set_direct(d.on >>> 0, d.offsetSec);
         } else if (d.type === 'mode') {
             ex.set_mode(d.value >>> 0);
+        } else if (d.type === 'spectral') {
+            // El análisis sucede fuera del hilo de audio. Sólo se copian las
+            // tablas ya normalizadas a memoria WASM preasignada.
+            const len = Math.min(d.q.length, ex.spectral_capacity());
+            if (len) {
+                new Float32Array(this.mem.buffer, ex.spectral_q_ptr(), len).set(d.q.subarray(0, len));
+                new Float32Array(this.mem.buffer, ex.spectral_cdf_ptr(), len).set(d.cdf.subarray(0, len));
+            }
+            ex.set_spectral_distribution(len, d.unbiased ? 1 : 0, d.qFloor);
         } else if (d.type === 'fx') {
             ex.set_fx(d.aber, d.bounces >>> 0, d.refl, d.feedback);
         } else if (d.type === 'space') {
