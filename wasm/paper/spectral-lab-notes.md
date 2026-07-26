@@ -10,7 +10,7 @@ Una STFT del buffer puede construir una importancia temporal `q(τ)` para guiar 
 
 ## Matemática y modos
 
-Para un frame `t`, `E[t] = Σ_{k∈banda}|X[t,k]|²`; `q[t]=sqrt(E[t]+ε)/Σsqrt(E+ε)`. Random, Stratified, QMC y Time Energy conservan las rutas existentes. Spectral Energy lee `q`; Hybrid alterna temporal/espectral. Creative Spectral Bias usa `q` directamente. Unbiased aplica `p/q`, con `p=1/N`, suelo configurable y tope 4 para mantener seguridad de nivel.
+Para un frame `t`, `E[t] = Σ_{k∈banda}|X[t,k]|²`; la apertura genera `p[t]` triangular y `q[t] ∝ p[t]·(E[t]+ε)^0.85`. Random, Stratified, QMC y Time Energy conservan las rutas existentes. Spectral Energy lee `q`; Hybrid alterna temporal/espectral. Creative Spectral Bias usa `q` directamente. Unbiased aplica `p/q`, con suelo configurable y tope 4 para mantener seguridad de nivel.
 
 ## Medición, límites y próximos pasos
 
