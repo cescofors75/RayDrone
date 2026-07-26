@@ -28,6 +28,8 @@ necesita acceso a crates.io**. Solo `rustc` + el target `wasm32-unknown-unknown`
 | `processor.js` | `AudioWorkletProcessor` que instancia el wasm y rellena la salida cada bloque. |
 | `lab-worker.js` | Web Worker del Convergence Lab: otra instancia del mismo wasm para medir convergencia sin congelar la UI. |
 | `index.html` | Estudio web con tres flujos: Básico por macros, Medio por tareas y Profesional por inspectores especializados. |
+| `spectral.html` | Laboratorio independiente: STFT como mapa de importancia temporal, comparación A/B y exportación WAV. |
+| `spectral-worker.js` / `spectral_dsp.rs` | Worker de análisis y núcleo FFT radix-2 probado para la futura ruta WASM dedicada. |
 | `build.sh` | Compila `../core` → `libraydrone_core.rlib` y luego `raydrone.rs` → `raydrone.wasm` (lo enlaza con `--extern`). |
 | `vendor/` | Three.js r185 vendorizado (motor 3D del Nivel 2 de RayRunner) + `three-addons/` (postprocesado: `EffectComposer`/`RenderPass`/`UnrealBloomPass`/`OutputPass`, extraídos del paquete oficial). Sin CDN, offline. El motor de audio sigue sin depender de nada de esto. |
 
@@ -430,3 +432,15 @@ Motor con paridad casi completa con la versión JS:
 Paridad completa con la versión JS. La compilación local se valida con
 `build.ps1` en Windows o `build.sh` en macOS/Linux, y `node test_engine.mjs`
 ejecuta la suite funcional del DSP compilado.
+
+## Spectral Lab (experimental)
+
+Abre `spectral.html` desde el enlace **Spectral Lab — Experimental**. La STFT
+sólo guía la elección temporal de los rays: no procesa directamente frecuencias.
+**Creative Spectral Bias** cambia el timbre de forma intencional; **Unbiased
+importance** aplica una compensación limitada `p/q`. Es una hipótesis medible,
+no una afirmación de mejora sonora.
+
+```bash
+rustc --test spectral_dsp.rs -o spectral_dsp_tests && ./spectral_dsp_tests
+```
