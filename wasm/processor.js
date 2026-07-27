@@ -98,7 +98,6 @@ class RayDroneProcessor extends AudioWorkletProcessor {
             if (len) {
                 new Float32Array(this.mem.buffer, ex.spectral_q_ptr(), len).set(d.q.subarray(0, len));
                 new Float32Array(this.mem.buffer, ex.spectral_cdf_ptr(), len).set(d.cdf.subarray(0, len));
-                new Float32Array(this.mem.buffer, ex.spectral_p_ptr(), len).set(d.p.subarray(0, len));
             }
             ex.set_spectral_distribution(len, d.unbiased ? 1 : 0, d.qFloor);
         } else if (d.type === 'fx') {

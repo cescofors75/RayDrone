@@ -64,7 +64,6 @@ const STRATA: u32 = 17;
 const SPECTRAL_BINS: usize = 16_384;
 static mut SPECTRAL_CDF: [f32; SPECTRAL_BINS] = [0.0; SPECTRAL_BINS];
 static mut SPECTRAL_Q: [f32; SPECTRAL_BINS] = [0.0; SPECTRAL_BINS];
-static mut SPECTRAL_P: [f32; SPECTRAL_BINS] = [0.0; SPECTRAL_BINS];
 static mut SPECTRAL_LEN: usize = 0;
 static mut SPECTRAL_UNBIASED: u32 = 0;
 static mut SPECTRAL_Q_FLOOR: f32 = 0.000_001;
@@ -426,8 +425,6 @@ pub extern "C" fn spectral_capacity() -> usize { SPECTRAL_BINS }
 pub extern "C" fn spectral_cdf_ptr() -> *mut f32 { unsafe { SPECTRAL_CDF.as_mut_ptr() } }
 #[no_mangle]
 pub extern "C" fn spectral_q_ptr() -> *mut f32 { unsafe { SPECTRAL_Q.as_mut_ptr() } }
-#[no_mangle]
-pub extern "C" fn spectral_p_ptr() -> *mut f32 { unsafe { SPECTRAL_P.as_mut_ptr() } }
 #[no_mangle]
 pub extern "C" fn slog_ptr() -> *mut f32 {
     unsafe { SLOG.as_mut_ptr() }
@@ -1571,11 +1568,11 @@ fn spectral_offset() -> (f32, f32) {
             if SPECTRAL_CDF[mid] >= u { hi = mid; } else { lo = mid + 1; }
         }
         let q = SPECTRAL_Q[lo].max(SPECTRAL_Q_FLOOR);
-        // p usa la misma apertura temporal que el comparador. Limitar el
+        // p es uniforme en la discretización temporal del mapa. Limitar el
         // factor evita que una cola minúscula convierta el modo insesgado en
         // un generador de picos; no se aplica en Creative Spectral Bias.
         let w = if SPECTRAL_UNBIASED == 1 {
-            clampf(SPECTRAL_P[lo].max(0.0) / q, 0.0, 4.0)
+            clampf(1.0 / ((SPECTRAL_LEN as f32) * q), 0.0, 4.0)
         } else { 1.0 };
         ((lo as f32 + 0.5) / SPECTRAL_LEN as f32, w)
     }
