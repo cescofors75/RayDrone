@@ -271,6 +271,14 @@
         .environment-switch button { border:0; background:transparent; color:var(--muted); padding:7px 9px; font:700 .62rem ui-monospace,SFMono-Regular,Consolas,monospace; cursor:pointer; text-transform:uppercase; }
         .environment-switch button.active { color:var(--bg); background:var(--accent-2); }
         .ui-selects .language-select, .ui-selects .theme-select { width:132px; min-width:0; max-width:132px; }
+        .preferences { position:relative; }
+        .preferences > summary { list-style:none; cursor:pointer; color:var(--muted); border:1px solid var(--line); background:var(--surface-3); padding:7px 10px; font:700 .68rem ui-monospace,SFMono-Regular,Consolas,monospace; text-transform:uppercase; }
+        .preferences > summary::-webkit-details-marker { display:none; }
+        .preferences > summary::after { content:'⌄'; margin-left:7px; color:var(--accent-2); }
+        .preferences[open] > summary { color:var(--text); border-color:var(--line-strong); }
+        .preferences[open] > summary::after { content:'⌃'; }
+        .preferences .ui-selects { position:absolute; z-index:20; right:0; top:calc(100% + 6px); display:grid; gap:6px; width:170px; padding:8px; border:1px solid var(--line); background:var(--surface); box-shadow:0 12px 26px rgba(0,0,0,.28); }
+        .preferences .ui-selects .language-select, .preferences .ui-selects .theme-select { width:100%; max-width:none; }
         .workspace-nav { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:14px;
                          padding:8px; border:1px solid var(--line); background:var(--surface-3); }
         .workspace-tabs { display:flex; gap:4px; flex-wrap:wrap; }
@@ -390,7 +398,7 @@
     </script>
     <script src="i18n.js"></script>
 </head>
-<body data-environment="medium" data-workspace="material">
+<body data-environment="basic" data-workspace="material">
     <div class="container">
         <header class="studio-head">
             <div class="studio-brand">
@@ -402,21 +410,24 @@
             </div>
             <div class="engine-live">DSP local · tiempo real</div>
             <div class="environment-switch" role="group" aria-label="Entorno de RayDrone">
-                <button type="button" data-environment="basic" aria-pressed="false">Básico</button>
-                <button type="button" data-environment="medium" class="active" aria-pressed="true">Medio</button>
+                <button type="button" data-environment="basic" class="active" aria-pressed="true">Básico</button>
+                <button type="button" data-environment="medium" aria-pressed="false">Medio</button>
                 <button type="button" data-environment="professional" aria-pressed="false">Profesional</button>
             </div>
-            <div class="ui-selects" aria-label="Preferencias visuales">
-                <select class="language-select" aria-label="Idioma" title="Idioma">
-                    <option value="ca">CATALÀ</option><option value="es">CASTELLANO</option><option value="eu">EUSKERA</option>
-                    <option value="gl">GALEGO</option><option value="en">ENGLISH</option><option value="fr">FRANÇAIS</option>
-                    <option value="de">DEUTSCH</option><option value="it">ITALIANO</option><option value="pt">PORTUGUÊS</option>
-                </select>
-                <select class="theme-select" aria-label="Tema visual" title="Tema visual">
-                    <option value="ocean">Ocean</option><option value="neon">Neon</option><option value="sunset">Sunset</option>
-                    <option value="grayscale">Grey Scale</option><option value="red808">Red808</option><option value="rainbow">Rainbow</option>
-                </select>
-            </div>
+            <details class="preferences">
+                <summary>Preferencias</summary>
+                <div class="ui-selects" aria-label="Preferencias visuales">
+                    <select class="language-select" aria-label="Idioma" title="Idioma">
+                        <option value="ca">CATALÀ</option><option value="es">CASTELLANO</option><option value="eu">EUSKERA</option>
+                        <option value="gl">GALEGO</option><option value="en">ENGLISH</option><option value="fr">FRANÇAIS</option>
+                        <option value="de">DEUTSCH</option><option value="it">ITALIANO</option><option value="pt">PORTUGUÊS</option>
+                    </select>
+                    <select class="theme-select" aria-label="Tema visual" title="Tema visual">
+                        <option value="ocean">Ocean</option><option value="neon">Neon</option><option value="sunset">Sunset</option>
+                        <option value="grayscale">Grey Scale</option><option value="red808">Red808</option><option value="rainbow">Rainbow</option>
+                    </select>
+                </div>
+            </details>
         </header>
 
         <div class="deck">
@@ -1367,7 +1378,7 @@
     }
     environmentButtons.forEach((b) => b.addEventListener('click', () => setEnvironment(b.dataset.environment)));
     workspaceButtons.forEach((b) => b.addEventListener('click', () => setWorkspace(b.dataset.workspace)));
-    setEnvironment('medium');
+    setEnvironment('basic');
 
     function motionWord(v) { return rayI18n.t(v < 8 ? 'Quieto' : v < 42 ? 'Fluido' : v < 76 ? 'Vivo' : 'Inestable'); }
     function spaceWord(v) { return rayI18n.t(v < 18 ? 'Cercano' : v < 48 ? 'Sala' : v < 78 ? 'Cámara' : 'Inmenso'); }
