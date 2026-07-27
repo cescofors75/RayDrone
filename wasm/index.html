@@ -129,7 +129,6 @@
             .p-ambient { grid-column:1 / -1; grid-row:4; }
             .p-tune { grid-column:1 / -1; grid-row:5; }
             .lab    { grid-column:1 / -1; grid-row:6; }
-            .p-game { grid-column:1 / -1; grid-row:7; }
             .micro-grid { grid-template-columns:300px 1fr; }
             .ambient-grid { grid-template-columns:repeat(5,1fr); }
             .tune-filter { grid-template-columns:repeat(5,1fr); }
@@ -316,7 +315,6 @@
         body[data-workspace="rays"] [data-workspace-panel="rays"],
         body[data-workspace="tuning"] [data-workspace-panel="tuning"],
         body[data-workspace="analysis"] [data-workspace-panel="analysis"],
-        body[data-workspace="live"] [data-workspace-panel="live"] { display:block; }
         body[data-environment="medium"] [data-access="professional"],
         body[data-environment="medium"] .pro-control { display:none !important; }
         .compare-grid { display:grid; grid-template-columns:1fr 1fr 1.15fr; gap:12px; }
@@ -349,12 +347,9 @@
         select { border-radius:3px; }
         #piano { height:104px; border-radius:3px; }
         #meter { height:4px; border-radius:0; }
-        .p-game { overflow:hidden; background:linear-gradient(110deg,var(--accent-soft),var(--panel) 60%); }
-        .p-game::after { content:"RAYRUNNER"; position:absolute; right:-12px; bottom:-22px; font:italic 900 clamp(3rem,9vw,7rem)/1 Impact,'Arial Narrow',sans-serif;
-                         color:rgba(255,255,255,.025); pointer-events:none; }
         @media (min-width:1000px) {
             .deck { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:start; }
-            .scene, .workspace-nav, .basic-console, .p-play, .p-ambient, .p-tune, .lab, .p-compare, .p-game { grid-column:1 / -1; grid-row:auto; }
+            .scene, .workspace-nav, .basic-console, .p-play, .p-ambient, .p-tune, .lab, .p-compare { grid-column:1 / -1; grid-row:auto; }
             .p-shape, .p-space { grid-column:1; grid-row:auto; }
             .p-material, .p-motion { grid-column:2 / -1; grid-row:auto; }
             .p-optics { grid-column:1 / span 2; grid-row:auto; }
@@ -438,7 +433,6 @@
                     <button type="button" class="workspace-tab" data-workspace="rays">Rayos</button>
                     <button type="button" class="workspace-tab" data-workspace="tuning" data-access="professional">Afinación</button>
                     <button type="button" class="workspace-tab" data-workspace="analysis" data-access="professional">Analizar</button>
-                    <button type="button" class="workspace-tab" data-workspace="live" data-access="professional">Directo</button>
                 </div>
                 <div class="workspace-hint" id="workspace-hint">Define el carácter y la superficie sonora.</div>
             </nav>
@@ -782,12 +776,6 @@
                 </div>
             </section>
 
-            <!-- ── GAME: audio adaptativo en vivo, demostrado jugando ── -->
-            <section class="panel p-game" data-workspace-panel="live" data-access="professional">
-                <div class="panel-title"><span>🎮 RayRunner<span class="info-badge" tabindex="0">i<span class="info-tip">Arcade de seis mundos cuya banda sonora la renderiza RayDrone en vivo: espacio, dos circuitos 3D, mazmorra, asalto Komandos y combate MMA. Tu ejecución transforma densidad, filtro, shimmer, tono y reverberación en tiempo real.</span></span></span><span>arcade · 6 mundos · audio adaptativo vivo</span></div>
-                <div class="sub" style="text-align:left; margin:0 0 12px;"><b>Nivel 1 · Espacio</b> (lateral) y <b>Nivel 2 · Circuito Neón</b> (circuito 3D real — WebGL con Three.js vendorizado, texturas procedurales — sobre una moto Tron: curvas, chicanes, túnel, rasantes, asfalto y tierra, vueltas — con su propio sample synthwave alegre): por <b>donde pasas</b> decide el sonido y <b>cómo juegas</b> decide N (rayos/s). Power-ups 🛡🚀💣 + bláster ilimitado (clic de ratón, Z/espacio o toque corto) y <b>rivales fantasma</b> 👻 en ambos niveles, ranking local con nick (interfaz lista para hacerlo online), táctil + teclado. Audio adaptativo sin capas pregrabadas — un solo motor, parámetros vivos.</div>
-                <a class="btn btn-play" href="game.html" style="display:block; text-align:center; text-decoration:none;">▶ Entrar en RayRunner</a>
-            </section>
         </div>
     </div>
 
@@ -1327,11 +1315,10 @@
         rays: 'Controla la geometría y el comportamiento del motor.',
         tuning: 'Interpreta, afina y filtra la materia.',
         analysis: 'Mide convergencia y compara modelos de efecto.',
-        live: 'Prueba el motor dentro de una experiencia interactiva.'
     };
     const allowedWorkspaces = {
         medium: ['material', 'space', 'rays'],
-        professional: ['material', 'space', 'rays', 'tuning', 'analysis', 'live']
+        professional: ['material', 'space', 'rays', 'tuning', 'analysis']
     };
     const lastWorkspace = { medium: 'material', professional: 'material' };
 

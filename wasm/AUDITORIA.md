@@ -66,6 +66,6 @@ el mismo DSP de materiales, filtro, modulación y espacio.
 - `node test_engine.mjs`: todas las pruebas pasan, incluida la regresión de
   feedback oculto y el A/B audible de materiales/FX.
 - `node --check processor.js`: correcto.
-- Scripts inline de `index.html` y `game.html`: parsean correctamente.
+- Scripts inline de `index.html`: parsean correctamente.
 - Navegador: Básico/Medio/Profesional, materiales y macros comprobados; sin
   errores de consola y sin overflow horizontal a 375 px.

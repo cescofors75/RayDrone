@@ -1,8 +1,7 @@
 (function () {
     'use strict';
 
-    // RayDrone comparte el mismo catálogo entre el estudio y RayRunner. El
-    // orden de cada array es deliberado: catalán, castellano, euskera,
+    // El orden de cada array es deliberado: catalán, castellano, euskera,
     // gallego, inglés, francés, alemán, italiano y portugués.
     const LANGS = ['ca', 'es', 'eu', 'gl', 'en', 'fr', 'de', 'it', 'pt'];
     const LANGUAGE_NAMES = {
@@ -11,7 +10,6 @@
     };
     const P = {
         'RayDrone · WASM': ['RayDrone · WASM','RayDrone · WASM','RayDrone · WASM','RayDrone · WASM','RayDrone · WASM','RayDrone · WASM','RayDrone · WASM','RayDrone · WASM','RayDrone · WASM'],
-        'RayRunner · RayDrone': ['RayRunner · RayDrone','RayRunner · RayDrone','RayRunner · RayDrone','RayRunner · RayDrone','RayRunner · RayDrone','RayRunner · RayDrone','RayRunner · RayDrone','RayRunner · RayDrone','RayRunner · RayDrone'],
         'Instrumento granular de trazado acústico': ['Instrument granular de traçat acústic','Instrumento granular de trazado acústico','Trazu akustikoko granular-instrumentua','Instrumento granular de trazado acústico','Granular acoustic tracing instrument','Instrument granulaire de traçage acoustique','Granulares Instrument für akustisches Raytracing','Strumento granulare di tracciamento acustico','Instrumento granular de traçado acústico'],
         'DSP local · tiempo real': ['DSP local · temps real','DSP local · tiempo real','DSP lokala · denbora errealean','DSP local · tempo real','Local DSP · real time','DSP local · temps réel','Lokaler DSP · Echtzeit','DSP locale · tempo reale','DSP local · tempo real'],
         'Básico': ['Bàsic','Básico','Oinarrizkoa','Básico','Basic','Basique','Basis','Base','Básico'],
@@ -497,7 +495,7 @@
         });
         apply();
         applyTheme();
-        // Cubre el DOM que crean después el piano, el laboratorio y RayRunner.
+        // Cubre el DOM que crean después el piano y el laboratorio.
         const observer = new MutationObserver((records) => {
             if (observer._scheduled) return;
             observer._scheduled = true;
@@ -509,7 +507,7 @@
             });
         });
         // Solo traducimos nodos nuevos. Observar todo characterData obligaría a
-        // recorrer el DOM en cada frame del HUD y penalizaría RayRunner.
+        // recorrer el DOM en cada frame del HUD.
         observer.observe(document.body, { childList: true, subtree: true });
     }
     window.rayI18n = { LANGS, LANGUAGE_NAMES, THEMES, THEME_NAMES, get language() { return current; }, get theme() { return currentTheme; }, t, copy, apply, setLanguage, setTheme, applyTheme };
