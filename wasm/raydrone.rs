@@ -53,20 +53,12 @@ static mut MASTER: f32 = 1.0;
 static mut SPAWN_ACC: f32 = 0.0;
 static mut RNG: u32 = 0x1234_5678;
 
-// Muestreo: 0 random, 1 QMC, 2 stratified, 3 energía temporal,
-// 4 energía espectral, 5 híbrido. Los modos 4/5 consumen una CDF construida
-// fuera del callback y copiada aquí antes de empezar a sonar.
+// Muestreo: 0 random, 1 QMC, 2 stratified
 static mut MODE: u32 = 1;
 static mut QMC: f32 = 0.5;
 static mut STRAT_I: u32 = 0;
 const GOLDEN: f32 = 0.618_034;
 const STRATA: u32 = 17;
-const SPECTRAL_BINS: usize = 16_384;
-static mut SPECTRAL_CDF: [f32; SPECTRAL_BINS] = [0.0; SPECTRAL_BINS];
-static mut SPECTRAL_Q: [f32; SPECTRAL_BINS] = [0.0; SPECTRAL_BINS];
-static mut SPECTRAL_LEN: usize = 0;
-static mut SPECTRAL_UNBIASED: u32 = 0;
-static mut SPECTRAL_Q_FLOOR: f32 = 0.000_001;
 
 // FX
 static mut ABER: f32 = 0.0;
@@ -420,12 +412,6 @@ pub extern "C" fn sample_capacity() -> usize {
     SAMPLE_CAP
 }
 #[no_mangle]
-pub extern "C" fn spectral_capacity() -> usize { SPECTRAL_BINS }
-#[no_mangle]
-pub extern "C" fn spectral_cdf_ptr() -> *mut f32 { unsafe { SPECTRAL_CDF.as_mut_ptr() } }
-#[no_mangle]
-pub extern "C" fn spectral_q_ptr() -> *mut f32 { unsafe { SPECTRAL_Q.as_mut_ptr() } }
-#[no_mangle]
 pub extern "C" fn slog_ptr() -> *mut f32 {
     unsafe { SLOG.as_mut_ptr() }
 }
@@ -630,18 +616,7 @@ pub extern "C" fn set_params(focus: f32, aperture: f32, grain_ms: f32, grain_rat
 #[no_mangle]
 pub extern "C" fn set_mode(m: u32) {
     unsafe {
-        MODE = m.min(5);
-    }
-}
-
-// q y su CDF ya vienen normalizadas por el worker de análisis. Esta función no
-// reserva: el AudioWorklet sólo escribe las tablas preasignadas en memoria WASM.
-#[no_mangle]
-pub extern "C" fn set_spectral_distribution(len: usize, unbiased: u32, q_floor: f32) {
-    unsafe {
-        SPECTRAL_LEN = len.min(SPECTRAL_BINS);
-        SPECTRAL_UNBIASED = unbiased.min(1);
-        SPECTRAL_Q_FLOOR = if q_floor.is_finite() { clampf(q_floor, 0.000_000_01, 0.1) } else { 0.000_001 };
+        MODE = m.min(2);
     }
 }
 
@@ -1515,7 +1490,7 @@ fn alloc_voice() -> usize {
 }
 
 // Coloca un grano (usado por granos nuevos y rebotes). Decide octava, transposición y paneo.
-fn place_weighted(pos: f32, band: u8, depth: u32, sample_weight: f32) {
+fn place(pos: f32, band: u8, depth: u32) {
     unsafe {
         let material_dur = if MATERIAL == 3 { 1.0 + MATERIAL_AMOUNT * 1.5 } else { 1.0 };
         let dur_samp = GRAIN_DUR * OUTPUT_SR * material_dur;
@@ -1542,7 +1517,7 @@ fn place_weighted(pos: f32, band: u8, depth: u32, sample_weight: f32) {
             pos,
             age: 0.0,
             inv_dur: 1.0 / dur_samp,
-            gain: GAIN * sample_weight,
+            gain: GAIN,
             band,
             lp: 0.0,
             tone: 0.0,
@@ -1553,28 +1528,6 @@ fn place_weighted(pos: f32, band: u8, depth: u32, sample_weight: f32) {
         };
         log_push(pos / SOURCE_SR, band, ratio);
         SPAWN_COUNT = SPAWN_COUNT.wrapping_add(1);
-    }
-}
-
-#[inline]
-fn spectral_offset() -> (f32, f32) {
-    unsafe {
-        if SPECTRAL_LEN < 2 { return (-1.0, 1.0); }
-        let u = rng01();
-        let mut lo = 0usize;
-        let mut hi = SPECTRAL_LEN - 1;
-        while lo < hi {
-            let mid = (lo + hi) / 2;
-            if SPECTRAL_CDF[mid] >= u { hi = mid; } else { lo = mid + 1; }
-        }
-        let q = SPECTRAL_Q[lo].max(SPECTRAL_Q_FLOOR);
-        // p es uniforme en la discretización temporal del mapa. Limitar el
-        // factor evita que una cola minúscula convierta el modo insesgado en
-        // un generador de picos; no se aplica en Creative Spectral Bias.
-        let w = if SPECTRAL_UNBIASED == 1 {
-            clampf(1.0 / ((SPECTRAL_LEN as f32) * q), 0.0, 4.0)
-        } else { 1.0 };
-        ((lo as f32 + 0.5) / SPECTRAL_LEN as f32, w)
     }
 }
 
@@ -1617,15 +1570,7 @@ fn spawn() {
             let m = if MOD_TARGET == 1 { 1.0 + modulation_value() } else { 1.0 };
             eff_ap = APERTURE * (1.0 + FEEDBACK * ENV * 0.8) * m.max(0.05);
         }
-        let mut spectral_weight = 1.0;
-        let spectral_mode = MODE == 4 || (MODE == 5 && rng01() < 0.5);
-        let mut off_sec = if spectral_mode {
-            let (u, w) = spectral_offset();
-            spectral_weight = w;
-            if u >= 0.0 { u * span } else { eff_focus + tri_inv(next_u()) * eff_ap * scale }
-        } else {
-            eff_focus + tri_inv(next_u()) * eff_ap * scale
-        };
+        let mut off_sec = eff_focus + tri_inv(next_u()) * eff_ap * scale;
         // Trazado inverso: rejection ∝ energía → los rayos caen donde hay señal.
         if SMART == 1 {
             let mut tries = 0;
@@ -1639,7 +1584,7 @@ fn spawn() {
         }
         let maxp = (SAMPLE_LEN - 2) as f32;
         let pos = clampf(off_sec * SOURCE_SR, 0.0, maxp);
-        place_weighted(pos, band, BOUNCES, spectral_weight);
+        place(pos, band, BOUNCES);
     }
 }
 
@@ -1710,7 +1655,7 @@ pub extern "C" fn process(frames: usize) {
                     if dep > 0 && rng01() < REFL {
                         let jitter = (rng01() - 0.5) * 0.1 * SOURCE_SR;
                         let cpos = clampf(endpos + jitter, 0.0, maxp);
-                        place_weighted(cpos, bnd, dep - 1, 1.0);
+                        place(cpos, bnd, dep - 1);
                     }
                     continue; // ACTIVE[k] ahora es otra voz: no avanzar k
                 }
