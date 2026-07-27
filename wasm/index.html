@@ -278,14 +278,6 @@
         .preferences[open] > summary::after { content:'⌃'; }
         .preferences .ui-selects { position:absolute; z-index:20; right:0; top:calc(100% + 6px); display:grid; gap:6px; width:170px; padding:8px; border:1px solid var(--line); background:var(--surface); box-shadow:0 12px 26px rgba(0,0,0,.28); }
         .preferences .ui-selects .language-select, .preferences .ui-selects .theme-select { width:100%; max-width:none; }
-        .workspace-nav { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:14px;
-                         padding:8px; border:1px solid var(--line); background:var(--surface-3); }
-        .workspace-tabs { display:flex; gap:4px; flex-wrap:wrap; }
-        .workspace-tab { border:1px solid transparent; background:transparent; color:var(--muted); padding:9px 13px;
-                         font:700 .68rem ui-monospace,SFMono-Regular,Consolas,monospace; cursor:pointer; text-transform:uppercase; }
-        .workspace-tab:hover { color:var(--text); border-color:var(--line); }
-        .workspace-tab.active { color:var(--text); border-color:var(--line-strong); background:var(--accent-soft); }
-        .workspace-hint { color:var(--muted-2); font-size:.72rem; text-align:right; }
         .basic-console { display:none; grid-column:1 / -1; overflow:hidden; }
         .basic-intro { display:flex; justify-content:space-between; align-items:end; gap:24px; margin-bottom:15px; }
         .basic-intro h2 { margin:0 0 5px; font-size:1.15rem; font-weight:600; }
@@ -302,19 +294,13 @@
         .macro-card small { display:block; min-height:32px; color:var(--muted-2); font-size:.68rem; line-height:1.35; }
         .basic-summary { margin-top:12px; padding:10px 12px; border-left:2px solid var(--accent); color:var(--muted); background:var(--accent-soft); font-size:.76rem; }
 
-        body[data-environment="basic"] .workspace-nav,
         body[data-environment="basic"] [data-workspace-panel] { display:none !important; }
         body[data-environment="basic"] .basic-console { display:block; }
         body[data-environment="basic"] #fs-btn,
         body[data-environment="basic"] #hud,
         body[data-environment="basic"] #rec { display:none !important; }
         body:not([data-environment="basic"]) .basic-console { display:none; }
-        body:not([data-environment="basic"]) [data-workspace-panel] { display:none; }
-        body[data-workspace="material"] [data-workspace-panel="material"],
-        body[data-workspace="space"] [data-workspace-panel="space"],
-        body[data-workspace="rays"] [data-workspace-panel="rays"],
-        body[data-workspace="tuning"] [data-workspace-panel="tuning"],
-        body[data-workspace="analysis"] [data-workspace-panel="analysis"] { display:block; }
+        body:not([data-environment="basic"]) [data-workspace-panel] { display:block; }
         body[data-environment="medium"] [data-access="professional"],
         body[data-environment="medium"] .pro-control { display:none !important; }
         .compare-grid { display:grid; grid-template-columns:1fr 1fr 1.15fr; gap:12px; }
@@ -349,7 +335,7 @@
         #meter { height:4px; border-radius:0; }
         @media (min-width:1000px) {
             .deck { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:start; }
-            .scene, .workspace-nav, .basic-console, .p-play, .p-ambient, .p-tune, .lab, .p-compare { grid-column:1 / -1; grid-row:auto; }
+            .scene, .basic-console, .p-play, .p-ambient, .p-tune, .lab, .p-compare { grid-column:1 / -1; grid-row:auto; }
             .p-shape, .p-space { grid-column:1; grid-row:auto; }
             .p-material, .p-motion { grid-column:2 / -1; grid-row:auto; }
             .p-optics { grid-column:1 / span 2; grid-row:auto; }
@@ -369,10 +355,6 @@
             .environment-switch { width:100%; flex:1 0 100%; }
             .environment-switch button { flex:1; }
             .environment-switch .language-select { width:auto; max-width:none; flex:1 1 auto; }
-            .workspace-nav { align-items:stretch; flex-direction:column; }
-            .workspace-tabs { display:grid; grid-template-columns:repeat(3,1fr); }
-            .workspace-tab { padding:9px 5px; }
-            .workspace-hint { text-align:left; }
             .material-choices { grid-template-columns:repeat(2,1fr); }
             .macro-grid { grid-template-columns:1fr 1fr; }
             .basic-intro { display:block; }
@@ -426,17 +408,6 @@
         </header>
 
         <div class="deck">
-            <nav class="workspace-nav" aria-label="Área de trabajo">
-                <div class="workspace-tabs">
-                    <button type="button" class="workspace-tab active" data-workspace="material">Material</button>
-                    <button type="button" class="workspace-tab" data-workspace="space">Espacio</button>
-                    <button type="button" class="workspace-tab" data-workspace="rays">Rayos</button>
-                    <button type="button" class="workspace-tab" data-workspace="tuning" data-access="professional">Afinación</button>
-                    <button type="button" class="workspace-tab" data-workspace="analysis" data-access="professional">Analizar</button>
-                </div>
-                <div class="workspace-hint" id="workspace-hint">Define el carácter y la superficie sonora.</div>
-            </nav>
-
             <!-- ── SCENE / TRANSPORT ── -->
             <section class="panel scene">
                 <div class="panel-title"><span>Scene<span class="info-badge" tabindex="0">i<span class="info-tip">Carga el WAV/MP3 que los rayos van a granular. Arriba: dónde caen los rayos sobre la onda de origen. Abajo: la señal que realmente suena (osciloscopio + espectro).</span></span></span><span>Source · Rays · Output</span></div>
@@ -556,7 +527,15 @@
                 <div class="panel-title"><span>◇ Material sonoro<span class="info-badge" tabindex="0">i<span class="info-tip">El material modifica cada rayo, no solo un efecto al final: Metal abre armónicos, Madera concentra medios, Cristal prolonga resonancias, Agua mueve suavemente, Plasma aporta caos y Vacío lo deja intacto.</span></span></span><span>superficies que transforman rayos</span></div>
                 <div class="ctl">
                     <label>Superficie <span class="v" id="material-v">Vacío</span></label>
-                    <select id="material">
+                    <div class="material-choices" role="group" aria-label="Material sonoro">
+                        <button type="button" class="material-choice active" data-material-choice="0">Vacío<span>Natural, sin color.</span></button>
+                        <button type="button" class="material-choice" data-material-choice="1">Metal<span>Brillo y armónicos.</span></button>
+                        <button type="button" class="material-choice" data-material-choice="2">Madera<span>Cuerpo medio cálido.</span></button>
+                        <button type="button" class="material-choice" data-material-choice="3">Cristal<span>Cola limpia y larga.</span></button>
+                        <button type="button" class="material-choice" data-material-choice="4">Agua<span>Movimiento orgánico.</span></button>
+                        <button type="button" class="material-choice" data-material-choice="5">Plasma<span>Energía y caos.</span></button>
+                    </div>
+                    <select id="material" hidden>
                         <option value="0" selected>Vacío · energía intacta</option>
                         <option value="1">Metal · armónicos brillantes</option>
                         <option value="2">Madera · medios cálidos</option>
@@ -864,8 +843,6 @@
     refreshCanvasTheme();
     window.addEventListener('raydrone:theme', refreshCanvasTheme);
     const environmentButtons = Array.from(document.querySelectorAll('.environment-switch button[data-environment]'));
-    const workspaceButtons = Array.from(document.querySelectorAll('.workspace-tab[data-workspace]'));
-    const workspaceHint = $('workspace-hint');
     const materialChoices = Array.from(document.querySelectorAll('[data-material-choice]'));
     const simpleCharacter = $('simple-character'), simpleCharacterV = $('simple-character-v');
     const simpleMotion = $('simple-motion'), simpleMotionV = $('simple-motion-v');
@@ -1307,36 +1284,6 @@
         if (jsGain) jsGain.gain.value = parseFloat(volSlider.value) / 100;
     });
 
-    // Los entornos son flujos distintos. Medio y Profesional muestran una sola
-    // tarea cada vez; Básico compone la misma escena mediante cuatro macros.
-    const workspaceCopy = {
-        material: 'Define el carácter y la superficie sonora.',
-        space: 'Añade movimiento y profundidad sin salir de la escena.',
-        rays: 'Controla la geometría y el comportamiento del motor.',
-        tuning: 'Interpreta, afina y filtra la materia.',
-        analysis: 'Mide convergencia y compara modelos de efecto.',
-    };
-    const allowedWorkspaces = {
-        medium: ['material', 'space', 'rays'],
-        professional: ['material', 'space', 'rays', 'tuning', 'analysis']
-    };
-    const lastWorkspace = { medium: 'material', professional: 'material' };
-
-    function setWorkspace(workspace) {
-        const level = document.body.dataset.environment;
-        if (level === 'basic') return;
-        const allowed = allowedWorkspaces[level] || allowedWorkspaces.medium;
-        const next = allowed.includes(workspace) ? workspace : allowed[0];
-        document.body.dataset.workspace = next;
-        lastWorkspace[level] = next;
-        workspaceButtons.forEach((b) => {
-            const active = b.dataset.workspace === next;
-            b.classList.toggle('active', active);
-            b.setAttribute('aria-pressed', active ? 'true' : 'false');
-        });
-        workspaceHint.textContent = rayI18n.t(workspaceCopy[next]);
-    }
-
     function setEnvironment(level) {
         if (!['basic', 'medium', 'professional'].includes(level)) level = 'medium';
         document.body.dataset.environment = level;
@@ -1345,9 +1292,7 @@
             b.classList.toggle('active', active);
             b.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
-        if (level !== 'basic') {
-            setWorkspace(lastWorkspace[level]);
-        } else {
+        if (level === 'basic') {
             // Reflejar el estado avanzado sin reescribirlo: pasar a Básico no
             // cambia el sonido, solo lo resume en cuatro gestos.
             simpleCharacter.value = charSlider.value;
@@ -1364,7 +1309,6 @@
         updateBasicSummary();
     }
     environmentButtons.forEach((b) => b.addEventListener('click', () => setEnvironment(b.dataset.environment)));
-    workspaceButtons.forEach((b) => b.addEventListener('click', () => setWorkspace(b.dataset.workspace)));
     setEnvironment('basic');
 
     function motionWord(v) { return rayI18n.t(v < 8 ? 'Quieto' : v < 42 ? 'Fluido' : v < 76 ? 'Vivo' : 'Inestable'); }
@@ -2741,7 +2685,6 @@
         simpleMotionV.textContent = motionWord(parseFloat(simpleMotion.value));
         simpleSpaceV.textContent = spaceWord(parseFloat(simpleSpace.value));
         updateBasicSummary();
-        setWorkspace(document.body.dataset.workspace);
         updateComparison();
     });
 
