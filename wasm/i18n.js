@@ -469,22 +469,6 @@
         window.dispatchEvent(new CustomEvent('raydrone:theme', { detail: theme }));
     }
     function mount() {
-        if (!document.getElementById('raydrone-i18n-style')) {
-            const style = document.createElement('style');
-            style.id = 'raydrone-i18n-style';
-            style.textContent = `
-                .language-select, .theme-select { flex:none; min-width:122px; border:1px solid var(--line-strong,rgba(85,214,194,.25)); border-radius:3px;
-                    background:var(--surface-3,#090c12); color:var(--accent-2,#55d6c2); padding:7px 8px;
-                    font:700 .62rem ui-monospace,SFMono-Regular,Consolas,monospace; text-transform:uppercase; }
-                .language-select:focus, .theme-select:focus { outline:1px solid var(--accent-2,#55d6c2); outline-offset:2px; }
-                .ui-selects { display:flex; align-items:center; gap:6px; min-width:0; }
-                @media (max-width:760px) {
-                    .ui-selects { width:100%; }
-                    .ui-selects .language-select, .ui-selects .theme-select { width:auto; max-width:none; flex:1 1 0; }
-                }
-            `;
-            document.head.appendChild(style);
-        }
         document.querySelectorAll('.language-select').forEach((select) => {
             select.addEventListener('change', () => setLanguage(select.value));
             select.value = current;

@@ -1,367 +1,17 @@
+<!--
+THESIS: RayDrone is a live signal field, not a hardware-synth imitation or a card dashboard.
+OWN-WORLD: Pure black/white, hairline frames, barcode density, sine lattices and inversion states.
+STORY: Load a source, play it, choose a material, shape the scene, then enter mathematical analysis only when needed.
+FIRST VIEWPORT: Compact command header above a dominant ray canvas; transport and Basic controls remain immediately reachable.
+FORM: Data-Sublime Instrument, full-width bench staging, concept seed daab2fb5.
+-->
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RayDrone · WASM</title>
-    <style>
-        :root {
-            --bg:#060706; --surface:#121412; --surface-2:#292b27; --surface-3:#090b0a;
-            --panel:#171a16; --line:rgba(255,218,128,0.22); --line-strong:rgba(255,84,26,0.72);
-            --accent:#ff3b18; --accent-dim:#b51d10; --accent-soft:rgba(255,59,24,0.22);
-            --accent-2:#ffd447; --text:#fff8e8; --muted:#d0c3aa; --muted-2:#93836b;
-            --focus:#fff18a;
-            --glow-a:rgba(255,59,24,0.14); --glow-b:rgba(255,212,71,0.08); --glow-c:rgba(255,120,36,0.06);
-        }
-        :root[data-theme="ocean"] { --bg:#06131c; --surface:#0b202b; --surface-2:#103344; --surface-3:#07161f; --panel:#0d2632; --line:rgba(125,231,211,.16); --line-strong:rgba(50,199,255,.38);
-            --accent:#32c7ff; --accent-dim:#1385b5; --accent-soft:rgba(50,199,255,.16); --accent-2:#7de7d3; --text:#eafaff; --muted:#a6c4cf; --muted-2:#72919e; --focus:#ffe38a;
-            --glow-a:rgba(50,199,255,.10); --glow-b:rgba(125,231,211,.055); --glow-c:rgba(34,132,255,.07); }
-        :root[data-theme="neon"] { --bg:#100719; --surface:#1c0e26; --surface-2:#28113a; --surface-3:#12091a; --panel:#21102e; --line:rgba(255,50,213,.18); --line-strong:rgba(113,255,117,.42);
-            --accent:#ff32d5; --accent-dim:#a50b8b; --accent-soft:rgba(255,50,213,.16); --accent-2:#71ff75; --text:#fff1ff; --muted:#d0b4d5; --muted-2:#9d78a7; --focus:#fff45c;
-            --glow-a:rgba(255,50,213,.10); --glow-b:rgba(113,255,117,.055); --glow-c:rgba(113,80,255,.08); }
-        :root[data-theme="sunset"] { --bg:#1a0d0a; --surface:#291613; --surface-2:#3a1e18; --surface-3:#1b0d0a; --panel:#2f1914; --line:rgba(255,209,102,.18); --line-strong:rgba(255,122,69,.42);
-            --accent:#ff7a45; --accent-dim:#c24b29; --accent-soft:rgba(255,122,69,.16); --accent-2:#c58cff; --text:#fff4e9; --muted:#d1b4a3; --muted-2:#a47d68; --focus:#fff0b5;
-            --glow-a:rgba(255,122,69,.11); --glow-b:rgba(197,140,255,.075); --glow-c:rgba(214,62,45,.07); }
-        :root[data-theme="grayscale"] { --bg:#111; --surface:#1a1a1a; --surface-2:#242424; --surface-3:#0d0d0d; --panel:#202020; --line:rgba(255,255,255,.14); --line-strong:rgba(215,215,215,.38);
-            --accent:#d7d7d7; --accent-dim:#858585; --accent-soft:rgba(215,215,215,.14); --accent-2:#f2f2f2; --text:#f7f7f7; --muted:#b7b7b7; --muted-2:#888; --focus:#fff;
-            --glow-a:rgba(255,255,255,.06); --glow-b:rgba(180,180,180,.035); --glow-c:rgba(255,255,255,.025); }
-        :root[data-theme="rainbow"] { --bg:#080a12; --surface:#141821; --surface-2:#252d3e; --surface-3:#0b0f18; --panel:#111722; --line:rgba(255,255,255,.22); --line-strong:rgba(0,229,255,.66);
-            --accent:#ff4dca; --accent-dim:#8f2f9b; --accent-soft:rgba(255,77,202,.22); --accent-2:#20f0ff; --text:#fbfbff; --muted:#c8cbe0; --muted-2:#9298b0; --focus:#ecff58;
-            --glow-a:rgba(255,77,202,.16); --glow-b:rgba(32,240,255,.11); --glow-c:rgba(177,109,255,.14);
-            --rainbow-yellow:#ffd84d; --rainbow-green:#71ff75; --rainbow-violet:#b16dff; }
-        html[data-theme="red808"] body { background:
-            linear-gradient(180deg,rgba(240,74,36,.08),transparent 34%),
-            linear-gradient(115deg,rgba(227,184,79,.045),transparent 42%,rgba(255,120,36,.04)),
-            linear-gradient(180deg,#111210 0%,var(--bg) 100%); }
-        html[data-theme="red808"] .container { box-shadow:inset 0 1px 0 rgba(255,255,255,.035), 0 24px 70px rgba(0,0,0,.52), 0 0 28px rgba(240,74,36,.06); }
-        html[data-theme="red808"] .panel { box-shadow:inset 0 1px 0 rgba(255,236,198,.025), 0 8px 24px rgba(0,0,0,.18); }
-        html[data-theme="red808"] .panel-title { letter-spacing:.055em; text-shadow:0 0 8px rgba(255,59,24,.28); }
-        html[data-theme="red808"] .btn, html[data-theme="red808"] .preset.active, html[data-theme="red808"] .material-choice.active { box-shadow:0 0 0 1px rgba(255,212,71,.26),0 0 18px rgba(255,59,24,.20); }
-        html[data-theme="red808"] input[type="range"]::-webkit-slider-runnable-track { background:linear-gradient(90deg,var(--accent-dim),var(--accent),var(--accent-2)); }
-        html[data-theme="red808"] .container { background:linear-gradient(180deg,#1a1712,#0c0b09 62%,#090807); border-color:rgba(255,219,145,.24); }
-        html[data-theme="red808"] .panel { background:linear-gradient(180deg,rgba(37,31,23,.98),rgba(18,17,14,.98)); }
-        html[data-theme="red808"] .scene { background:linear-gradient(180deg,rgba(239,58,27,.16),rgba(15,14,11,.98) 46%); border-color:rgba(255,81,36,.68); }
-        html[data-theme="red808"] h1, html[data-theme="red808"] .panel-title { color:#ef3a20; text-shadow:0 0 10px rgba(239,58,32,.42); }
-        html[data-theme="red808"] .material-choice, html[data-theme="red808"] .preset { border-radius:8px; border-width:2px; background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.025)); color:#fff3dd; text-shadow:0 1px 1px rgba(0,0,0,.72); box-shadow:inset 0 1px 0 rgba(255,244,218,.16),0 7px 14px rgba(0,0,0,.3); transition:transform .14s ease,filter .14s ease,box-shadow .14s ease; }
-        html[data-theme="red808"] .material-choice { min-height:84px; padding:12px 9px; }
-        html[data-theme="red808"] .material-choice span { color:rgba(255,235,205,.72); }
-        html[data-theme="red808"] .material-choice:hover, html[data-theme="red808"] .preset:hover { transform:translateY(-1px); filter:brightness(1.1); }
-        html[data-theme="red808"] .material-choice.active, html[data-theme="red808"] .preset.active { background:linear-gradient(180deg,rgba(255,107,56,.48),rgba(120,25,12,.42)); box-shadow:inset 0 0 18px rgba(255,212,71,.08),0 0 26px currentColor; }
-        html[data-theme="red808"] .material-choice:nth-child(6n+1), html[data-theme="red808"] .material-choice:nth-child(6n+2), html[data-theme="red808"] .material-choice:nth-child(6n+3) { border-color:#e52e1e; color:#ff4935; box-shadow:0 0 18px rgba(229,46,30,.3); }
-        html[data-theme="red808"] .material-choice:nth-child(6n+4) { border-color:#f06424; color:#ff7736; box-shadow:0 0 18px rgba(240,100,36,.3); }
-        html[data-theme="red808"] .material-choice:nth-child(6n+5), html[data-theme="red808"] .preset:nth-child(6n+2) { border-color:#e39a21; color:#ffc451; box-shadow:0 0 18px rgba(227,154,33,.26); }
-        html[data-theme="red808"] .material-choice:nth-child(6n), html[data-theme="red808"] .preset:nth-child(6n+3) { border-color:#bcb6a8; color:#eee6d1; box-shadow:0 0 18px rgba(222,214,192,.18); }
-        html[data-theme="red808"] .preset:nth-child(6n+1) { border-color:#ed4b25; color:#ff6543; box-shadow:0 0 18px rgba(237,75,37,.28); }
-        html[data-theme="rainbow"] body { overflow-x:hidden; background:
-            radial-gradient(circle at 50% -10%,rgba(255,77,202,.15),transparent 32%),
-            linear-gradient(180deg,#111022 0%,#080b13 48%,var(--bg) 100%); }
-        html[data-theme="rainbow"] body::before { content:""; position:fixed; inset:-28%; z-index:0; pointer-events:none;
-            background:conic-gradient(from 210deg at 50% 50%,rgba(255,77,202,.22),rgba(255,216,77,.12),rgba(113,255,117,.14),rgba(32,240,255,.18),rgba(177,109,255,.16),rgba(255,77,202,.22));
-            filter:blur(96px) saturate(135%); animation:rainbow-drift 22s linear infinite; }
-        html[data-theme="rainbow"] body::after { content:""; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.2;
-            background:linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(0deg,rgba(255,255,255,.018) 1px,transparent 1px);
-            background-size:34px 34px; mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.35) 60%,transparent 100%); }
-        html[data-theme="rainbow"] body > * { position:relative; z-index:1; }
-        html[data-theme="rainbow"] .container { background:linear-gradient(180deg,#171727,#090c14 58%,#070a11); border-color:rgba(255,255,255,.2); box-shadow:0 0 0 1px rgba(255,39,171,.35),0 0 34px rgba(255,39,171,.16),0 24px 70px rgba(0,0,0,.72); }
-        html[data-theme="rainbow"] .panel { background:linear-gradient(180deg,rgba(28,31,52,.96),rgba(12,16,26,.98)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.11),0 14px 36px rgba(0,0,0,.28); }
-        html[data-theme="rainbow"] .scene { background:linear-gradient(180deg,rgba(255,32,177,.13),rgba(11,15,25,.96) 42%); border-color:rgba(255,32,177,.56); }
-        html[data-theme="rainbow"] .panel-title, html[data-theme="rainbow"] h1 { color:#ff2bb2; text-shadow:0 0 10px rgba(255,43,178,.58),0 0 28px rgba(255,43,178,.25); }
-        html[data-theme="rainbow"] .sub, html[data-theme="rainbow"] .badge { color:#aeb4d6; }
-        html[data-theme="rainbow"] .material-choices { gap:9px; }
-        html[data-theme="rainbow"] .material-choice, html[data-theme="rainbow"] .preset { border-radius:5px; border-width:2px; background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.025)); color:#f5f7ff; text-shadow:0 1px 1px rgba(0,0,0,.65); box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 6px 14px rgba(0,0,0,.24); }
-        html[data-theme="rainbow"] .material-choice { min-height:84px; padding:12px 9px; }
-        html[data-theme="rainbow"] .material-choice span { color:rgba(255,255,255,.75); }
-        html[data-theme="rainbow"] .material-choice:hover, html[data-theme="rainbow"] .preset:hover { transform:translateY(-1px); filter:saturate(1.15) brightness(1.12); }
-        html[data-theme="rainbow"] .material-choice.active, html[data-theme="rainbow"] .preset.active { color:#fff; background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.07)); box-shadow:inset 0 0 18px rgba(255,255,255,.08),0 0 26px currentColor; }
-        html[data-theme="rainbow"] .material-choice:nth-child(6n+1), html[data-theme="rainbow"] .preset:nth-child(6n+1) { border-color:#ff334d; color:#ff4b60; box-shadow:0 0 18px rgba(255,51,77,.34); }
-        html[data-theme="rainbow"] .material-choice:nth-child(6n+2), html[data-theme="rainbow"] .preset:nth-child(6n+2) { border-color:#ffdc4a; color:#ffe36d; box-shadow:0 0 18px rgba(255,220,74,.28); }
-        html[data-theme="rainbow"] .material-choice:nth-child(6n+3), html[data-theme="rainbow"] .preset:nth-child(6n+3) { border-color:#4dff88; color:#6dff9e; box-shadow:0 0 18px rgba(77,255,136,.3); }
-        html[data-theme="rainbow"] .material-choice:nth-child(6n+4), html[data-theme="rainbow"] .preset:nth-child(6n+4) { border-color:#16f7ff; color:#42fbff; box-shadow:0 0 18px rgba(22,247,255,.34); }
-        html[data-theme="rainbow"] .material-choice:nth-child(6n+5), html[data-theme="rainbow"] .preset:nth-child(6n+5) { border-color:#4aa8ff; color:#70baff; box-shadow:0 0 18px rgba(74,168,255,.3); }
-        html[data-theme="rainbow"] .material-choice:nth-child(6n), html[data-theme="rainbow"] .preset:nth-child(6n) { border-color:#ff3dbf; color:#ff63cd; box-shadow:0 0 18px rgba(255,61,191,.34); }
-        html[data-theme="rainbow"] .btn, html[data-theme="rainbow"] select, html[data-theme="rainbow"] input[type="range"] { border-color:rgba(255,255,255,.22); }
-        html[data-theme="sunset"] body { background:linear-gradient(180deg,#24101b 0%,#160b12 56%,var(--bg) 100%); }
-        html[data-theme="sunset"] .container { background:linear-gradient(180deg,#311321,#190b14 62%,#12090f); border-color:rgba(255,122,69,.32); box-shadow:0 0 0 1px rgba(255,77,153,.18),0 24px 70px rgba(0,0,0,.58),0 0 34px rgba(197,140,255,.12); }
-        html[data-theme="sunset"] .panel { background:linear-gradient(180deg,rgba(58,25,37,.97),rgba(28,13,22,.98)); }
-        html[data-theme="sunset"] .scene { background:linear-gradient(180deg,rgba(255,94,46,.18),rgba(31,13,24,.98) 46%); border-color:rgba(255,122,69,.62); }
-        html[data-theme="sunset"] h1, html[data-theme="sunset"] .panel-title { color:#ff7040; text-shadow:0 0 10px rgba(255,112,64,.44),0 0 24px rgba(197,140,255,.22); }
-        html[data-theme="sunset"] .material-choice, html[data-theme="sunset"] .preset { border-radius:8px; border-width:2px; background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.025)); color:#fff2ec; text-shadow:0 1px 1px rgba(0,0,0,.68); box-shadow:inset 0 1px 0 rgba(255,238,228,.16),0 7px 14px rgba(0,0,0,.28); transition:transform .14s ease,filter .14s ease,box-shadow .14s ease; }
-        html[data-theme="sunset"] .material-choice { min-height:84px; padding:12px 9px; }
-        html[data-theme="sunset"] .material-choice span { color:rgba(255,228,228,.74); }
-        html[data-theme="sunset"] .material-choice:hover, html[data-theme="sunset"] .preset:hover { transform:translateY(-1px); filter:brightness(1.1) saturate(1.1); }
-        html[data-theme="sunset"] .material-choice.active, html[data-theme="sunset"] .preset.active { background:linear-gradient(180deg,rgba(255,128,84,.42),rgba(113,31,78,.38)); box-shadow:inset 0 0 18px rgba(255,199,117,.08),0 0 26px currentColor; }
-        html[data-theme="sunset"] .material-choice:nth-child(6n+1), html[data-theme="sunset"] .material-choice:nth-child(6n+2), html[data-theme="sunset"] .material-choice:nth-child(6n+3) { border-color:#ff643c; color:#ff7a4f; box-shadow:0 0 18px rgba(255,100,60,.3); }
-        html[data-theme="sunset"] .material-choice:nth-child(6n+4), html[data-theme="sunset"] .preset:nth-child(6n+1) { border-color:#d6389f; color:#f05bc0; box-shadow:0 0 18px rgba(214,56,159,.3); }
-        html[data-theme="sunset"] .material-choice:nth-child(6n+5), html[data-theme="sunset"] .preset:nth-child(6n+2) { border-color:#b96cf0; color:#d18cff; box-shadow:0 0 18px rgba(185,108,240,.32); }
-        html[data-theme="sunset"] .material-choice:nth-child(6n), html[data-theme="sunset"] .preset:nth-child(6n+3) { border-color:#ffad4c; color:#ffc064; box-shadow:0 0 18px rgba(255,173,76,.27); }
-        @keyframes rainbow-drift { from { transform:rotate(0deg) scale(1.05); } to { transform:rotate(360deg) scale(1.05); } }
-        * { box-sizing: border-box; }
-        body { background:
-                   linear-gradient(180deg, var(--glow-a), transparent 34%),
-                   linear-gradient(115deg, var(--glow-b), transparent 42%, var(--glow-c)),
-                   linear-gradient(180deg, #090a0f 0%, var(--bg) 100%);
-               color:var(--text);
-               font-family:'Segoe UI',Tahoma,sans-serif; display:flex; justify-content:center;
-               padding:28px 16px; margin:0; min-height:100vh; }
-        .container { background:linear-gradient(180deg, var(--surface), var(--bg));
-                     padding:22px; border-radius:8px; width:min(1180px,100%);
-                     border:1px solid var(--line); box-shadow:0 24px 70px rgba(0,0,0,0.36); }
-        h1 { font-size:1.85rem; text-align:center; margin:0; letter-spacing:0;
-             text-transform:uppercase; color:var(--text); }
-        h1::after { content:""; display:block; width:88px; height:2px; margin:10px auto 0;
-                    background:linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent); }
-        .sub { text-align:center; color:var(--muted); font-size:0.9rem; margin:10px 0 6px; }
-        .badge { display:block; width:max-content; max-width:100%; margin:0 auto 22px; padding:5px 10px;
-                 border:1px solid var(--line); border-radius:999px; background:var(--surface-3);
-                 text-align:center; font-family:ui-monospace, SFMono-Regular, Consolas, monospace;
-                 font-size:0.68rem; letter-spacing:0; color:var(--muted); text-transform:uppercase; }
-
-        /* ── Deck: rejilla de módulos (responsive) ── */
-        .deck { display:grid; gap:14px; grid-template-columns:1fr; }
-        @media (min-width:1000px) {
-            .deck { grid-template-columns:minmax(0,1.55fr) minmax(260px,1fr) minmax(260px,1fr); align-items:start; }
-            .scene  { grid-column:1; grid-row:1 / span 2; }
-            .p-shape  { grid-column:2; grid-row:1; }
-            .p-optics { grid-column:2; grid-row:2; }
-            .p-space  { grid-column:3; grid-row:1; }
-            .p-engine { grid-column:3; grid-row:2; }
-            .p-play { grid-column:1 / -1; grid-row:3; }
-            .p-ambient { grid-column:1 / -1; grid-row:4; }
-            .p-tune { grid-column:1 / -1; grid-row:5; }
-            .lab    { grid-column:1 / -1; grid-row:6; }
-            .micro-grid { grid-template-columns:300px 1fr; }
-            .ambient-grid { grid-template-columns:repeat(5,1fr); }
-            .tune-filter { grid-template-columns:repeat(5,1fr); }
-        }
-        .panel { background:linear-gradient(180deg, var(--surface-2), var(--surface-3));
-                 border:1px solid var(--line); border-radius:8px; padding:16px;
-                 box-shadow:inset 0 1px 0 rgba(255,255,255,0.035); }
-        .scene { background:linear-gradient(180deg, var(--accent-soft), var(--surface-3)); border-color:var(--line-strong); }
-        .panel-title { font-family:ui-monospace, SFMono-Regular, Consolas, monospace; font-size:0.72rem;
-                       letter-spacing:0; text-transform:uppercase; color:var(--muted);
-                       margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--line);
-                       display:flex; justify-content:space-between; gap:10px; align-items:center; }
-        .panel-title > span:first-child { color:var(--text); }
-        .panel-title > span:last-child { color:var(--muted-2); text-align:right; }
-
-        /* ── Info badge: small "i" next to each section title, tooltip on hover/focus ── */
-        .info-badge { position:relative; display:inline-flex; align-items:center; justify-content:center;
-                      width:16px; height:16px; margin-left:7px; border-radius:50%;
-                      border:1px solid rgba(255,255,255,0.18); color:var(--muted);
-                      font-size:10px; font-style:normal; font-weight:bold; cursor:help;
-                      vertical-align:middle; user-select:none; }
-        .info-badge:hover, .info-badge:focus { color:var(--accent-2); border-color:var(--accent-2); outline:none; }
-        .info-tip { position:absolute; left:0; top:21px; z-index:20; width:280px; max-width:min(76vw,320px);
-                    background:var(--surface); border:1px solid var(--line-strong); border-radius:8px;
-                    padding:9px 11px; font-family:'Segoe UI',Tahoma,sans-serif; font-size:0.72rem;
-                    font-weight:normal; letter-spacing:0; text-transform:none; color:#e7edf4;
-                    line-height:1.4; box-shadow:0 10px 30px rgba(0,0,0,0.5);
-                    opacity:0; pointer-events:none; transition:opacity .12s; }
-        .info-badge:hover .info-tip, .info-badge:focus .info-tip { opacity:1; }
-
-        .file-label { display:block; text-align:center; background:var(--surface-2);
-                      border:1px dashed var(--line-strong); padding:14px; border-radius:8px;
-                      cursor:pointer; color:var(--text); font-weight:650; transition:background .18s, border-color .18s, color .18s; }
-        .file-label:hover { background:var(--accent-soft); border-color:var(--accent); color:var(--text); }
-        input[type="file"] { display:none; }
-        canvas { display:block; width:100%; height:120px; background:var(--surface-3); border-radius:8px;
-                 border:1px solid var(--line); margin:14px 0; cursor:crosshair; }
-        .presets { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-bottom:8px;
-                   padding:4px; border-radius:8px; background:var(--surface-3); border:1px solid var(--line); }
-        .preset { padding:10px 8px; border:1px solid transparent; border-radius:6px; background:transparent;
-                  color:var(--muted); font-family:ui-monospace, SFMono-Regular, Consolas, monospace;
-                  font-size:0.78rem; cursor:pointer; transition:background .18s, color .18s, border-color .18s; }
-        .preset:hover { background:var(--surface-2); color:var(--text); }
-        .preset.active { background:linear-gradient(180deg, var(--accent-soft), var(--surface-3));
-                         border-color:var(--line-strong); color:var(--text); }
-        .ctl { margin-bottom:15px; }
-        .ctl:last-child { margin-bottom:0; }
-        .ctl label { display:flex; justify-content:space-between; gap:12px; font-size:0.78rem;
-                     text-transform:none; letter-spacing:0; color:var(--muted); margin-bottom:8px; line-height:1.35; }
-        .ctl label .v, .v { color:var(--accent-2); font-family:ui-monospace, SFMono-Regular, Consolas, monospace; white-space:nowrap; }
-        .ctl.row { display:flex; justify-content:space-between; align-items:center; }
-        input[type="range"] { -webkit-appearance:none; appearance:none; width:100%; height:7px; background:var(--surface-2);
-                              border-radius:999px; outline:none; }
-        input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
-                              background:linear-gradient(135deg,var(--accent),var(--accent-2)); cursor:pointer;
-                              border:2px solid var(--bg); box-shadow:0 0 0 1px var(--line); }
-        input[type="checkbox"] { width:20px; height:20px; accent-color:var(--accent); cursor:pointer; }
-        select { width:100%; background:var(--surface-3); color:var(--text); border:1px solid var(--line);
-                 border-radius:8px; padding:10px 9px; font-family:ui-monospace, SFMono-Regular, Consolas, monospace;
-                 font-size:0.8rem; cursor:pointer; }
-        select:focus { outline:none; border-color:var(--accent-2); }
-        :where(button, input, select, .info-badge, a):focus-visible {
-            outline:2px solid var(--focus); outline-offset:3px;
-        }
-        #wave { height:150px; touch-action:pan-y; }
-        #outwave { height:84px; cursor:default; margin:0 0 14px; }
-
-        /* ── Piano: teclado / ratón / táctil ── */
-        #piano { position:relative; height:76px; margin:0; touch-action:none;
-                 border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--surface-3); }
-        .piano-key { position:absolute; top:0; box-sizing:border-box; cursor:pointer; transition:background .05s; }
-        .piano-key.white { height:100%; background:#e6e6ea; border:1px solid rgba(0,0,0,0.4); border-radius:0 0 5px 5px; z-index:1; }
-        .piano-key.white.on { background:var(--accent); }
-        .piano-key.black { height:60%; background:#161018; border:1px solid rgba(0,0,0,0.6); border-radius:0 0 4px 4px; z-index:2; }
-        .piano-key.black.on { background:var(--accent-dim); box-shadow:0 0 10px var(--accent); }
-        /* Pantalla completa de la sección gráfica + rayos */
-        #viz-wrap:fullscreen, #viz-wrap:-webkit-full-screen { width:100vw; height:100vh; background:var(--bg); }
-        #viz-wrap:fullscreen canvas, #viz-wrap:-webkit-full-screen canvas { height:100% !important; border-radius:0; }
-        #fs-btn { position:absolute; right:8px; top:8px; z-index:3; padding:5px 10px; font-size:14px; line-height:1.2;
-                  background:var(--surface); border:1px solid var(--line); color:var(--text); }
-        .micro-grid { display:grid; gap:16px; grid-template-columns:1fr; align-items:start; }
-        .ambient-grid { display:grid; gap:14px; grid-template-columns:1fr 1fr; }
-        .tune-filter { display:grid; gap:14px; grid-template-columns:1fr 1fr; margin-top:14px;
-                       padding-top:12px; border-top:1px solid var(--line); }
-        #lattice { height:180px; cursor:default; margin:0; }
-        .btn { width:100%; border:1px solid transparent; padding:14px; border-radius:8px; font-size:0.95rem; font-weight:750;
-               text-transform:uppercase; letter-spacing:0; cursor:pointer; transition:transform .18s, background .18s, border-color .18s; }
-        .btn:hover { transform:translateY(-1px); }
-        .btn-play { background:linear-gradient(135deg,var(--accent-dim),var(--accent)); color:var(--bg); margin-top:8px; }
-        .btn-play:disabled { background:var(--surface-2); color:var(--muted-2); cursor:not-allowed; transform:none; }
-        .btn-record { margin-top:8px; background:var(--accent-soft); color:var(--accent-2); border-color:var(--line-strong); }
-        .btn-record:hover { background:var(--accent-soft); }
-        .btn-record.recording { background:var(--accent); color:var(--bg); border-color:var(--accent); }
-        .status { text-align:center; font-family:ui-monospace, SFMono-Regular, Consolas, monospace;
-                  font-size:0.76rem; color:var(--muted); margin-top:12px; min-height:1em; }
-        #meter { height:7px; background:var(--surface-2); border-radius:999px; overflow:hidden; margin:-6px 0 14px; }
-        #meter-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--accent-dim),var(--accent),var(--accent-2));
-                      transition:width .08s linear; }
-        .lab canvas { height:240px; cursor:default; }
-        .lab-ab { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:10px; }
-        h1, .badge, .panel-title, .ctl label, .btn { letter-spacing:0; }
-        @media (max-width:760px) {
-            body { padding:10px 8px; }
-            .container { padding:14px 12px; border-radius:8px; }
-            h1 { font-size:1.35rem; }
-            .deck { gap:12px; }
-            .panel { padding:14px; }
-            .panel-title { align-items:flex-start; flex-direction:column; gap:4px; }
-            .panel-title > span:last-child { text-align:left; }
-            .presets, .ambient-grid, .tune-filter, .lab-ab { grid-template-columns:1fr; }
-            .micro-grid { grid-template-columns:1fr; }
-            #wave { height:132px; }
-            .info-tip { left:auto; right:0; }
-        }
-
-        /* RayDrone Studio 2026: instrumento primero, formulario después. */
-        body { display:block; padding:0; overflow-x:hidden; background:var(--bg);
-               background-image:linear-gradient(var(--line) 1px,transparent 1px),
-                                linear-gradient(90deg,var(--line) 1px,transparent 1px),
-                                radial-gradient(circle at 50% -15%,var(--glow-b),transparent 42%);
-               background-size:40px 40px,40px 40px,100% 100%; }
-        .container { width:min(1500px,100%); min-height:100vh; margin:auto; padding:16px clamp(14px,2.4vw,36px) 38px;
-                     border:0; border-left:1px solid var(--line); border-right:1px solid var(--line); border-radius:0;
-                     background:linear-gradient(180deg,var(--surface-3),var(--bg)); box-shadow:0 0 120px rgba(0,0,0,.7); }
-        .studio-head { min-height:62px; display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:14px; flex-wrap:wrap; }
-        .studio-brand { display:flex; align-items:baseline; gap:16px; min-width:0; }
-        h1 { flex:none; font-family:Impact,'Arial Narrow',sans-serif; font-style:italic; font-size:clamp(1.75rem,3.1vw,2.8rem);
-             line-height:1; text-align:left; white-space:nowrap; }
-        h1::after { display:none; }
-        .studio-copy { min-width:0; }
-        .studio-copy .sub { margin:0 0 3px; text-align:left; font-size:.72rem; text-transform:uppercase; }
-        .studio-copy .badge { margin:0; padding:0; border:0; border-radius:0; background:none; color:var(--muted-2); }
-        .engine-live { flex:none; display:flex; gap:14px; align-items:center; padding:8px 11px; border:1px solid var(--line-strong);
-                       background:var(--accent-soft); font:700 .62rem/1 ui-monospace,SFMono-Regular,Consolas,monospace;
-                       color:var(--accent-2); text-transform:uppercase; }
-        .engine-live::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--accent-2);
-                               box-shadow:0 0 10px var(--accent-2); animation:enginePulse 1.7s ease-in-out infinite; }
-        .environment-switch { display:flex; align-items:center; gap:2px; padding:3px; border:1px solid var(--line); background:var(--surface-3); min-width:0; }
-        .environment-switch button { border:0; background:transparent; color:var(--muted); padding:7px 9px; font:700 .62rem ui-monospace,SFMono-Regular,Consolas,monospace; cursor:pointer; text-transform:uppercase; }
-        .environment-switch button.active { color:var(--bg); background:var(--accent-2); }
-        .ui-selects .language-select, .ui-selects .theme-select { width:132px; min-width:0; max-width:132px; }
-        .preferences { position:relative; }
-        .preferences > summary { list-style:none; cursor:pointer; color:var(--muted); border:1px solid var(--line); background:var(--surface-3); padding:7px 10px; font:700 .68rem ui-monospace,SFMono-Regular,Consolas,monospace; text-transform:uppercase; }
-        .preferences > summary::-webkit-details-marker { display:none; }
-        .preferences > summary::after { content:'⌄'; margin-left:7px; color:var(--accent-2); }
-        .preferences[open] > summary { color:var(--text); border-color:var(--line-strong); }
-        .preferences[open] > summary::after { content:'⌃'; }
-        .preferences .ui-selects { position:absolute; z-index:20; right:0; top:calc(100% + 6px); display:grid; gap:6px; width:170px; padding:8px; border:1px solid var(--line); background:var(--surface); box-shadow:0 12px 26px rgba(0,0,0,.28); }
-        .preferences .ui-selects .language-select, .preferences .ui-selects .theme-select { width:100%; max-width:none; }
-        .basic-console { display:none; grid-column:1 / -1; overflow:hidden; }
-        .basic-intro { display:flex; justify-content:space-between; align-items:end; gap:24px; margin-bottom:15px; }
-        .basic-intro h2 { margin:0 0 5px; font-size:1.15rem; font-weight:600; }
-        .basic-intro p { margin:0; color:var(--muted); font-size:.82rem; }
-        .material-choices { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:7px; margin-bottom:16px; }
-        .material-choice { min-height:72px; padding:10px 8px; border:1px solid var(--line); background:var(--surface-3); color:var(--muted);
-                           cursor:pointer; text-align:left; font:700 .68rem ui-monospace,SFMono-Regular,Consolas,monospace; }
-        .material-choice span { display:block; margin-top:6px; color:var(--muted-2); font:400 .68rem 'Segoe UI',Tahoma,sans-serif; }
-        .material-choice:hover { border-color:var(--line-strong); color:var(--text); }
-        .material-choice.active { border-color:var(--accent-2); color:var(--accent-2); background:var(--accent-soft); box-shadow:inset 0 0 24px var(--glow-b); }
-        .macro-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; padding-top:14px; border-top:1px solid var(--line); }
-        .macro-card { padding:12px; background:var(--surface); border:1px solid var(--line); }
-        .macro-card .macro-name { display:block; margin-bottom:3px; color:var(--text); font-size:.76rem; font-weight:600; }
-        .macro-card small { display:block; min-height:32px; color:var(--muted-2); font-size:.68rem; line-height:1.35; }
-        .basic-summary { margin-top:12px; padding:10px 12px; border-left:2px solid var(--accent); color:var(--muted); background:var(--accent-soft); font-size:.76rem; }
-
-        body[data-environment="basic"] [data-workspace-panel] { display:none !important; }
-        body[data-environment="basic"] .basic-console { display:block; }
-        body[data-environment="basic"] #fs-btn,
-        body[data-environment="basic"] #hud,
-        body[data-environment="basic"] #rec { display:none !important; }
-        body:not([data-environment="basic"]) .basic-console { display:none; }
-        body:not([data-environment="basic"]) [data-workspace-panel] { display:block; }
-        body[data-environment="medium"] [data-access="professional"],
-        body[data-environment="medium"] .pro-control { display:none !important; }
-        .compare-grid { display:grid; grid-template-columns:1fr 1fr 1.15fr; gap:12px; }
-        .compare-card { border:1px solid var(--line); padding:12px; background:var(--surface-3); min-height:110px; }
-        .compare-card h3 { margin:0 0 8px; font-size:.72rem; color:var(--accent-2); letter-spacing:.06em; }
-        .compare-metric { display:flex; justify-content:space-between; gap:12px; margin:5px 0; font: .72rem ui-monospace,SFMono-Regular,Consolas,monospace; color:var(--muted); }
-        .compare-metric b { color:var(--text); }
-        @keyframes enginePulse { 50% { opacity:.35; transform:scale(.7); } }
-        .deck { gap:10px; }
-        .panel { position:relative; border-radius:3px; padding:15px; background:linear-gradient(180deg,var(--panel),var(--surface-3));
-                 border-color:var(--line); box-shadow:inset 0 1px var(--glow-b); }
-        .panel::before { content:""; position:absolute; left:-1px; top:14px; bottom:14px; width:2px; background:var(--accent-2); opacity:.22; }
-        .panel-title { margin-bottom:12px; padding-bottom:8px; font-size:.66rem; }
-        .scene { padding:16px; border-color:var(--line-strong);
-                 background:linear-gradient(150deg,var(--accent-soft),var(--glow-a) 60%,var(--surface-3)); }
-        .scene::before { background:linear-gradient(var(--accent-2),var(--accent)); opacity:1; }
-        #viz-wrap { overflow:hidden; border:1px solid var(--line-strong); background:var(--surface-3);
-                    box-shadow:0 18px 42px rgba(0,0,0,.32),inset 0 0 70px var(--glow-b); }
-        canvas { border-radius:2px; }
-        #wave { height:clamp(240px,36vh,430px); margin:0; border:0; }
-        #outwave { height:105px; border-radius:2px; }
-        .file-label { padding:12px; margin-bottom:10px; border-radius:3px; border-style:solid;
-                      background:var(--surface-2); font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
-                      text-transform:uppercase; font-size:.73rem; }
-        .presets { border-radius:3px; }
-        .preset { border-radius:2px; }
-        .btn { border-radius:3px; clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px)); }
-        input[type="range"] { height:4px; border-radius:0; }
-        input[type="range"]::-webkit-slider-thumb { width:15px; height:15px; border-radius:2px; }
-        select { border-radius:3px; }
-        #piano { height:104px; border-radius:3px; }
-        #meter { height:4px; border-radius:0; }
-        @media (min-width:1000px) {
-            .deck { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:start; }
-            .scene, .basic-console, .p-play, .p-ambient, .p-tune, .lab, .p-compare { grid-column:1 / -1; grid-row:auto; }
-            .p-shape, .p-space { grid-column:1; grid-row:auto; }
-            .p-material, .p-motion { grid-column:2 / -1; grid-row:auto; }
-            .p-optics { grid-column:1 / span 2; grid-row:auto; }
-            .p-engine { grid-column:3 / span 2; grid-row:auto; }
-        }
-        @media (max-width:760px) {
-            .container { padding:10px 8px 24px; }
-            .studio-head { min-height:50px; margin-bottom:8px; flex-wrap:wrap; gap:8px; }
-            .studio-brand { flex:1 1 auto; }
-            .studio-copy { display:none; }
-            .engine-live { font-size:.54rem; padding:7px; }
-            .scene { padding:10px; }
-            #wave { height:48vh; min-height:300px; }
-            #piano { height:88px; }
-            .panel-title { flex-direction:row; align-items:center; }
-            .panel-title > span + span { display:none; }
-            .environment-switch { width:100%; flex:1 0 100%; }
-            .environment-switch button { flex:1; }
-            .environment-switch .language-select { width:auto; max-width:none; flex:1 1 auto; }
-            .material-choices { grid-template-columns:repeat(2,1fr); }
-            .macro-grid { grid-template-columns:1fr 1fr; }
-            .basic-intro { display:block; }
-            .compare-grid { grid-template-columns:1fr; }
-        }
-        @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; } }
-    </style>
+    <link rel="stylesheet" href="labs-2026.css">
     <!-- Vercel Analytics solo existe en un despliegue de Vercel. Cargarlo al
          servir localmente con Python producía un 404 ruidoso en consola. -->
     <script>
@@ -373,35 +23,31 @@
             document.head.appendChild(analytics);
         }
     </script>
-    <script src="i18n.js"></script>
+    <script src="i18n.js?v=labs-2026"></script>
 </head>
-<body data-environment="basic" data-workspace="material">
+<body data-environment="basic">
     <div class="container">
         <header class="studio-head">
             <div class="studio-brand">
                 <h1>RayDrone</h1>
                 <div class="studio-copy">
-                    <p class="sub">Instrumento granular de trazado acústico</p>
+                    <p class="sub">Acoustic ray instrument</p>
                     <span class="badge">Rust · WebAssembly · AudioWorklet · QMC Engine</span>
                 </div>
             </div>
-            <div class="engine-live">DSP local · tiempo real</div>
+            <div class="engine-live">DSP LIVE · LOCAL</div>
             <div class="environment-switch" role="group" aria-label="Entorno de RayDrone">
                 <button type="button" data-environment="basic" class="active" aria-pressed="true">Básico</button>
                 <button type="button" data-environment="medium" aria-pressed="false">Medio</button>
                 <button type="button" data-environment="professional" aria-pressed="false">Profesional</button>
             </div>
             <details class="preferences">
-                <summary>Preferencias</summary>
+                <summary>Idioma</summary>
                 <div class="ui-selects" aria-label="Preferencias visuales">
                     <select class="language-select" aria-label="Idioma" title="Idioma">
                         <option value="ca">CATALÀ</option><option value="es">CASTELLANO</option><option value="eu">EUSKERA</option>
                         <option value="gl">GALEGO</option><option value="en">ENGLISH</option><option value="fr">FRANÇAIS</option>
                         <option value="de">DEUTSCH</option><option value="it">ITALIANO</option><option value="pt">PORTUGUÊS</option>
-                    </select>
-                    <select class="theme-select" aria-label="Tema visual" title="Tema visual">
-                        <option value="ocean">Ocean</option><option value="neon">Neon</option><option value="sunset">Sunset</option>
-                        <option value="grayscale">Grey Scale</option><option value="red808">Red808</option><option value="rainbow">Rainbow</option>
                     </select>
                 </div>
             </details>
@@ -412,30 +58,33 @@
             <section class="panel scene">
                 <div class="panel-title"><span>Scene<span class="info-badge" tabindex="0">i<span class="info-tip">Carga el WAV/MP3 que los rayos van a granular. Arriba: dónde caen los rayos sobre la onda de origen. Abajo: la señal que realmente suena (osciloscopio + espectro).</span></span></span><span>Source · Rays · Output</span></div>
 
-                <label class="file-label" id="file-label" for="file">📁 Cargar WAV / MP3</label>
+                <div class="source-actions">
+                <label class="file-label" id="file-label" for="file">Cargar WAV / MP3</label>
                 <!-- iOS Safari con `audio/*` a secas abre el selector de FOTOS
                      (o deja el audio en gris); listar extensiones + MIME
                      concretos hace que ofrezca la app Archivos con los
                      audios seleccionables. -->
                 <input type="file" id="file" accept="audio/*,audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/flac,audio/ogg,.wav,.mp3,.m4a,.aac,.flac,.ogg,.aif,.aiff">
+                <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
+                </div>
 
-                <div id="viz-wrap" style="position:relative;">
+                <div id="viz-wrap">
                     <canvas id="wave" width="700" height="150"></canvas>
                     <button class="preset" id="fs-btn" title="Pantalla completa (onda + rayos)">⛶</button>
                     <!-- HUD de directo: leyenda de teclas (escenas + toggles). Tecla H lo oculta. -->
-                    <div id="hud" style="position:absolute; left:0; right:0; bottom:0; z-index:2; display:flex; gap:14px; flex-wrap:wrap; justify-content:center; padding:7px 10px; font:12px ui-monospace,monospace; color:#cfcdd6; background:linear-gradient(transparent, rgba(5,6,11,.9)); pointer-events:none;">
+                    <div id="hud">
                         <span id="hud-scenes"></span>
                         <span id="hud-tags"></span>
                     </div>
                 </div>
-                <div class="ctl zoom-control" style="margin:0 0 10px;">
+                <div class="ctl zoom-control">
                     <label>Zoom (rueda / pellizco · ampliado: click fino, minimapa salta) <span class="v" id="zoom-v">×1</span></label>
                     <input type="range" id="zoom" min="1" max="64" value="1" step="0.1">
                 </div>
                 <div id="meter"><div id="meter-fill"></div></div>
 
-                <div class="ctl output-monitor" style="margin:0 0 6px;">
-                    <label style="margin:0;">Señal de salida — lo que realmente suena (osciloscopio + espectro)</label>
+                <div class="ctl output-monitor">
+                    <label>Señal de salida — lo que realmente suena (osciloscopio + espectro)</label>
                 </div>
                 <canvas id="outwave" width="700" height="90"></canvas>
 
@@ -445,7 +94,6 @@
                     <button class="preset" data-mode="shimmer" data-t="0.6" data-aber="18" data-tail="0" data-evo="12" data-width="60" data-oct="50" data-reverb="45">Shimmer</button>
                 </div>
 
-                <button class="btn btn-play" id="play" disabled>Esperando audio…</button>
                 <button class="btn btn-record" id="rec" disabled>● Grabar WAV</button>
                 <div class="status" id="status">Carga un WAV o MP3 para empezar.</div>
             </section>
@@ -456,7 +104,7 @@
                         <h2 id="basic-title">Crea una escena, no una cadena de efectos</h2>
                         <p>Elige una materia y describe el resultado con cuatro gestos audibles.</p>
                     </div>
-                    <span class="badge" style="margin:0;">Básico · controles macro</span>
+                    <span class="badge">Básico · controles macro</span>
                 </div>
                 <div class="material-choices" role="group" aria-label="Material sonoro">
                     <button type="button" class="material-choice active" data-material-choice="0">Vacío<span>Natural, sin color.</span></button>
@@ -548,13 +196,13 @@
                     <label>Intensidad del material <span class="v" id="material-amount-v">100 %</span></label>
                     <input type="range" id="material-amount" min="0" max="100" value="100">
                 </div>
-                <div class="sub" style="text-align:left; margin:6px 0 0;">Piensa en una escena: una cámara de Cristal con superficies de Metal no se describe con parámetros de plugin; se compone con materiales.</div>
+                <div class="sub">Piensa en una escena: una cámara de Cristal con superficies de Metal no se describe con parámetros de plugin; se compone con materiales.</div>
             </section>
 
             <!-- ── MOVEMENT + FX ── -->
             <section class="panel p-motion" data-workspace-panel="space">
                 <div class="panel-title"><span>⌁ Movimiento y efectos<span class="info-badge" tabindex="0">i<span class="info-tip">LFO dibuja una trayectoria repetible; Envelope responde a la energía real de la salida. Delay, Chorus y Reverb forman la cadena espacial del motor.</span></span></span><span>modulación · espacio · deriva</span></div>
-                <div class="tune-filter" style="margin-top:0; padding-top:0; border-top:0;">
+                <div class="tune-filter">
                     <div class="ctl"><label>Modulador <span class="v" id="mod-mode-v">OFF</span></label><select id="mod-mode"><option value="0" selected>OFF</option><option value="1">LFO triangular</option><option value="2">Envelope de salida</option></select></div>
                     <div class="ctl"><label>Destino <span class="v" id="mod-target-v">Densidad</span></label><select id="mod-target"><option value="0" selected>Densidad de rayos</option><option value="1">Apertura</option><option value="2">Pitch</option></select></div>
                     <div class="ctl pro-control"><label>Velocidad <span class="v" id="mod-rate-v">0.25 Hz</span></label><input type="range" id="mod-rate" min="0.01" max="12" value="0.25" step="0.01"></div>
@@ -592,33 +240,33 @@
                     <input type="range" id="evo" min="0" max="100" value="0">
                 </div>
                 <div class="ctl row">
-                    <label style="margin:0;">Muestreo suave (QMC) <span class="v" id="smooth-v">ON</span></label>
+                    <label>Muestreo suave (QMC) <span class="v" id="smooth-v">ON</span></label>
                     <input type="checkbox" id="smooth" checked>
                 </div>
                 <div class="ctl row">
-                    <label style="margin:0;">Rayos inteligentes (trazado inverso) <span class="v" id="smart-v">OFF</span></label>
+                    <label>Rayos inteligentes (trazado inverso) <span class="v" id="smart-v">OFF</span></label>
                     <input type="checkbox" id="smart">
                 </div>
-                <div id="perf" class="status" style="text-align:left; margin-top:12px; padding-top:10px; border-top:1px solid var(--line); line-height:1.6;">CPU audio — · rayos/bloque — · granos/s —<br>latencia: base — · salida —</div>
+                <div id="perf" class="status">CPU audio — · rayos/bloque — · granos/s —<br>latencia: base — · salida —</div>
             </section>
 
             <!-- ── PLAY: piano por teclado / ratón / táctil ── -->
             <section class="panel p-play" data-workspace-panel="tuning" data-access="professional">
-                <div class="panel-title"><span>🎹 Play<span class="info-badge" tabindex="0">i<span class="info-tip">Teclado A W S E D F T G Y U J K O L (desde C4) · clic/táctil sobre el piano · mantén varias a la vez para tocar acordes. D, F y A solo se tocan con clic/táctil (S/F/H ya son atajos de esta página). Mientras haya alguna nota sostenida, anula Microtonal y Voicing.</span></span></span><span>teclado · ratón · táctil</span></div>
-                <div class="ctl row" style="justify-content:flex-start; gap:14px; margin-bottom:10px;">
-                    <button class="preset" id="poct-down" style="padding:6px 12px;">OCT −</button>
+                <div class="panel-title"><span>Play<span class="info-badge" tabindex="0">i<span class="info-tip">Teclado A W S E D F T G Y U J K O L (desde C4) · clic/táctil sobre el piano · mantén varias a la vez para tocar acordes. D, F y A solo se tocan con clic/táctil (S/F/H ya son atajos de esta página). Mientras haya alguna nota sostenida, anula Microtonal y Voicing.</span></span></span><span>teclado · ratón · táctil</span></div>
+                <div class="ctl row octave-controls">
+                    <button class="preset" id="poct-down">OCT −</button>
                     <span class="v" id="poct-v">+0</span>
-                    <button class="preset" id="poct-up" style="padding:6px 12px;">OCT +</button>
+                    <button class="preset" id="poct-up">OCT +</button>
                 </div>
                 <div id="piano"></div>
-                <div class="sub" style="text-align:left; margin-top:8px;">Teclado: <b>A W S E D F T G Y U J K O L</b> desde C4 (D, F y A solo por clic/táctil — S/F/H son atajos de espectro/pantalla completa/HUD). Suelta todas las teclas para volver a Microtonal/Voicing o al pitch continuo.</div>
+                <div class="sub">Teclado: <b>A W S E D F T G Y U J K O L</b> desde C4 (D, F y A solo por clic/táctil — S/F/H son atajos de espectro/pantalla completa/HUD). Suelta todas las teclas para volver a Microtonal/Voicing o al pitch continuo.</div>
             </section>
 
             <!-- ── AMBIENT (focos múltiples recursivos) ── -->
             <section class="panel p-ambient adv" data-workspace-panel="rays" data-access="professional">
-                <div class="panel-title"><span>🌌 Ambient · focos recursivos<span class="info-badge" tabindex="0">i<span class="info-tip">Sustituye el foco único por una constelación de focos que derivan solos y engendran focos hijo más discretos → estructura auto-similar. Semillas = focos base · Recursión = niveles de hijos · Dispersión = distancia hijo↔padre · Deriva = velocidad · Nacimientos = focos nuevos/seg.</span></span></span><span>varios puntos focales auto-similares sobre la onda</span></div>
-                <div class="ctl row" style="margin-bottom:14px;">
-                    <label style="margin:0;">Activar tema ambient <span class="v" id="ambient-v">OFF</span></label>
+                <div class="panel-title"><span>Ambient · focos recursivos<span class="info-badge" tabindex="0">i<span class="info-tip">Sustituye el foco único por una constelación de focos que derivan solos y engendran focos hijo más discretos → estructura auto-similar. Semillas = focos base · Recursión = niveles de hijos · Dispersión = distancia hijo↔padre · Deriva = velocidad · Nacimientos = focos nuevos/seg.</span></span></span><span>varios puntos focales auto-similares sobre la onda</span></div>
+                <div class="ctl row">
+                    <label>Activar tema ambient <span class="v" id="ambient-v">OFF</span></label>
                     <input type="checkbox" id="ambient">
                 </div>
                 <div class="ambient-grid">
@@ -643,7 +291,7 @@
                         <input type="range" id="arate" min="0" max="100" value="40">
                     </div>
                 </div>
-                <div class="sub" style="text-align:left; margin:6px 0 0;">Las semillas se reparten en baja discrepancia (golden ratio) y derivan solas; cada foco engendra focos hijo más breves y cercanos → estructura auto-similar (la misma ley QMC a escala de sección, frase y grano). Súbele a Reverb y grano largo para drone. Combínalo con autoevolución y rebotes.</div>
+                <div class="sub">Las semillas se reparten en baja discrepancia (golden ratio) y derivan solas; cada foco engendra focos hijo más breves y cercanos → estructura auto-similar (la misma ley QMC a escala de sección, frase y grano). Súbele a Reverb y grano largo para drone. Combínalo con autoevolución y rebotes.</div>
             </section>
 
             <!-- ── AFINACIÓN: voicing + retícula microtonal + filtro a tempo ── -->
@@ -651,7 +299,7 @@
                  ambos deciden el pitch de cada rayo, así que viven juntos. Los IDs
                  no cambian — el JS de siempre sigue funcionando tal cual.) -->
             <section class="panel p-tune adv" data-workspace-panel="tuning" data-access="professional">
-                <div class="panel-title"><span>🎼 Afinación<span class="info-badge" tabindex="0">i<span class="info-tip">Decide el pitch de cada rayo, con prioridades claras: el piano (sección Play) manda mientras haya notas sostenidas; si no, el Voicing (acorde en entonación justa); si no, la Escala microtonal (12/19/22/24-EDO, justa o Bohlen–Pierce); si no, pitch continuo. Abajo, el filtro resonante con LFO sincronizado al BPM.</span></span></span><span>voicing · retícula microtonal · filtro a tempo</span></div>
+                <div class="panel-title"><span>Afinación<span class="info-badge" tabindex="0">i<span class="info-tip">Decide el pitch de cada rayo, con prioridades claras: el piano (sección Play) manda mientras haya notas sostenidas; si no, el Voicing (acorde en entonación justa); si no, la Escala microtonal (12/19/22/24-EDO, justa o Bohlen–Pierce); si no, pitch continuo. Abajo, el filtro resonante con LFO sincronizado al BPM.</span></span></span><span>voicing · retícula microtonal · filtro a tempo</span></div>
                 <div class="micro-grid">
                     <div>
                         <div class="ctl">
@@ -692,7 +340,7 @@
                                 <option value="penta">Pentatónica · 5 grados</option>
                             </select>
                         </div>
-                        <div class="sub" style="text-align:left; margin:0;">Voicing activo = pad consonante en entonación justa (anula la Escala). Con Escala + Acorde, cada temperamento afina los mismos intervalos a su manera (tercera: 400¢ en 12-EDO, 379¢ en 19-EDO, 386¢ justa). Ajusta la raíz con el slider <b>Pitch</b>.</div>
+                        <div class="sub">Voicing activo = pad consonante en entonación justa (anula la Escala). Con Escala + Acorde, cada temperamento afina los mismos intervalos a su manera (tercera: 400¢ en 12-EDO, 379¢ en 19-EDO, 386¢ justa). Ajusta la raíz con el slider <b>Pitch</b>.</div>
                     </div>
                     <canvas id="lattice" width="800" height="180"></canvas>
                 </div>
@@ -725,16 +373,22 @@
                         <input type="range" id="lfodepth" min="0" max="100" value="0">
                     </div>
                 </div>
-                <div class="sub" style="text-align:left; margin:6px 0 0;">El barrido del filtro va sincronizado al BPM (sube la profundidad del LFO para oírlo) y tiene recorrido aunque dejes el Cutoff totalmente abierto.</div>
+                <div class="sub">El barrido del filtro va sincronizado al BPM (sube la profundidad del LFO para oírlo) y tiene recorrido aunque dejes el Cutoff totalmente abierto.</div>
             </section>
 
+            <details class="analysis-zone" data-workspace-panel="analysis" data-access="professional">
+                <summary>
+                    <span>Análisis matemático</span>
+                    <small>Convergencia · modelos de efecto · telemetría WASM</small>
+                </summary>
+                <div class="analysis-content">
             <!-- ── ANALYSIS / CONVERGENCE LAB ── -->
             <section class="panel lab adv" data-workspace-panel="analysis" data-access="professional">
-                <div class="panel-title"><span>⚗ Convergence Lab<span class="info-badge" tabindex="0">i<span class="info-tip">Banco de pruebas offline (mismo motor Rust→wasm, en un Worker aparte): compara cómo cae el error de un grano estimado según el método de muestreo (aleatorio, estratificado, QMC, importance, reverse) al crecer N. No toca el render en vivo.</span></span></span><span>error RMS vs N · 1/√N · wasm</span></div>
-                <div class="sub" style="margin:0 0 10px; text-align:left;">Prueba empírica con el motor real (Rust→wasm en un Worker, semilla fija → reproducible): el render converge al objetivo con error ~ 1/√N.</div>
+                <div class="panel-title"><span>Convergence Lab<span class="info-badge" tabindex="0">i<span class="info-tip">Banco de pruebas offline (mismo motor Rust→wasm, en un Worker aparte): compara cómo cae el error de un grano estimado según el método de muestreo (aleatorio, estratificado, QMC, importance, reverse) al crecer N. No toca el render en vivo.</span></span></span><span>error RMS vs N · 1/√N · wasm</span></div>
+                <div class="sub">Prueba empírica con el motor real (Rust→wasm en un Worker, semilla fija → reproducible): el render converge al objetivo con error ~ 1/√N.</div>
                 <canvas id="lab-canvas" width="700" height="240"></canvas>
                 <button class="btn btn-play" id="lab-run">▶ Correr test de convergencia</button>
-                <div id="lab-readout" class="status" style="text-align:left; line-height:1.5;">Carga un audio y corre el test.</div>
+                <div id="lab-readout" class="status">Carga un audio y corre el test.</div>
                 <div class="lab-ab">
                     <button class="preset" id="lab-target" disabled>Objetivo</button>
                     <button class="preset" id="lab-noisy" disabled>N=4</button>
@@ -747,13 +401,15 @@
             <!-- ── COMPARATIVA: datos reales del motor, no promesas ── -->
             <section class="panel p-compare adv" data-workspace-panel="analysis" data-access="professional">
                 <div class="panel-title"><span>◫ Comparativa de FX<span class="info-badge" tabindex="0">i<span class="info-tip">RayDrone muestra telemetría del AudioWorklet real. La columna convencional describe la topología habitual; no inventamos CPU o memoria que el navegador no expone.</span></span></span><span>convencional vs trayectorias RayDrone</span></div>
-                <div class="ctl" style="max-width:420px;"><label>Familia a comparar</label><select id="compare-fx"><option value="delay">Delay</option><option value="reverb">Reverb</option><option value="chorus">Chorus / Ensemble</option><option value="flanger">Flanger / Phaser</option><option value="resonator">Resonador</option></select></div>
+                <div class="ctl compare-selector"><label>Familia a comparar</label><select id="compare-fx"><option value="delay">Delay</option><option value="reverb">Reverb</option><option value="chorus">Chorus / Ensemble</option><option value="flanger">Flanger / Phaser</option><option value="resonator">Resonador</option></select></div>
                 <div class="compare-grid">
                     <div class="compare-card"><h3>FX convencional</h3><div id="compare-normal">Delay-line / filtros fijos.</div><div class="compare-metric"><span>CPU y memoria</span><b>depende del host</b></div><div class="compare-metric"><span>Modelo</span><b>parámetros aislados</b></div></div>
                     <div class="compare-card"><h3>RayDrone</h3><div id="compare-ray">Trayectorias, pérdidas e interferencia.</div><div class="compare-metric"><span>CPU audio</span><b id="compare-cpu">—</b></div><div class="compare-metric"><span>Voces / rayos</span><b id="compare-voices">—</b></div><div class="compare-metric"><span>Granos / s</span><b id="compare-grains">—</b></div></div>
-                    <div class="compare-card"><h3>Lectura sonora</h3><div id="compare-note">Selecciona una familia para ver qué cambia cuando el efecto nace de la escena.</div><button class="preset" id="compare-refresh" style="margin-top:12px;">Actualizar telemetría</button></div>
+                    <div class="compare-card"><h3>Lectura sonora</h3><div id="compare-note">Selecciona una familia para ver qué cambia cuando el efecto nace de la escena.</div><button class="preset" id="compare-refresh">Actualizar telemetría</button></div>
                 </div>
             </section>
+                </div>
+            </details>
 
         </div>
     </div>
@@ -1417,7 +1073,11 @@
     });
 
     // Elegir una escala/acorde microtonal deja el voicing afinado en "Ninguno".
-    function leaveVoicing() { voicingSel.value = ''; voicingV.innerText = 'Ninguno'; }
+    function leaveVoicing() {
+        voicingSel.value = '';
+        voicingV.innerText = 'Ninguno';
+        syncSegmentedSelect(voicingSel);
+    }
     scaleSel.addEventListener('change', () => { leaveVoicing(); updateScaleLabels(); sendScale(); });
     chordSel.addEventListener('change', () => { leaveVoicing(); updateScaleLabels(); sendScale(); });
 
@@ -1515,9 +1175,9 @@
         const base = ctx ? `${((ctx.baseLatency || 0) * 1000).toFixed(1)} ms` : '—';
         const outL = (ctx && ctx.outputLatency) ? `${(ctx.outputLatency * 1000).toFixed(0)} ms` : '—';
         perfEl.innerHTML =
-            `CPU audio: <b style="color:var(--accent)">${cpu}</b> · ` +
-            `rayos/bloque: <b style="color:var(--accent)">${p.voices}</b> · ` +
-            `granos/s: <b style="color:var(--accent)">${Math.round(p.spawnsPerSec)}</b><br>` +
+            `CPU audio: <b>${cpu}</b> · ` +
+            `rayos/bloque: <b>${p.voices}</b> · ` +
+            `granos/s: <b>${Math.round(p.spawnsPerSec)}</b><br>` +
             `latencia: base <b>${base}</b> · salida <b>${outL}</b>`;
     }
 
@@ -2406,14 +2066,14 @@
 
     function labUpdateReadout() {
         const Ns = labCurves.Ns, last = Ns.length - 1, f = (v) => v.toExponential(2);
-        let html = `<pre style="margin:0;white-space:pre-wrap;font-size:0.72rem;color:#c6d2e5;">`;
+        let html = `<pre class="lab-results">`;
         html += `apertura ${(labA / sampleRate * 1000).toFixed(0)} ms · grano ${LAB_GRAIN} · N→${Ns[last]} · ${LAB_TRIALS} tiradas\n`;
         html += `método        exponente   RMS@${Ns[last]}\n`;
         for (const s of LAB_SERIES) {
             const sl = labFitSlope(Ns, labCurves[s.k]);
-            html += `<span style="color:${s.c}">${s.label.padEnd(12)} ${sl.toFixed(3).padStart(7)}   ${f(labCurves[s.k][last])}</span>\n`;
+            html += `<span class="lab-series">${s.label.padEnd(12)} ${sl.toFixed(3).padStart(7)}   ${f(labCurves[s.k][last])}</span>\n`;
         }
-        html += `<span style="color:#8a99ad">(ideal random ≈ −0.50; stratified/QMC/importance bajan más; Reverse ≈ random en material uniforme — su sesgo solo aflora como meseta si la energía dentro de la apertura es muy desigual)</span></pre>`;
+        html += `<span class="lab-note">(ideal random ≈ −0.50; stratified/QMC/importance bajan más; Reverse ≈ random en material uniforme — su sesgo solo aflora como meseta si la energía dentro de la apertura es muy desigual)</span></pre>`;
         labReadout.innerHTML = html;
     }
 
@@ -2492,12 +2152,12 @@
 
     // ── Modo live: escenas por tecla (1–9) + leyenda HUD + toggles ───────────
     const hud = $('hud'), hudScenes = $('hud-scenes'), hudTags = $('hud-tags');
-    const hudKey = (label, on) => `<b style="color:${on ? '#ff8aa0' : '#6a6a78'}">${label}</b>`;
+    const hudKey = (label, on) => `<b class="hud-key${on ? ' active' : ''}">${label}</b>`;
     function updateHud() {
         hudScenes.innerHTML = presets.map((b, i) =>
             `${hudKey(i + 1, b.classList.contains('active'))} ${b.textContent.split('(')[0].trim()}`).join('  ·  ');
         hudTags.innerHTML = `${hudKey('S', liveSpectrum)} espectro · ${hudKey('R', liveRadial)} radial · `
-            + `<b style="color:#6a6a78">H</b> ocultar · <b style="color:#6a6a78">⛶/F</b> pantalla`;
+            + `<b class="hud-key">H</b> ocultar · <b class="hud-key">⛶/F</b> pantalla`;
     }
     updateHud();
     hud.style.display = 'none'; // oculta por defecto; se muestra sola en pantalla completa
@@ -2676,6 +2336,46 @@
         else return;
         e.preventDefault();
     });
+
+    // Las decisiones se muestran como botones persistentes. Los selectores
+    // permanecen ocultos como contrato estable con el motor y el i18n.
+    const segmentedSelectSync = new WeakMap();
+    function mountSegmentedSelect(select) {
+        const group = document.createElement('div');
+        group.className = 'segmented-picker';
+        group.setAttribute('role', 'group');
+        group.setAttribute('aria-label', select.previousElementSibling?.textContent?.trim() || select.id);
+        const buttons = Array.from(select.options, (option) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'segmented-option';
+            button.dataset.value = option.value;
+            button.textContent = option.textContent;
+            button.addEventListener('click', () => {
+                if (select.value === option.value) return;
+                select.value = option.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            group.appendChild(button);
+            return button;
+        });
+        const sync = () => buttons.forEach((button) => {
+            const active = button.dataset.value === select.value;
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-pressed', String(active));
+        });
+        segmentedSelectSync.set(select, sync);
+        select.classList.add('engine-select');
+        select.insertAdjacentElement('afterend', group);
+        select.addEventListener('change', sync);
+        sync();
+    }
+    function syncSegmentedSelect(select) {
+        segmentedSelectSync.get(select)?.();
+    }
+    ['mod-mode', 'mod-target', 'voicing', 'scale', 'chord', 'lfodiv', 'compare-fx']
+        .map($)
+        .forEach(mountSegmentedSelect);
 
     window.addEventListener('raydrone:language', () => {
         // Recalcular los valores que se generan desde el estado, no solo los
